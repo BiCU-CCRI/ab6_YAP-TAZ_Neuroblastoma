@@ -53,7 +53,7 @@ deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq/"
 
 # Analysis of the RNA-seq data ####
 # Loading the DESeq2 file and annotation file that was used during the pre-processing of the data
-path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/"
+path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/RNAseq"
 rnaseq_dds <- readRDS(file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_deseq_data_set.rds"))
 design(rnaseq_dds) <- as.formula("~ cell_line + cell_type")
 annotationData <- read.table(
