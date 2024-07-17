@@ -4,8 +4,7 @@
 # 
 
 # Set up the environment ####
-exp_id <- "20240515"
-res_dir <- file.path("~/workspace/neuroblastoma/results/", exp_id)
+deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq/"
 
 ## Loading libraries ####
 library(dplyr)
@@ -40,14 +39,11 @@ if (file.exists("~/workspace/neuroblastoma/RDSs/ATAC_dds.RDS")){
 }else{
   # Assembling the metadata to a DESeq2 object
   # we use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
-  tmp_dir <- "~/workspace/neuroblastoma/data_soren/ATAC_BSA_0729_KB_NB_plasticity/all"
-  path_to_the_ATAC_counts_data <- file.path(tmp_dir, "all_filtered.csv")
-  path_annnotation_ATAC_data <- file.path(tmp_dir, "consensus_regions_annotation.csv")
-  ATAC_counts_data <- read.csv(path_to_the_ATAC_counts_data, 
-                               header = TRUE,
-                               row.names = 1)
-  ATAC_annotation_data <- read.csv(file = path_annnotation_ATAC_data,
-                                   header = TRUE)
+  tmp_dir <- "~/workspace/neuroblastoma/data/ATACseq/"
+  path_to_the_ATAC_counts_data <- file.path(tmp_dir, "all_filtered.RDS")
+  path_annnotation_ATAC_data <- file.path(tmp_dir, "consensus_regions_annotation.RDS")
+  ATAC_counts_data <- readRDS(path_to_the_ATAC_counts_data)
+  ATAC_annotation_data <- readRDS(path_annnotation_ATAC_data)
   
   #subset the ATAC_annotation_data - keep the rows that are present in the ATAC_counts_data
   ATAC_annotation_data <- dplyr::filter(ATAC_annotation_data, peak_id %in% rownames(ATAC_counts_data))
