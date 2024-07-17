@@ -1,19 +1,21 @@
 ###
 # Title: RNA-seq analysis for Sören (Kaan's group)
 # Author: Aleksandr Bykov
-# 
+#
 
 # Set up the environment ####
 # Importing only key functions that are actually used - not to polute namespace!
 import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
-import::from(.from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"), 
-             "filterDatasets",
-             "generatePCA", 
-             "generateEnsemblAnnotation", 
-             "generateResults",
-             "meanExprsPerGroup",
-             "plotVolcano",
-             .character_only=TRUE) # used for filtering
+import::from(
+  .from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+  "filterDatasets",
+  "generatePCA",
+  "generateEnsemblAnnotation",
+  "generateResults",
+  "meanExprsPerGroup",
+  "plotVolcano",
+  .character_only = TRUE) # used for filtering
+
 library(xcore)
 #library(ExperimentHub)
 #library(xcoredata)
@@ -24,38 +26,36 @@ library(ggplot2)
 library(DESeq2)
 
 # Load 3rd party packages
-# Note - 
+# Note - might take several attempts to actually load it
 mart <- biomaRt::useMart(
   biomart = "ENSEMBL_MART_ENSEMBL",
   dataset = "hsapiens_gene_ensembl",
-  host = "https://www.ensembl.org"
-)
-# Loading MsigDB geneset collections 
-gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean=TRUE) 
-gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean=TRUE) 
-gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean=TRUE) 
-gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP", clean=TRUE) 
-gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean=TRUE) 
-gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean=TRUE) 
+  host = "https://www.ensembl.org")
+# Loading MsigDB geneset collections
+gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean = TRUE)
+gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean = TRUE)
+gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
+gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP", clean = TRUE)
+gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean = TRUE)
+gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean = TRUE)
 
 # Set up the parameters
 param_list <- list(
   abs_filt_samples=2,
   padj_cutoff = 0.05,
   log2FC_cutoff = 1,
-  var_expl_needed = 0.6,
-  biomart_host="http://www.ensembl.org", 
-  biomart_dataset="hsapiens_gene_ensembl", 
-  biomart_Ens_version="Ensembl Genes 109"
-)
-deg_dir <- "~/workspace/neuroblastoma/results/20240515/"
-#deg_dir <- "~/workspace/neuroblastoma/results/20230703/"
+  var_expl_needed = 0.6
+  #biomart_host="http://www.ensembl.org",
+  #biomart_dataset="hsapiens_gene_ensembl",
+  #biomart_Ens_version="Ensembl Genes 109"
+  )
+deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq/"
 
 
 
 # Analysis of the RNA-seq data ####
 # Loading the DESeq2 file and annotation file that was used during the pre-processing of the data
-path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data_soren/ATAC_BSA_0729_KB_NB_plasticity/hg38/rnaseq_deseq_global/" 
+path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/" 
 rnaseq_dds <- readRDS(file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_deseq_data_set.rds"))
 design(rnaseq_dds) <- as.formula("~ cell_line + cell_type")
 annotationData <- read.table(file = file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_annotation_gene.tsv"),
@@ -68,8 +68,8 @@ colnames(annotationData)[c(5,7)] <- c("ensembl_id", "gene_symbol")
 # make PCA with ALL samples
 # Filtering lowly expressed genes
 tmp_rnaseq_dds_filt <- filterDatasets(rnaseq_dds, 
-                                  abs_filt = TRUE, 
-                                  abs_filt_samples = param_list$abs_filt_samples)
+                                      abs_filt = TRUE, 
+                                      abs_filt_samples = param_list$abs_filt_samples)
 # Estimate size factors and running DESEQ2
 tmp_rnaseq_dds_filt <- DESeq2::estimateSizeFactors(tmp_rnaseq_dds_filt)
 tmp_rnaseq_dds_filt <- DESeq2::DESeq(tmp_rnaseq_dds_filt)
@@ -78,15 +78,16 @@ tmp_vsd <- DESeq2::vst(tmp_rnaseq_dds_filt, blind = TRUE) # blind = TRUE for QC
 
 #generate PCA plots
 tmp_pca_deg <- generatePCA(transf_object = tmp_vsd, 
-                       cond_interest_varPart = c("cell_type","cell_line"), 
-                       color_variable = "cell_type", 
-                       shape_variable = "cell_line",
-                       ntop_genes = 1000
-                       ) + 
+                           cond_interest_varPart = c("cell_type","cell_line"), 
+                           color_variable = "cell_type", 
+                           shape_variable = "cell_line",
+                           ntop_genes = 1000) + 
   scale_color_manual(values = c("navy", "firebrick3")) +
   scale_shape_manual(values = c(16,7,17,15,3))+
   ggtitle("RNA-seq Original dataset") 
-
+ggsave(filename = paste0(deg_dir, "PCA_full_dataset.png"), 
+       plot = tmp_pca_deg,
+       width = 20, height = 20, units = "cm")
 
 # Removing NB6 sample - this is intermixed sample
 rnaseq_dds <- rnaseq_dds[,rnaseq_dds$cell_line != "STA_NB_6"]
@@ -102,15 +103,16 @@ rnaseq_dds_filt <- DESeq2::DESeq(rnaseq_dds_filt)
 vsd <- DESeq2::vst(rnaseq_dds_filt, blind = TRUE) # blind = TRUE for QC
 
 #generate PCA plots
-pca_deg <- generatePCA(transf_object = vsd, 
-                       cond_interest_varPart = c("cell_type","cell_line"), 
-                       color_variable = "cell_type", 
-                       shape_variable = "cell_line",
-                       ntop_genes = 1000) +
+pca_deg <- generatePCA(
+  transf_object = vsd, 
+  cond_interest_varPart = c("cell_type","cell_line"), 
+  color_variable = "cell_type", 
+  shape_variable = "cell_line",
+  ntop_genes = 1000) +
   scale_color_manual(values = c("navy", "firebrick3")) +
   ggtitle("Original dataset")
-ggsave(filename = paste0(deg_dir, "MES_vs_ADRN_PCA_DEG.png"), 
-       plot=pca_deg,
+ggsave(filename = file.path(deg_dir, "PCA_MES_vs_ADRN_DEG.png"), 
+       plot = pca_deg,
        width = 20, height = 20, units = "cm")
 
 #   
@@ -121,22 +123,24 @@ ggsave(filename = paste0(deg_dir, "MES_vs_ADRN_PCA_DEG.png"),
 
 # Check the names of the dds object and generate results
 resultsNames(rnaseq_dds_filt)
-deg_results <- generateResults(dds_object = rnaseq_dds_filt, 
-                               coeff_name = "cell_type_MES_vs_ADR",
-                               cond_numerator = "MES", 
-                               cond_denominator = "ADR",
-                               cond_variable="cell_type",
-                               ensemblAnnot = annotationData,
-                               log2FC_cutoff = param_list$log2FC_cutoff)
+deg_results <- generateResults(
+  dds_object = rnaseq_dds_filt, 
+  coeff_name = "cell_type_MES_vs_ADR",
+  cond_numerator = "MES", 
+  cond_denominator = "ADR",
+  cond_variable="cell_type",
+  ensemblAnnot = annotationData,
+  log2FC_cutoff = param_list$log2FC_cutoff)
 
 #export MES and ADR genes and create custom terms from them
 ADR_genes <- deg_results$results_signif %>% filter(log2FoldChange < 0) %>% pull(gene_symbol)
 MES_genes <- deg_results$results_signif %>% filter(log2FoldChange > 0) %>% pull(gene_symbol)
 hs <- org.Hs.eg.db
-ADR_genes <- AnnotationDbi::select(hs,
-                                   keys = ADR_genes,
-                                   columns = c("ENTREZID", "SYMBOL"),
-                                   keytype = "SYMBOL")
+ADR_genes <- AnnotationDbi::select(
+  hs,
+  keys = ADR_genes,
+  columns = c("ENTREZID", "SYMBOL"),
+  keytype = "SYMBOL")
 ADR_genes <- ADR_genes[!is.na(ADR_genes$ENTREZID),]
 ADR_genes$gs_id <- "ADRN"
 
@@ -147,10 +151,12 @@ MES_genes <- AnnotationDbi::select(hs,
 MES_genes <- MES_genes[!is.na(MES_genes$ENTREZID),]
 MES_genes$gs_id <- "MES"
 
-ADRN_MES_terms <- data.frame(rbind(MES_genes %>% dplyr::select(gs_id, ENTREZID),
-                                   ADR_genes %>% dplyr::select(gs_id, ENTREZID)
-                                   )
-                             )
+ADRN_MES_terms <- data.frame(
+  rbind(
+    MES_genes %>% dplyr::select(gs_id, ENTREZID),
+    ADR_genes %>% dplyr::select(gs_id, ENTREZID)
+  )
+)
 colnames(ADRN_MES_terms) <- c("gs_id",	"gene_id")
 write.table(ADRN_MES_terms, 
             file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_from_RNA_seq.tsv", 
@@ -229,170 +235,64 @@ ggsave(filename = paste0(deg_dir, "MES_vs_ADRN_GSEA_C2_REACTOME.png"),
        plot = C2_rctm_plot,
        width = 20, height = 20, units = "cm")
 
-# Run Fast GSEA for GOBP, GOCC, GOMF, KEGG, reactome
-pdf(file = file.path(deg_dir, "MES_vs_ADR_fGSEA_and_dotPLOT.pdf"), width = 10, height = 10)
+# Run Fast GSEA for GOBP, GOCC, GOMF, KEGG, reactome terms
 
 # Rank genes based on L2FC
 de_genes_ranked <- deg_results$results_all
 de_genes_ranked <- de_genes_ranked %>% arrange(desc(log2FoldChange))
 de_genes_ranked <- setNames(c(de_genes_ranked$log2FoldChange), c(de_genes_ranked$gene_symbol))
 
-fgseaRes <- fgsea(pathways = gs_C5_GOBP[["genesets"]], 
-                  stats    = de_genes_ranked,
-                  minSize  = 15,
-                  maxSize  = 500)
-topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n=10), pathway]
-topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n=10), pathway]
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-p <- plotGseaTable(gs_C5_GOBP[["genesets"]][topPathways],
-                   de_genes_ranked,
-                   fgseaRes, 
-                   gseaParam=0.5) + labs(title = "C5_GOBP")
-p[["theme"]][["plot.title"]] <- NULL
-p
-# Dot plot
-fgseaRes_dot <- fgseaRes %>% 
-  select(pathway, NES, padj) %>%
-  filter(pathway  %in% topPathways) %>%
-  arrange(NES) %>%
-  mutate(pathway=factor(pathway, levels = pathway)) %>%
-  mutate(padj_log2 = -log2(padj))
 
-p <- ggplot(fgseaRes_dot) +
-  aes(x = NES, y = pathway, colour = NES, size = padj_log2) +
-  geom_point(shape = "circle") +
-  scale_color_distiller(palette = "RdBu", direction = -1) +
-  scale_size(range = c(4, 10)) +
-  theme_minimal() +
-  labs(title = "C5_GOBP",
-       size = "-log2p_adj")
-p
+gene_set_list <- list(
+  gs_hallmark = gs_hallmark,
+  gs_C2_kegg = gs_C2_kegg,
+  gs_C2_reactome = gs_C2_reactome,
+  gs_C5_GOBP = gs_C5_GOBP,
+  gs_C5_GOCC = gs_C5_GOCC, 
+  gs_C5_GOMF = gs_C5_GOMF
+)
 
-fgseaRes <- fgsea(pathways = gs_C5_GOMF[["genesets"]], 
-                  stats    = de_genes_ranked,
-                  minSize  = 15,
-                  maxSize  = 500)
-topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n=10), pathway]
-topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n=10), pathway]
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-p <- plotGseaTable(gs_C5_GOMF[["genesets"]][topPathways],
-                   de_genes_ranked,
-                   fgseaRes, 
-                   gseaParam=0.5) + labs(title = "C5_GOMF")
-p[["theme"]][["plot.title"]] <- NULL
-p
-# Dot plot
-fgseaRes_dot <- fgseaRes %>% 
-  select(pathway, NES, padj) %>%
-  filter(pathway  %in% topPathways) %>%
-  arrange(NES) %>%
-  mutate(pathway=factor(pathway, levels = pathway)) %>%
-  mutate(padj_log2 = -log2(padj))
-
-p <- ggplot(fgseaRes_dot) +
-  aes(x = NES, y = pathway, colour = NES, size = padj_log2) +
-  geom_point(shape = "circle") +
-  scale_color_distiller(palette = "RdBu", direction = -1) +
-  scale_size(range = c(4, 10)) +
-  theme_minimal()+
-  labs(title = "C5_GOMF",
-       size = "-log2p_adj")
-p
-
-fgseaRes <- fgsea(pathways = gs_C5_GOCC[["genesets"]], 
-                  stats    = de_genes_ranked,
-                  minSize  = 15,
-                  maxSize  = 500)
-topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n=10), pathway]
-topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n=10), pathway]
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-p <- plotGseaTable(gs_C5_GOCC[["genesets"]][topPathways], 
-                   de_genes_ranked,
-                   fgseaRes, 
-                   gseaParam=0.5) + labs(title = "C5_GOCC")
-p[["theme"]][["plot.title"]] <- NULL
-p
-# Dot plot
-fgseaRes_dot <- fgseaRes %>% 
-  select(pathway, NES, padj) %>%
-  filter(pathway  %in% topPathways) %>%
-  arrange(NES) %>%
-  mutate(pathway=factor(pathway, levels = pathway)) %>%
-  mutate(padj_log2 = -log2(padj))
-
-p <- ggplot(fgseaRes_dot) +
-  aes(x = NES, y = pathway, colour = NES, size = padj_log2) +
-  geom_point(shape = "circle") +
-  scale_color_distiller(palette = "RdBu", direction = -1) +
-  theme_minimal()+
-  scale_size(range = c(4, 10)) +
-  labs(title = "C5_GOCC",
-       size = "-log2p_adj")
-p
-
-fgseaRes <- fgsea(pathways = gs_C2_kegg[["genesets"]], 
-                  stats    = de_genes_ranked,
-                  minSize  = 15,
-                  maxSize  = 500)
-topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n=10), pathway]
-topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n=10), pathway]
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-p <- plotGseaTable(gs_C2_kegg[["genesets"]][topPathways],
-                   de_genes_ranked,
-                   fgseaRes, 
-                   gseaParam=0.5) + labs(title = "C2_KEGG")
-p[["theme"]][["plot.title"]] <- NULL
-p
-# Dot plot
-fgseaRes_dot <- fgseaRes %>% 
-  select(pathway, NES, padj) %>%
-  filter(pathway  %in% topPathways) %>%
-  arrange(NES) %>%
-  mutate(pathway=factor(pathway, levels = pathway)) %>%
-  mutate(padj_log2 = -log2(padj))
-
-p <- ggplot(fgseaRes_dot) +
-  aes(x = NES, y = pathway, colour = NES, size = padj_log2) +
-  geom_point(shape = "circle") +
-  scale_color_distiller(palette = "RdBu", direction = -1) +
-  theme_minimal()+
-  scale_size(range = c(4, 10)) +
-  labs(title = "C2_KEGG",
-       size = "-log2p_adj")
-p
-
-fgseaRes <- fgsea(pathways = gs_C2_reactome[["genesets"]], 
-                  stats    = de_genes_ranked,
-                  minSize  = 15,
-                  maxSize  = 500)
-topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n=10), pathway]
-topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n=10), pathway]
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-p <- plotGseaTable(gs_C2_reactome[["genesets"]][topPathways],
-                   de_genes_ranked,
-                   fgseaRes, 
-                   gseaParam=0.5)  + labs(title = "C2_reactome")
-p[["theme"]][["plot.title"]] <- NULL
-p
-# Dot plot
-fgseaRes_dot <- fgseaRes %>% 
-  select(pathway, NES, padj) %>%
-  filter(pathway  %in% topPathways) %>%
-  arrange(NES) %>%
-  mutate(pathway=factor(pathway, levels = pathway)) %>%
-  mutate(padj_log2 = -log2(padj))
-
-p <- ggplot(fgseaRes_dot) +
-  aes(x = NES, y = pathway, colour = NES, size = padj_log2) +
-  geom_point(shape = "circle") +
-  scale_color_distiller(palette = "RdBu", direction = -1) +
-  theme_minimal()+
-  scale_size(range = c(4, 10)) +
-  labs(title = "C2_reactome",
-       size = "-log2p_adj")
-p
-
+pdf(file = file.path(deg_dir, "MES_vs_ADR_fGSEA_and_dotPLOT2.pdf"), width = 10, height = 10)
+for(gene_set_name in names(gene_set_list)) {
+  print(gene_set_name)
+  gene_set <- gene_set_list[[gene_set_name]]
+  
+  fgseaRes <- fgsea(pathways = gene_set[["genesets"]], 
+                    stats    = de_genes_ranked,
+                    minSize  = 15,
+                    maxSize  = 500)
+  topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n = 10), pathway]
+  topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n = 10), pathway]
+  topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+  
+  p <- plotGseaTable(gene_set[["genesets"]][topPathways],
+                     de_genes_ranked,
+                     fgseaRes, 
+                     gseaParam = 0.5) + 
+    labs(title = gene_set_name)
+  p[["theme"]][["plot.title"]] <- NULL
+  print(p)
+  
+  # Dot plot
+  fgseaRes_dot <- fgseaRes %>% 
+    select(pathway, NES, padj) %>%
+    filter(pathway  %in% topPathways) %>%
+    arrange(NES) %>%
+    mutate(pathway=factor(pathway, levels = pathway)) %>%
+    mutate(padj_log2 = -log2(padj))
+  
+  p <- ggplot(fgseaRes_dot) +
+    aes(x = NES, y = pathway, colour = NES, size = padj_log2) +
+    geom_point(shape = "circle") +
+    scale_color_distiller(palette = "RdBu", direction = -1) +
+    scale_size(range = c(4, 10)) +
+    theme_minimal() +
+    labs(title = gene_set_name,
+         size = "-log2p_adj")
+  print(p)
+}
 dev.off()
+
 
 # Create a volcano plot
 # Genes to highlight
@@ -413,15 +313,22 @@ ggsave(filename = paste0(deg_dir, "MES_vs_ADRN_volcano_plot.png"),
        width = 20, height = 20, units = "cm")
 
 
+
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # EOF         # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # 
 # perform ssGSEA on Thirant data
 thir_data <- read.table(file = "~/workspace/neuroblastoma/resources/Thiriant_data.csv", 
                         sep = ";",
                         header = TRUE)
 
-thir_data <- split(thir_data %>% select(Groups, Genes), thir_data$Groups)
-thir_data <- lapply(thir_data, function(x){return(x$Genes)})
+thir_data <- split(thir_data %>% select(group, gene_name), thir_data$group)
+thir_data <- lapply(thir_data, function(x) return(x$gene_name))
 
-fgseaRes <- fgsea(pathways = thir_data[["OX-PHOS"]], 
+fgseaRes <- fgsea(pathways = thir_data["OX-PHOS"], 
                   stats    = de_genes_ranked,
                   minSize  = 15,
                   maxSize  = 500)
@@ -454,25 +361,25 @@ GSEA_thir_data <- hypeR::hypeR(signature = deg_results$results_signif$gene_symbo
                         test="hypergeometric", 
                         background=nrow(rnaseq_dds_filt))
 GSEA_thir_data_plot <- hypeR::hyp_dots(GSEA_thir_data, 
-                                       merge=TRUE, 
-                                       fdr=0.05, 
+                                       merge = TRUE, 
+                                       fdr = 0.05, 
                                        top = 20, 
-                                       abrv=70, 
-                                       val="fdr", 
-                                       title="Thirant sup. data: MES vs ADR") +
+                                       abrv = 70, 
+                                       val = "fdr", 
+                                       title = "Thirant sup. data: MES vs ADR") +
   theme_bw()
 
 GSEA_thir_data <- hypeR::hypeR(signature = deg_results$results_signif$gene_symbol, 
                                genesets = thir_data_cluster, 
-                               test="hypergeometric", 
-                               background=nrow(rnaseq_dds_filt))
+                               test = "hypergeometric", 
+                               background = nrow(rnaseq_dds_filt))
 GSEA_thir_data_plot <- hypeR::hyp_dots(GSEA_thir_data, 
-                                       merge=TRUE, 
-                                       fdr=0.05, 
+                                       merge = TRUE, 
+                                       fdr = 0.05, 
                                        top = 20, 
-                                       abrv=70, 
-                                       val="fdr", 
-                                       title="Thirant sup. data: MES vs ADR") +
+                                       abrv = 70, 
+                                       val = "fdr", 
+                                       title = "Thirant sup. data: MES vs ADR") +
   theme_bw()
 
 #####
