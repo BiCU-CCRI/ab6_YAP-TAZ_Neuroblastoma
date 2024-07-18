@@ -26,7 +26,8 @@ import::from(.from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
              "extract_results_DDS",
              "meanExprsPerGroup",
              "extract_results_DDS_HIC",
-             "plotVolcano")
+             "plotVolcano",
+             "get_the_poissoon_p_val")
 # Bug - JASPAR2022 cannot be pulled from the web automatically, so it need to be loaded manually
 download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022.sqlite",
               destfile = "/home/rstudio/.cache/R/JASPAR2022.sqlite")
@@ -34,160 +35,178 @@ JASPAR2022 <-  "/home/rstudio/.cache/R/JASPAR2022.sqlite"
 
 # Analysis part ####
 ## Assembling the metadata to a DESeq2 object ####
-if (file.exists("~/workspace/neuroblastoma/RDSs/ATAC_dds.RDS")){
-  ATAC_dds <- readRDS(file = "~/workspace/neuroblastoma/RDSs/ATAC_dds.RDS")
-}else{
-  # Assembling the metadata to a DESeq2 object
-  # we use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
-  tmp_dir <- "~/workspace/neuroblastoma/data/ATACseq/"
-  path_to_the_ATAC_counts_data <- file.path(tmp_dir, "all_filtered.RDS")
-  path_annnotation_ATAC_data <- file.path(tmp_dir, "consensus_regions_annotation.RDS")
-  ATAC_counts_data <- readRDS(path_to_the_ATAC_counts_data)
-  ATAC_annotation_data <- readRDS(path_annnotation_ATAC_data)
-  
-  #subset the ATAC_annotation_data - keep the rows that are present in the ATAC_counts_data
-  ATAC_annotation_data <- dplyr::filter(ATAC_annotation_data, peak_id %in% rownames(ATAC_counts_data))
-  # prepare metadata table form the names of the samples
-  ATAC_metadata_df <- data.frame(matrix(nrow = dim(ATAC_counts_data)[2]))
-  ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
-                                    sample_names = colnames(ATAC_counts_data)
-                                    )
-  ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
-                                    cell_line = str_extract(pattern = "^(.*?)_", 
-                                                            string = colnames(ATAC_counts_data)
-                                                            )
-                                    )
-  ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
-                                    cell_line = gsub(pattern = "_", 
-                                                     replacement = "", 
-                                                     x = ATAC_metadata_df$cell_line
-                                                     )
-                                    )
-  ATAC_metadata_df <- ATAC_metadata_df[, -1]
-  ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
-                                    phenotype = str_extract(pattern = "_._", 
-                                                            string = ATAC_metadata_df$sample_names
-                                                            )
-                                    )
-  ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
-                                    phenotype = gsub(pattern = "_", 
-                                                     replacement = "", 
-                                                     x = ATAC_metadata_df$phenotype)
-                                    )
-  # Assembling the DESeq2 object. 
-  desing_formula <- as.formula("~ cell_line + phenotype")
-  
-  # The Warning "some variables in design formula are characters, converting to factors" is normal.
-  ATAC_dds <- DESeq2::DESeqDataSetFromMatrix(countData = ATAC_counts_data, 
-                                             colData = ATAC_metadata_df, 
-                                             design = desing_formula
-                                             )
-  #Adding ranges info
-  rowRanges(ATAC_dds) <- GenomicRanges::GRanges(seqnames = ATAC_annotation_data$gencode_chr, 
-                                                ranges = IRanges::IRanges(start = ATAC_annotation_data$gencode_start, 
-                                                                          end = ATAC_annotation_data$gencode_end
-                                                                          )
-                                                )
-  # Adding metadata
-  mcols(ATAC_dds) <- cbind(mcols(ATAC_dds), ATAC_annotation_data)        
-  
-  # We remove NB6 samples, as they are mixed cultures of ADRN and MES
-  ATAC_dds <- ATAC_dds[, !(colnames(ATAC_dds) %in% c("NB6_A_ATAC", "NB6_M_ATAC"))]
-  ATAC_dds$cell_line <- droplevels(ATAC_dds$cell_line)
-  
-  # Load the H3K27Ac data and converting the coordinates to hg38
-  # Important REMARK:
-  # Importing BED files with H3K27Ac (labelling super enhancers)  that are form Groningen paper. 
-  # Weirdly enough - They claim that they managed to identify 286 MES specific and 276 ADRN-specific sEnh. 
-  # But when I try to filter the table that they provide using FDR <0.1 I get 254 and 255 sEnh correspondingly. 
-  
-  # BED_colnames <- c("Chr", "Start", "End")
-  # Boevaetal_ADRN_H3K27Ac_ChiP <- read.table(file = "./neuroblastoma/data_public/data/Boevaetal_ADRN_H3K27Ac_ChiP.bed", header = F, sep = "\t" )[,1:3]
-  # Boevaetal_MES_H3K27Ac_ChiP <- read.table(file = "./neuroblastoma/data_public/data/Boevaetal_MES_H3K27Ac_ChiP.bed", header = F, sep = "\t")[,1:3]
-  
-  Groningenetal_H3K27Ac <- read_xlsx(xlsxFile = "./neuroblastoma/data_public/data/Groningenetal_superEnh.xlsx",startRow = 3)
-  Groningenetal_H3K27Ac <- dplyr::filter(Groningenetal_H3K27Ac,  limma_fdr < 0.1 & limma_pval < 0.05)
-  Groningenetal_ADRN_H3K27Ac <- Groningenetal_H3K27Ac[str_detect(string = Groningenetal_H3K27Ac$sample_ids, pattern = "ADRN") & 
-                                                        !(str_detect(string = Groningenetal_H3K27Ac$sample_ids, pattern = "MES")), 1:4]
-  Groningenetal_MES_H3K27Ac <- Groningenetal_H3K27Ac[str_detect(string = Groningenetal_H3K27Ac$sample_ids, pattern = "MES") & 
-                                                        !(str_detect(string = Groningenetal_H3K27Ac$sample_ids, pattern = "ADRN")), 1:4]
-  
-  # Convert hg19 coordinates to hg38
-  # Specify coordinates to liftover
-  Groningenetal_ADRN_H3K27Ac <- GRanges(Groningenetal_ADRN_H3K27Ac)
-  Groningenetal_MES_H3K27Ac <- GRanges(Groningenetal_MES_H3K27Ac)
-  # Import the chain file
-  chainObject <- import.chain("./neuroblastoma/resources/hg19ToHg38.over.chain")
-  # Run the liftOver
-  Groningenetal_ADRN_H3K27Ac <- GRanges(as.data.frame(liftOver(Groningenetal_ADRN_H3K27Ac, chainObject)))
-  Groningenetal_MES_H3K27Ac <- GRanges(as.data.frame(liftOver(Groningenetal_MES_H3K27Ac, chainObject)))
-  
-  # Now, as we have super enhancer regions, we can filter the regions in our ATAC-seq data and add this metadata to our atac-seq dataset 
-  ADRN_peak_ids <- subsetByOverlaps(rowRanges(ATAC_dds), 
-                                    Groningenetal_ADRN_H3K27Ac
-                                    )$peak_id
-  MES_peak_ids <- subsetByOverlaps(rowRanges(ATAC_dds), 
-                                   Groningenetal_MES_H3K27Ac
-                                   )$peak_id
-  mcols(ATAC_dds)$sEnh_type <- "ND"
-  mcols(ATAC_dds)$sEnh_type[mcols(ATAC_dds)$peak_id %in% ADRN_peak_ids] <- "ADRN_sh"
-  mcols(ATAC_dds)$sEnh_type[mcols(ATAC_dds)$peak_id %in% MES_peak_ids] <- "MES_sh"
-  
-  # Mark peaks that belong to genes that are known to be differentially expressed in ADRN and MES
-  ADRN_MES_genes <- read_xlsx(xlsxFile = "./neuroblastoma/resources/41588_2017_BFng3899_MOESM3_ESM.xlsx",
-                              startRow = 2
-                              )
-  colnames(ADRN_MES_genes) <- c("Gene", "category")
-  mcols(ATAC_dds)$gene_category_GROEN <- "ND"
-  mcols(ATAC_dds)$gene_category_GROEN <- case_when(
-    mcols(ATAC_dds)$homer_Gene.Name %in% ADRN_MES_genes[ADRN_MES_genes$category == "ADRN", 1] ~ "g_ADRN",
-    mcols(ATAC_dds)$homer_Gene.Name %in% ADRN_MES_genes[ADRN_MES_genes$category == "MES", 1] ~ "g_MES",
-    TRUE ~ mcols(ATAC_dds)$gene_category_GROEN
-  )
-  
-  # Loading OUR own rna-seq data and marking ADRN and MES-specific genes
-  RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/20230703/cell_type_MES_vs_ADR.xlsx", sheet = 1)
-  RNA_SEQ_data <- RNA_SEQ_data %>%
-    mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES")) %>%
-    select(gene_symbol, Term)
-  mcols(ATAC_dds)$gene_category_our_RNAseq <- "ND"
-  mcols(ATAC_dds)$gene_category_our_RNAseq <- case_when(
-    mcols(ATAC_dds)$homer_Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "ADRN", 1] ~ "g_ADRN",
-    mcols(ATAC_dds)$homer_Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "MES", 1] ~ "g_MES",
-    TRUE ~ mcols(ATAC_dds)$gene_category_our_RNAseq
-  )
-  
-  # Add metadata - marks peaks that are around 3kb from TSS
-  mcols(ATAC_dds)$is_promoter_3kb <- FALSE
-  mcols(ATAC_dds)$is_promoter_3kb[abs(mcols(ATAC_dds)$homer_Distance.to.TSS) <= 3000] <- TRUE
- 
-  # Add metadata - if peaks are in the area of YAP TAZ
-  Groningenetal_WWTR <- read.table(file = "~/workspace/neuroblastoma/data_public/data/Groningenetal_WWTR-YAP.bed", sep = "\t")
-  colnames(Groningenetal_WWTR) <- c("chr", "start", "end")
-  Groningenetal_WWTR <- unlist(liftOver(GRanges(Groningenetal_WWTR), chainObject))
-  Boevaetal_WWTR <- read.table(file = "~/workspace/neuroblastoma/data_public/data/Boevaetal_WWTR-YAP.bed", sep = "\t")
-  colnames(Boevaetal_WWTR) <- c("chr", "start", "end")
-  Boevaetal_WWTR <- unlist(liftOver(GRanges(Boevaetal_WWTR), chainObject))
-  
-  # Combine these ranges into one object and subset it 
-  TAZ_ranges <- reduce(unlist(GRangesList(Groningenetal_WWTR , Boevaetal_WWTR)), 
-                       drop.empty.ranges = T, 
-                       min.gapwidth = 1
-                       )[1:4,]
-  YAP_ranges <- reduce(unlist(GRangesList(Groningenetal_WWTR,Boevaetal_WWTR)), 
-                       drop.empty.ranges = T, 
-                       min.gapwidth = 1
-                       )[5:7,]
-  # Overlap the peaks location with these ranges
-  YAP_ids <- subsetByOverlaps(rowRanges(ATAC_dds), YAP_ranges)$peak_id
-  TAZ_ids <- subsetByOverlaps(rowRanges(ATAC_dds), TAZ_ranges)$peak_id
-  mcols(ATAC_dds)$YAP_TAZ <- "ND"
-  mcols(ATAC_dds)$YAP_TAZ[mcols(ATAC_dds)$peak_id %in% YAP_ids] <- "YAP"
-  mcols(ATAC_dds)$YAP_TAZ[mcols(ATAC_dds)$peak_id %in% TAZ_ids] <- "TAZ"
-  
-  # Save the object
-  saveRDS(ATAC_dds, file = "~/workspace/neuroblastoma/RDSs/ATAC_dds.RDS")
-}
+
+# Assembling the metadata to a DESeq2 object
+# we use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
+tmp_dir <- "~/workspace/neuroblastoma/data/ATACseq/"
+path_to_the_ATAC_counts_data <- file.path(tmp_dir, "all_filtered.RDS")
+path_annnotation_ATAC_data <- file.path(tmp_dir, "consensus_regions_annotation.RDS")
+ATAC_counts_data <- readRDS(path_to_the_ATAC_counts_data)
+ATAC_annotation_data <- readRDS(path_annnotation_ATAC_data)
+
+#subset the ATAC_annotation_data - keep the rows that are present in the ATAC_counts_data
+ATAC_annotation_data <- dplyr::filter(ATAC_annotation_data, peak_id %in% rownames(ATAC_counts_data))
+# prepare metadata table form the names of the samples
+ATAC_metadata_df <- data.frame(matrix(nrow = dim(ATAC_counts_data)[2]))
+ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
+                                  sample_names = colnames(ATAC_counts_data)
+)
+ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
+                                  cell_line = str_extract(pattern = "^(.*?)_", 
+                                                          string = colnames(ATAC_counts_data)
+                                  )
+)
+ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
+                                  cell_line = gsub(pattern = "_", 
+                                                   replacement = "", 
+                                                   x = ATAC_metadata_df$cell_line
+                                  )
+)
+ATAC_metadata_df <- ATAC_metadata_df[, -1]
+ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
+                                  phenotype = str_extract(pattern = "_._", 
+                                                          string = ATAC_metadata_df$sample_names
+                                  )
+)
+ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
+                                  phenotype = gsub(pattern = "_", 
+                                                   replacement = "", 
+                                                   x = ATAC_metadata_df$phenotype)
+)
+# Assembling the DESeq2 object. 
+desing_formula <- as.formula("~ cell_line + phenotype")
+
+# The Warning "some variables in design formula are characters, converting to factors" is normal.
+ATAC_dds <- DESeq2::DESeqDataSetFromMatrix(countData = ATAC_counts_data, 
+                                           colData = ATAC_metadata_df, 
+                                           design = desing_formula
+)
+#Adding ranges info
+rowRanges(ATAC_dds) <- GenomicRanges::GRanges(seqnames = ATAC_annotation_data$gencode_chr, 
+                                              ranges = IRanges::IRanges(start = ATAC_annotation_data$gencode_start, 
+                                                                        end = ATAC_annotation_data$gencode_end
+                                              )
+)
+# Adding metadata
+mcols(ATAC_dds) <- cbind(mcols(ATAC_dds), ATAC_annotation_data)        
+
+# plot full ATAC-seq PCA
+ATAC_dds <- estimateSizeFactors(ATAC_dds)
+ATAC_dds <- DESeq(ATAC_dds)
+vsd <- vst(ATAC_dds, blind = F)
+
+# Generate PCA
+pca_dar <- generatePCA(transf_object = vsd, 
+                       cond_interest_varPart = c("phenotype", "cell_line"), 
+                       color_variable = "phenotype", 
+                       shape_variable = "cell_line",
+                       ntop_genes = 1000) +
+  ggtitle("Original dataset") +
+  scale_color_manual(values = c("#DD3344",  "#FF9F1C"))
+ggsave(
+  filename = file.path(deg_dir, "PCA_MES_vs_ADRN_DARs_all_samples.png"),
+  plot = pca_dar,
+  width = 20, height = 20, units = "cm"
+)
+
+# We remove NB6 samples, as they are mixed cultures of ADRN and MES
+ATAC_dds <- ATAC_dds[, !(colnames(ATAC_dds) %in% c("NB6_A_ATAC", "NB6_M_ATAC"))]
+ATAC_dds$cell_line <- droplevels(ATAC_dds$cell_line)
+
+# # Load the H3K27Ac data and converting the coordinates to hg38
+# # Important REMARK:
+# # Importing BED files with H3K27Ac (labelling super enhancers)  that are form Groningen paper. 
+# # Weirdly enough - They claim that they managed to identify 286 MES specific and 276 ADRN-specific sEnh. 
+# # But when I try to filter the table that they provide using FDR <0.1 I get 254 and 255 sEnh correspondingly. 
+# 
+# # BED_colnames <- c("Chr", "Start", "End")
+# # Boevaetal_ADRN_H3K27Ac_ChiP <- read.table(file = "./neuroblastoma/data_public/data/Boevaetal_ADRN_H3K27Ac_ChiP.bed", header = F, sep = "\t" )[,1:3]
+# # Boevaetal_MES_H3K27Ac_ChiP <- read.table(file = "./neuroblastoma/data_public/data/Boevaetal_MES_H3K27Ac_ChiP.bed", header = F, sep = "\t")[,1:3]
+# 
+# Groningenetal_H3K27Ac <- read_xlsx(xlsxFile = "./neuroblastoma/data_public/data/Groningenetal_superEnh.xlsx",startRow = 3)
+# Groningenetal_H3K27Ac <- dplyr::filter(Groningenetal_H3K27Ac,  limma_fdr < 0.1 & limma_pval < 0.05)
+# Groningenetal_ADRN_H3K27Ac <- Groningenetal_H3K27Ac[str_detect(string = Groningenetal_H3K27Ac$sample_ids, pattern = "ADRN") & 
+#                                                       !(str_detect(string = Groningenetal_H3K27Ac$sample_ids, pattern = "MES")), 1:4]
+# Groningenetal_MES_H3K27Ac <- Groningenetal_H3K27Ac[str_detect(string = Groningenetal_H3K27Ac$sample_ids, pattern = "MES") & 
+#                                                       !(str_detect(string = Groningenetal_H3K27Ac$sample_ids, pattern = "ADRN")), 1:4]
+# 
+# # Convert hg19 coordinates to hg38
+# # Specify coordinates to liftover
+# Groningenetal_ADRN_H3K27Ac <- GRanges(Groningenetal_ADRN_H3K27Ac)
+# Groningenetal_MES_H3K27Ac <- GRanges(Groningenetal_MES_H3K27Ac)
+# # Import the chain file
+# chainObject <- import.chain("./neuroblastoma/resources/hg19ToHg38.over.chain")
+# # Run the liftOver
+# Groningenetal_ADRN_H3K27Ac <- GRanges(as.data.frame(liftOver(Groningenetal_ADRN_H3K27Ac, chainObject)))
+# Groningenetal_MES_H3K27Ac <- GRanges(as.data.frame(liftOver(Groningenetal_MES_H3K27Ac, chainObject)))
+# 
+# # Now, as we have super enhancer regions, we can filter the regions in our ATAC-seq data and add this metadata to our atac-seq dataset 
+# ADRN_peak_ids <- subsetByOverlaps(rowRanges(ATAC_dds), 
+#                                   Groningenetal_ADRN_H3K27Ac
+#                                   )$peak_id
+# MES_peak_ids <- subsetByOverlaps(rowRanges(ATAC_dds), 
+#                                  Groningenetal_MES_H3K27Ac
+#                                  )$peak_id
+# mcols(ATAC_dds)$sEnh_type <- "ND"
+# mcols(ATAC_dds)$sEnh_type[mcols(ATAC_dds)$peak_id %in% ADRN_peak_ids] <- "ADRN_sh"
+# mcols(ATAC_dds)$sEnh_type[mcols(ATAC_dds)$peak_id %in% MES_peak_ids] <- "MES_sh"
+# 
+# # Mark peaks that belong to genes that are known to be differentially expressed in ADRN and MES
+# ADRN_MES_genes <- read_xlsx(xlsxFile = "./neuroblastoma/resources/41588_2017_BFng3899_MOESM3_ESM.xlsx",
+#                             startRow = 2
+#                             )
+# colnames(ADRN_MES_genes) <- c("Gene", "category")
+# mcols(ATAC_dds)$gene_category_GROEN <- "ND"
+# mcols(ATAC_dds)$gene_category_GROEN <- case_when(
+#   mcols(ATAC_dds)$homer_Gene.Name %in% ADRN_MES_genes[ADRN_MES_genes$category == "ADRN", 1] ~ "g_ADRN",
+#   mcols(ATAC_dds)$homer_Gene.Name %in% ADRN_MES_genes[ADRN_MES_genes$category == "MES", 1] ~ "g_MES",
+#   TRUE ~ mcols(ATAC_dds)$gene_category_GROEN
+# )
+# 
+# Loading OUR own rna-seq data and marking ADRN and MES-specific genes
+
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+RNA_SEQ_data <- RNA_SEQ_data %>%
+  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES")) %>%
+  select(gene_symbol, Term)
+mcols(ATAC_dds)$gene_category_our_RNAseq <- "ND"
+mcols(ATAC_dds)$gene_category_our_RNAseq <- case_when(
+  mcols(ATAC_dds)$homer_Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "ADRN", 1] ~ "g_ADRN",
+  mcols(ATAC_dds)$homer_Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "MES", 1] ~ "g_MES",
+  TRUE ~ mcols(ATAC_dds)$gene_category_our_RNAseq
+)
+
+# Add metadata - marks peaks that are around 3kb from TSS
+mcols(ATAC_dds)$is_promoter_3kb <- FALSE
+mcols(ATAC_dds)$is_promoter_3kb[abs(mcols(ATAC_dds)$homer_Distance.to.TSS) <= 3000] <- TRUE
+
+# # Add metadata - if peaks are in the area of YAP TAZ
+# Groningenetal_WWTR <- read.table(file = "~/workspace/neuroblastoma/data_public/data/Groningenetal_WWTR-YAP.bed", sep = "\t")
+# colnames(Groningenetal_WWTR) <- c("chr", "start", "end")
+# Groningenetal_WWTR <- unlist(liftOver(GRanges(Groningenetal_WWTR), chainObject))
+# Boevaetal_WWTR <- read.table(file = "~/workspace/neuroblastoma/data_public/data/Boevaetal_WWTR-YAP.bed", sep = "\t")
+# colnames(Boevaetal_WWTR) <- c("chr", "start", "end")
+# Boevaetal_WWTR <- unlist(liftOver(GRanges(Boevaetal_WWTR), chainObject))
+# 
+# # Combine these ranges into one object and subset it 
+# TAZ_ranges <- reduce(unlist(GRangesList(Groningenetal_WWTR , Boevaetal_WWTR)), 
+#                      drop.empty.ranges = T, 
+#                      min.gapwidth = 1
+#                      )[1:4,]
+# YAP_ranges <- reduce(unlist(GRangesList(Groningenetal_WWTR,Boevaetal_WWTR)), 
+#                      drop.empty.ranges = T, 
+#                      min.gapwidth = 1
+#                      )[5:7,]
+# # Overlap the peaks location with these ranges
+# YAP_ids <- subsetByOverlaps(rowRanges(ATAC_dds), YAP_ranges)$peak_id
+# TAZ_ids <- subsetByOverlaps(rowRanges(ATAC_dds), TAZ_ranges)$peak_id
+# mcols(ATAC_dds)$YAP_TAZ <- "ND"
+# mcols(ATAC_dds)$YAP_TAZ[mcols(ATAC_dds)$peak_id %in% YAP_ids] <- "YAP"
+# mcols(ATAC_dds)$YAP_TAZ[mcols(ATAC_dds)$peak_id %in% TAZ_ids] <- "TAZ"
+# 
+# # Save the object
+# saveRDS(ATAC_dds, file = "~/workspace/neuroblastoma/RDSs/ATAC_dds.RDS")
+
 
 #### General analysis fo the ATAC-seq ####
 # Metadata is added, now we can process the ATAC-seq data set and do the DE +
@@ -205,7 +224,11 @@ pca_dar <- generatePCA(transf_object = vsd,
                        ntop_genes = 1000) +
   ggtitle("Original dataset") +
   scale_color_manual(values = c("#DD3344",  "#FF9F1C"))
-plot(pca_dar)
+ggsave(
+  filename = file.path(deg_dir, "PCA_MES_vs_ADRN_DARs.png"),
+  plot = pca_dar,
+  width = 20, height = 20, units = "cm"
+)
 # Looks good - we can see that the main PCA/separation is happening because of the phenotype (ADRN or MES)
 
 # Extracting results
@@ -235,7 +258,7 @@ openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$results_signif, sheet = "resu
 openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$de_details, sheet = "de_details")
 openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$results_all, sheet = "results_all")
 
-openxlsx::saveWorkbook(XLSX_OUT, file.path(res_dir, "DAR_results_M_VS_A.xlsx"), overwrite = T)
+openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "DAR_results_M_VS_A.xlsx"), overwrite = T)
 
 # making volcanoplot
 genes_up <- c("VIM", "FOSL2", "FOSL1", "YAP1", "JUN", "WWTR1")
@@ -252,10 +275,10 @@ rownames(heatmap_counts) <- vsd@rowRanges$peak_id
 # Subset different peaks that belong to different categories
 ATAC_signif <- ATAC_dds_results$results_signif
 heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id, ]
-heatmap_counts_ADRN <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$sEnh_type == "ADRN_sh"], ]
-heatmap_counts_MES <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$sEnh_type == "MES_sh"], ]
-heatmap_counts_YAP <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$YAP_TAZ == "YAP"],]
-heatmap_counts_TAZ <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$YAP_TAZ == "TAZ"],]
+#heatmap_counts_ADRN <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$sEnh_type == "ADRN_sh"], ]
+#heatmap_counts_MES <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$sEnh_type == "MES_sh"], ]
+#heatmap_counts_YAP <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$YAP_TAZ == "YAP"],]
+#heatmap_counts_TAZ <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$YAP_TAZ == "TAZ"],]
 heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_MES"],]
 heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_ADRN"],]
   
@@ -264,10 +287,10 @@ annotation_col <- metadata_heatmap %>%
   dplyr::select(cell_line, phenotype) %>% 
   dplyr::arrange(phenotype, cell_line)
 heatmap_counts<- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
-heatmap_counts_ADRN <- heatmap_counts_ADRN[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN))]
-heatmap_counts_MES <- heatmap_counts_MES[, match(rownames(annotation_col), colnames(heatmap_counts_MES))]
-heatmap_counts_YAP <- heatmap_counts_YAP[, match(rownames(annotation_col), colnames(heatmap_counts_YAP))]
-heatmap_counts_TAZ <- heatmap_counts_TAZ[, match(rownames(annotation_col), colnames(heatmap_counts_TAZ))]
+# heatmap_counts_ADRN <- heatmap_counts_ADRN[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN))]
+# heatmap_counts_MES <- heatmap_counts_MES[, match(rownames(annotation_col), colnames(heatmap_counts_MES))]
+# heatmap_counts_YAP <- heatmap_counts_YAP[, match(rownames(annotation_col), colnames(heatmap_counts_YAP))]
+# heatmap_counts_TAZ <- heatmap_counts_TAZ[, match(rownames(annotation_col), colnames(heatmap_counts_TAZ))]
 heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_MES_spec_genes))]
 heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN_spec_genes))]
   
@@ -338,88 +361,88 @@ heatmap <- pheatmap::pheatmap(heatmap_counts,
 
 #ATAC_dds_results$results_signif[ATAC_dds_results$results_signif$log2FoldChange > 0,] 
 
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_full_ATAC.png"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_full_ATAC.png"), 
        plot = heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_full_ATAC.eps"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_full_ATAC.eps"), 
        plot = heatmap,
        width = 18, height = 20, units = "cm")
 
-# Now we can check how the peaks accessibility in MES/ADRN-specific regions identified in previous studies
-heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN,
-                              main = "Heatmap of signif. DAR ADRN vs MES. ADRN-specific",
-                              scale = "row",
-                              annotation_col = annotation_col,
-                              annotation_colors = ann_colors,
-                              show_colnames = FALSE,
-                              show_rownames = FALSE,
-                              cluster_cols = FALSE,
-                              color = color.scheme,
-                              fontsize = 10, fontsize_row = 10) 
-
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_ADRN_enh_ATAC.png"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_ADRN_enh_ATAC.eps"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-
-heatmap <- pheatmap::pheatmap(heatmap_counts_MES,
-                              main = "Heatmap of signif. DAR ADRN vs MES. MES-specific",
-                              scale = "row",
-                              annotation_col = annotation_col,
-                              annotation_colors = ann_colors,
-                              #annotation_row = row_annot_symbols,
-                              show_colnames = FALSE,
-                              show_rownames = FALSE,
-                              cluster_cols = FALSE,
-                              color = color.scheme,
-                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
-
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES_enh_ATAC.png"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES_enh_ATAC.eps"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-
-heatmap <- pheatmap::pheatmap(heatmap_counts_YAP,
-                              main = "Heatmap of signif. DAR ADRN vs MES. YAP",
-                              scale = "row",
-                              annotation_col = annotation_col,
-                              annotation_colors = ann_colors,
-                              #annotation_row = row_annot_symbols,
-                              show_colnames = FALSE,
-                              show_rownames = FALSE,
-                              cluster_cols = FALSE,
-                              color = color.scheme,
-                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
-
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES_YAP.png"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES_YAP.eps"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-
-heatmap <- pheatmap::pheatmap(heatmap_counts_TAZ,
-                              main = "Heatmap of signif. DAR ADRN vs MES. TAZ",
-                              scale = "row",
-                              annotation_col = annotation_col,
-                              annotation_colors = ann_colors,
-                              #annotation_row = row_annot_symbols,
-                              show_colnames = FALSE,
-                              show_rownames = FALSE,
-                              cluster_cols = FALSE,
-                              color = color.scheme,
-                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
-
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES_TAZ.png"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES_TAZ.eps"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
+# # Now we can check how the peaks accessibility in MES/ADRN-specific regions identified in previous studies
+# heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN,
+#                               main = "Heatmap of signif. DAR ADRN vs MES. ADRN-specific",
+#                               scale = "row",
+#                               annotation_col = annotation_col,
+#                               annotation_colors = ann_colors,
+#                               show_colnames = FALSE,
+#                               show_rownames = FALSE,
+#                               cluster_cols = FALSE,
+#                               color = color.scheme,
+#                               fontsize = 10, fontsize_row = 10) 
+# 
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_ADRN_enh_ATAC.png"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_ADRN_enh_ATAC.eps"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# 
+# heatmap <- pheatmap::pheatmap(heatmap_counts_MES,
+#                               main = "Heatmap of signif. DAR ADRN vs MES. MES-specific",
+#                               scale = "row",
+#                               annotation_col = annotation_col,
+#                               annotation_colors = ann_colors,
+#                               #annotation_row = row_annot_symbols,
+#                               show_colnames = FALSE,
+#                               show_rownames = FALSE,
+#                               cluster_cols = FALSE,
+#                               color = color.scheme,
+#                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+# 
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES_enh_ATAC.png"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES_enh_ATAC.eps"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# 
+# heatmap <- pheatmap::pheatmap(heatmap_counts_YAP,
+#                               main = "Heatmap of signif. DAR ADRN vs MES. YAP",
+#                               scale = "row",
+#                               annotation_col = annotation_col,
+#                               annotation_colors = ann_colors,
+#                               #annotation_row = row_annot_symbols,
+#                               show_colnames = FALSE,
+#                               show_rownames = FALSE,
+#                               cluster_cols = FALSE,
+#                               color = color.scheme,
+#                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+# 
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES_YAP.png"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES_YAP.eps"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# 
+# heatmap <- pheatmap::pheatmap(heatmap_counts_TAZ,
+#                               main = "Heatmap of signif. DAR ADRN vs MES. TAZ",
+#                               scale = "row",
+#                               annotation_col = annotation_col,
+#                               annotation_colors = ann_colors,
+#                               #annotation_row = row_annot_symbols,
+#                               show_colnames = FALSE,
+#                               show_rownames = FALSE,
+#                               cluster_cols = FALSE,
+#                               color = color.scheme,
+#                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+# 
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES_TAZ.png"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES_TAZ.eps"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
 
 
 heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
@@ -434,10 +457,10 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
 
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES-RNAseq-specific.png"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES-RNAseq-specific.png"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES-RNAseq-specific.eps"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES-RNAseq-specific.eps"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 
@@ -454,12 +477,115 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
 
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_ADRN-RNAseq-specific.png"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_ADRN-RNAseq-specific.png"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_ADRN-RNAseq-specific.eps"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_ADRN-RNAseq-specific.eps"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
+
+
+## Genomic features enrichment lolipop plot ######
+# use HOMER's output
+# Separate positive - M negative - A
+ATAC_dds_results$results_signif %>%
+  filter(log2FoldChange > 0) %>%
+  select(gencode_chr, gencode_start, gencode_end) %>%
+  write.table(., file = paste0(deg_dir, "/bed_diff_MES.bed"),
+              quote = FALSE, 
+              sep = "\t", 
+              row.names = FALSE,
+              col.names = FALSE)
+
+ATAC_dds_results$results_signif %>%
+  filter(log2FoldChange < 0) %>%
+  select(gencode_chr, gencode_start, gencode_end) %>%
+  write.table(., file = paste0(deg_dir, "/bed_diff_ADR.bed"),
+              quote = FALSE, 
+              sep = "\t", 
+              row.names = FALSE,
+              col.names = FALSE)
+
+# run homer annotation
+system("bash ~/workspace/neuroblastoma/02_HOMER_diff_peaks_annotation.sh")
+
+ATAC_genome_ADR <- read.delim2("~/workspace/neuroblastoma/results/ATAC-seq/ATAC_genome_states_dataframe_ADR.csv", 
+                               sep="\t", 
+                               header=T)[-c(1:14),]
+ATAC_genome_MES <- read.delim2("~/workspace/neuroblastoma/results/ATAC-seq/ATAC_genome_states_dataframe_MES.csv",
+                               sep="\t",
+                               header=T)[-c(1:14),]
+
+# calculate the poisson probability
+
+
+ATAC_genome_ADR$p.val <- unlist(
+  purrr::pmap(ATAC_genome_ADR %>% 
+                dplyr::select(Number.of.peaks, Log2.Ratio..obs.exp.),
+              get_the_poissoon_p_val) 
+)
+ATAC_genome_ADR$p.adj <- p.adjust(ATAC_genome_ADR$p.val, method = "BH")
+ATAC_genome_ADR$p.adj <- round(ATAC_genome_ADR$p.adj, 6)
+ATAC_genome_ADR$p.adj[ATAC_genome_ADR$p.adj == 0] <- 0.000001
+ATAC_genome_ADR$negLog2p.adj <- -log2(ATAC_genome_ADR$p.adj)
+ATAC_genome_ADR <- ATAC_genome_ADR[,c(1,4,8)]
+
+ATAC_genome_MES$p.val <- unlist(
+  purrr::pmap(ATAC_genome_MES %>% 
+                dplyr::select(Number.of.peaks, Log2.Ratio..obs.exp.),
+              get_the_poissoon_p_val) 
+)
+ATAC_genome_MES$p.adj <- p.adjust(ATAC_genome_MES$p.val, method = "BH")
+ATAC_genome_MES$p.adj <- round(ATAC_genome_MES$p.adj, 6) 
+ATAC_genome_MES$p.adj[ATAC_genome_MES$p.adj == 0] <- 0.000001
+ATAC_genome_MES$negLog2p.adj <- -log2(ATAC_genome_MES$p.adj)
+ATAC_genome_MES <- ATAC_genome_MES[,c(1,4,8)]
+
+ATAC_genome <- merge.data.frame(ATAC_genome_ADR, ATAC_genome_MES, by = "Annotation", suffixes = c(".ADR", ".MES"))
+ATAC_genome$Log2.Ratio..obs.exp..ADR <- as.numeric(ATAC_genome$Log2.Ratio..obs.exp..ADR)
+ATAC_genome$Log2.Ratio..obs.exp..MES <- as.numeric(ATAC_genome$Log2.Ratio..obs.exp..MES)
+
+df_long <- ATAC_genome %>%
+  tidyr::pivot_longer(
+    cols = starts_with("Log2.Ratio") | starts_with("negLog2p.adj"),
+    names_to = c(".value", "Type"),
+    names_pattern = "(Log2.Ratio..obs.exp..|negLog2p.adj.)(ADR|MES)"
+  )
+
+pdf(file = file.path(deg_dir, "MES_and_ADR_lolipop_enrichemtn_plot.pdf"), width = 8, height = 8)
+df_long %>%
+  filter(Annotation %in% c("3UTR", "5UTR", "Exon", "Intergenic", "Intron", "Promoter")) %>%
+  ggplot() +
+  geom_bar(position = position_dodge(0.5), 
+           width = 0.1, 
+           aes(y = Annotation, 
+               fill = Type, 
+               weight = Log2.Ratio..obs.exp..)) +
+  scale_fill_manual(values =  c("navy", "firebrick3")) +
+  #  scale_fill_hue(direction = 1) +
+  geom_point(aes(y = Annotation, 
+                 x = Log2.Ratio..obs.exp.., 
+                 color = Type,
+                 size = negLog2p.adj.), 
+             shape = 21, 
+             position = position_dodge2(0.5),
+             fill = "white") +
+  scale_color_manual(values =  c("navy", "firebrick3")) +
+  #  scale_size_continuous(range = c(2, 10)) +
+  #  scale_color_gradient(low = "blue", high = "red", limits = c(0,20)) +
+  theme_minimal() +
+  labs(color = "-Log2p.adj.", 
+       fill = "Type",
+       size =  "-Log2p.adj.",
+       y = "Annotation",
+       x = "Log2 Ratio (obs/exp)",
+       title = "Enrichment of genomic features in ATAC-seq peaks for ADRN and MES")
+
+dev.off()
+
+
+
+
 
 
 #make a small back up 
@@ -479,7 +605,6 @@ pca_dar <- generatePCA(transf_object = vsd,
                        ntop_genes = 1000) +
   ggtitle("3kb Promoters") +
   scale_color_manual(values = c("#DD3344",  "#FF9F1C"))
-
 plot(pca_dar)
 #Ok, looks good - we can see that the main PCA/separation is happening because of the phenotype (ADRN or MES)
 
@@ -511,7 +636,7 @@ openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$results_signif, sheet = "resu
 openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$de_details, sheet = "de_details")
 openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$results_all, sheet = "results_all")
 
-openxlsx::saveWorkbook(XLSX_OUT, file.path(res_dir, "DAR_results_3kb_promoters_M_VS_A.xlsx"), overwrite = T)
+openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "DAR_results_3kb_promoters_M_VS_A.xlsx"), overwrite = T)
 
 #Making Heatmap
 metadata_heatmap <- as.data.frame(colData(ATAC_dds))
@@ -523,8 +648,8 @@ rownames(heatmap_counts) <- vsd@rowRanges$peak_id
 # removed experiment batch effects! ? use experimen+cell_line removed???
 
 heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$peak_id,]
-heatmap_counts_ADRN <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$peak_id[ATAC_dds_results$results_signif$sEnh_type == "ADRN_sh"], ]
-heatmap_counts_MES <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$peak_id[ATAC_dds_results$results_signif$sEnh_type == "MES_sh"], ]
+# heatmap_counts_ADRN <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$peak_id[ATAC_dds_results$results_signif$sEnh_type == "ADRN_sh"], ]
+# heatmap_counts_MES <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$peak_id[ATAC_dds_results$results_signif$sEnh_type == "MES_sh"], ]
 heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_MES"],]
 heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_ADRN"],]
 
@@ -532,8 +657,8 @@ annotation_col <- metadata_heatmap %>%
   dplyr::select(cell_line, phenotype) %>% 
   dplyr::arrange( phenotype, cell_line)
 heatmap_counts<- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
-heatmap_counts_ADRN<- heatmap_counts_ADRN[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN))]
-heatmap_counts_MES<- heatmap_counts_MES[, match(rownames(annotation_col), colnames(heatmap_counts_MES))]
+# heatmap_counts_ADRN<- heatmap_counts_ADRN[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN))]
+# heatmap_counts_MES<- heatmap_counts_MES[, match(rownames(annotation_col), colnames(heatmap_counts_MES))]
 heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_MES_spec_genes))]
 heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN_spec_genes))]
 
@@ -543,7 +668,7 @@ ensembl2symbol_annot <- ATAC_dds_results$results_all %>%
 
 #color.scheme <- rev(RColorBrewer::brewer.pal(8,"RdBu")) # generate the color scheme to use
 
-color.scheme <- c("#001219","#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012")
+color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
 
 ann_colors = list(
   cell_line = c( CLBM = "#005f73", NB10 = "#0a9396", NB6 = "#94d2bd", NB8 = "#DD3344", SH = "#FF9F1C"),
@@ -563,49 +688,49 @@ heatmap <- pheatmap::pheatmap(heatmap_counts,
 
 #ATAC_dds_results$results_signif[ATAC_dds_results$results_signif$log2FoldChange > 0,] 
 
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ATAC.png"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ATAC.png"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ATAC.eps"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-
-#now we can check how the peaks accessibility in MES and ADRN identified regions
-heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN,
-                              main = "Heatmap of signif. DAR ADRN vs MES. promoters_3kb ADRN-specific",
-                              scale = "row",
-                              annotation_col = annotation_col,
-                              annotation_colors = ann_colors,
-                              show_colnames = FALSE,
-                              show_rownames = FALSE,
-                              cluster_cols = FALSE,
-                              color = color.scheme,
-                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
-
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_ADRN_promoters_3kb_enh_ATAC.png"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_ADRN_promoters_3kb_enh_ATAC.eps"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ATAC.eps"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 
-heatmap <- pheatmap::pheatmap(heatmap_counts_MES,
-                              main = "Heatmap of signif. DAR ADRN vs MES. promoters 3kb MES-specific",
-                              scale = "row",
-                              annotation_col = annotation_col,
-                              annotation_colors = ann_colors,
-                              show_colnames = FALSE,
-                              show_rownames = FALSE,
-                              cluster_cols = FALSE,
-                              color = color.scheme,
-                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
-
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES_promoters_3kb_enh_ATAC.png"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_MES_promoters_3kb_enh_ATAC.eps"), 
-       plot=heatmap,
-       width = 18, height = 20, units = "cm")
+# #now we can check how the peaks accessibility in MES and ADRN identified regions
+# heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN,
+#                               main = "Heatmap of signif. DAR ADRN vs MES. promoters_3kb ADRN-specific",
+#                               scale = "row",
+#                               annotation_col = annotation_col,
+#                               annotation_colors = ann_colors,
+#                               show_colnames = FALSE,
+#                               show_rownames = FALSE,
+#                               cluster_cols = FALSE,
+#                               color = color.scheme,
+#                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+# 
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_ADRN_promoters_3kb_enh_ATAC.png"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_ADRN_promoters_3kb_enh_ATAC.eps"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# 
+# heatmap <- pheatmap::pheatmap(heatmap_counts_MES,
+#                               main = "Heatmap of signif. DAR ADRN vs MES. promoters 3kb MES-specific",
+#                               scale = "row",
+#                               annotation_col = annotation_col,
+#                               annotation_colors = ann_colors,
+#                               show_colnames = FALSE,
+#                               show_rownames = FALSE,
+#                               cluster_cols = FALSE,
+#                               color = color.scheme,
+#                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+# 
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES_promoters_3kb_enh_ATAC.png"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
+# ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES_promoters_3kb_enh_ATAC.eps"), 
+#        plot=heatmap,
+#        width = 18, height = 20, units = "cm")
 
 heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
                               main = "Heatmap of signif. DAR ADRN vs MES in promoters 3kb . MES-specific genes only (defined by RNA-seq)",
@@ -619,10 +744,10 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
 
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_promoters_3kb_MES-RNAseq-specific.png"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_MES-RNAseq-specific.png"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_promoters_3kb_MES-RNAseq-specific.eps"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_MES-RNAseq-specific.eps"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 
@@ -639,10 +764,10 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
 
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ADRN-RNAseq-specific.png"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ADRN-RNAseq-specific.png"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(res_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ADRN-RNAseq-specific.eps"), 
+ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ADRN-RNAseq-specific.eps"), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 
@@ -663,8 +788,10 @@ motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
 ATAC_dds <- ATAC_dds_full
 # Using different subsets of peaks to check 
 subsets_to_run <- c("ALL", "ADRN_sh", "MES_sh", "g_ADRN", "g_MES")
+subsets_to_run <- c("ALL")
+
 for (sbst in subsets_to_run){
- 
+  sbst <-  c("ALL")
   # here we check if there are any peaks that have less than 5 reads across all samples.
   dim(ATAC_dds)
   counts_consensus_filt <- ATAC_dds_full[rowSums(assay(ATAC_dds_full)) > 5, ]
@@ -672,13 +799,13 @@ for (sbst in subsets_to_run){
   
   print(paste("procesing: ", sbst ))
   
-  if (sbst != "ALL"){
-    if (sbst %in% c("ADRN_sh", "MES_sh")){
-      counts_consensus_filt <- counts_consensus_filt[counts_consensus_filt@rowRanges@elementMetadata@listData[["sEnh_type"]] == sbst,]
-    }else{
-        counts_consensus_filt <- counts_consensus_filt[counts_consensus_filt@rowRanges@elementMetadata@listData[["gene_category"]] == sbst,]
-    }
-  }
+  # if (sbst != "ALL"){
+  #   if (sbst %in% c("ADRN_sh", "MES_sh")){
+  #     counts_consensus_filt <- counts_consensus_filt[counts_consensus_filt@rowRanges@elementMetadata@listData[["sEnh_type"]] == sbst,]
+  #   }else{
+  #       counts_consensus_filt <- counts_consensus_filt[counts_consensus_filt@rowRanges@elementMetadata@listData[["gene_category"]] == sbst,]
+  #   }
+  # }
 
   
   # ChromVar package uses GC content to identify background peaks that are likely to be non-functional and exclude them from further analysis. 
@@ -757,7 +884,7 @@ for (sbst in subsets_to_run){
   # and a p-value for the variability being greater than the null hypothesis of 1.
   chrom_access_variability <- chromVAR::computeVariability(chrom_access_deviations)
   chrom_access_variability_plot <- chromVAR::plotVariability(chrom_access_variability, use_plotly = FALSE)
-  ggsave(chrom_access_variability_plot, filename = file.path(res_dir, paste0("ChromVAR_chrom_access_variability_corr_plot_", sbst, ".pdf")))
+  ggsave(chrom_access_variability_plot, filename = file.path(deg_dir, paste0("ChromVAR_chrom_access_variability_corr_plot_", sbst, ".pdf")))
   
   BiocParallel::register(BiocParallel::SerialParam())
   
@@ -813,11 +940,11 @@ for (sbst in subsets_to_run){
                      fontsize = 9,
                      main = paste0("Heatmap of signif. Motifs ADRN vs MES. ", sbst, "- used"))
   
-  ggsave(filename = file.path(res_dir, paste0("heatmap_ADRN_vs_MES_Motifs", sbst, "- used", ".png")), 
+  ggsave(filename = file.path(deg_dir, paste0("heatmap_ADRN_vs_MES_Motifs", sbst, "- used", ".png")), 
          plot=heatmap,
          width = 18, height = 20, units = "cm")
   
-  ggsave(filename = file.path(res_dir, paste0("heatmap_ADRN_vs_MES_Motifs", sbst, "- used", ".eps")), 
+  ggsave(filename = file.path(deg_dir, paste0("heatmap_ADRN_vs_MES_Motifs", sbst, "- used", ".eps")), 
          plot=heatmap,
          width = 18, height = 20, units = "cm")
 }
@@ -879,7 +1006,7 @@ C2_reactome_plot_MES <- hypeR::hyp_dots(C2_reactome_MES, merge=TRUE, fdr=0.05, t
 C2_reactome_plot_ADR <- hypeR::hyp_dots(C2_reactome_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: ADR") +theme_bw()
 C2_reactome_plot_MES
 
-pdf(file = file.path(res_dir, "MES_and_ADR_GSEA.pdf"), width = 20, height = 10)
+pdf(file = file.path(deg_dir, "MES_and_ADR_GSEA.pdf"), width = 20, height = 10)
 C5_GOBP_plot_MES + C5_GOBP_plot_ADR
 C2_kegg_plot_MES + C2_kegg_plot_ADR
 C2_reactome_plot_MES + C2_reactome_plot_ADR
@@ -891,118 +1018,6 @@ dev.off()
 #hypeR::hyp_to_excel(C5_GOCC, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOCC.xlsx"))
 #hypeR::hyp_to_excel(C5_GOMF, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOMF.xlsx"))
 
-## Genomic features enrichment lolipop plot ######
-# use HOMER's output
-
-
-# Separate positive - M negative - A
-ATAC_dds_results$results_signif %>%
-  filter(log2FoldChange > 0) %>%
-  select(gencode_chr, gencode_start, gencode_end) %>%
-  write.table(., file = paste0(res_dir, "/bed_diff_MES.bed"),
-              quote = FALSE, 
-              sep = "\t", 
-              row.names = FALSE,
-              col.names = FALSE)
-
-ATAC_dds_results$results_signif %>%
-  filter(log2FoldChange < 0) %>%
-  select(gencode_chr, gencode_start, gencode_end) %>%
-  write.table(., file = paste0(res_dir, "/bed_diff_ADR.bed"),
-              quote = FALSE, 
-              sep = "\t", 
-              row.names = FALSE,
-              col.names = FALSE)
-# run homer outside R
-
-
-# in R
-ATAC_genome_ADR <- read.delim2("~/workspace/neuroblastoma/results/20240515/ATAC_genome_states_dataframe_ADR.csv", 
-                               sep="\t", 
-                               header=T)[-c(1:14),]
-ATAC_genome_MES <- read.delim2("~/workspace/neuroblastoma/results/20240515/ATAC_genome_states_dataframe_MES.csv",
-                               sep="\t",
-                               header=T)[-c(1:14),]
-
-# calculate the poisson probability
-get_the_poissoon_p_val <- function(Number.of.peaks, Log2.Ratio..obs.exp.){
-
-  # Use poisson distributions
-  Log2.Ratio..obs.exp. <- as.numeric(Log2.Ratio..obs.exp.)
-  Number.of.peaks <- as.numeric(Number.of.peaks)
- 
-  ppois_Ka <- Number.of.peaks
-  ppois_lambda <- Number.of.peaks/(2^Log2.Ratio..obs.exp.)
-  
-  res <- poisson.test(x = ppois_Ka,
-               r = ppois_lambda,
-               alternative = "two.sided")
-  return(res$p.value)
-}
-
-ATAC_genome_ADR$p.val <- unlist(
-  purrr::pmap(ATAC_genome_ADR %>% 
-              dplyr::select(Number.of.peaks, Log2.Ratio..obs.exp.),
-            get_the_poissoon_p_val) 
-)
-ATAC_genome_ADR$p.adj <- p.adjust(ATAC_genome_ADR$p.val, method = "BH")
-ATAC_genome_ADR$p.adj <- round(ATAC_genome_ADR$p.adj, 6)
-ATAC_genome_ADR$p.adj[ATAC_genome_ADR$p.adj == 0] <- 0.000001
-ATAC_genome_ADR$negLog2p.adj <- -log2(ATAC_genome_ADR$p.adj)
-ATAC_genome_ADR <- ATAC_genome_ADR[,c(1,4,8)]
-
-ATAC_genome_MES$p.val <- unlist(
-  purrr::pmap(ATAC_genome_MES %>% 
-                dplyr::select(Number.of.peaks, Log2.Ratio..obs.exp.),
-              get_the_poissoon_p_val) 
-)
-ATAC_genome_MES$p.adj <- p.adjust(ATAC_genome_MES$p.val, method = "BH")
-ATAC_genome_MES$p.adj <- round(ATAC_genome_MES$p.adj, 6) 
-ATAC_genome_MES$p.adj[ATAC_genome_MES$p.adj == 0] <- 0.000001
-ATAC_genome_MES$negLog2p.adj <- -log2(ATAC_genome_MES$p.adj)
-ATAC_genome_MES <- ATAC_genome_MES[,c(1,4,8)]
-
-ATAC_genome <- merge.data.frame(ATAC_genome_ADR, ATAC_genome_MES, by = "Annotation", suffixes = c(".ADR", ".MES"))
-ATAC_genome$Log2.Ratio..obs.exp..ADR <- as.numeric(ATAC_genome$Log2.Ratio..obs.exp..ADR)
-ATAC_genome$Log2.Ratio..obs.exp..MES <- as.numeric(ATAC_genome$Log2.Ratio..obs.exp..MES)
-
-df_long <- ATAC_genome %>%
-  tidyr::pivot_longer(
-    cols = starts_with("Log2.Ratio") | starts_with("negLog2p.adj"),
-    names_to = c(".value", "Type"),
-    names_pattern = "(Log2.Ratio..obs.exp..|negLog2p.adj.)(ADR|MES)"
-  )
-
-pdf(file = file.path(res_dir, "MES_and_ADR_lolipop_enrichemtn_plot.pdf"), width = 8, height = 8)
-df_long %>%
-  filter(Annotation %in% c("3UTR", "5UTR", "Exon", "Intergenic", "Intron", "Promoter")) %>%
-  ggplot() +
-  geom_bar(position = position_dodge(0.5), 
-           width = 0.1, 
-           aes(y = Annotation, 
-               fill = Type, 
-               weight = Log2.Ratio..obs.exp..)) +
-  scale_fill_manual(values =  c("navy", "firebrick3")) +
-#  scale_fill_hue(direction = 1) +
-  geom_point(aes(y = Annotation, 
-                 x = Log2.Ratio..obs.exp.., 
-                 color = Type,
-                 size = negLog2p.adj.), 
-             shape = 21, 
-             position = position_dodge2(0.5),
-             fill = "white") +
-  scale_color_manual(values =  c("navy", "firebrick3")) +
-#  scale_size_continuous(range = c(2, 10)) +
-#  scale_color_gradient(low = "blue", high = "red", limits = c(0,20)) +
-  theme_minimal() +
-  labs(color = "-Log2p.adj.", 
-       fill = "Type",
-       size =  "-Log2p.adj.",
-       y = "Annotation",
-       x = "Log2 Ratio (obs/exp)",
-       title = "Enrichment of genomic features in ATAC-seq peaks for ADRN and MES")
-
-dev.off()
 
 
 
