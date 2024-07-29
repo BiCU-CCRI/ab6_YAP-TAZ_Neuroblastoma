@@ -133,6 +133,7 @@ sig_list_groeningen <- list(
 lapply(sig_list_groeningen, length)
 
 # load the DE gene list from a previous run and assing genes to ADRN or MES identity 
+# TODO ?????? check that the signatures are correct
 RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/20230703/cell_type_MES_vs_ADR.xlsx", sheet = 1)
 mes_adrn_gene_list <- RNA_SEQ_data %>%
   mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))

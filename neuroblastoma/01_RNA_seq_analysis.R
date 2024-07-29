@@ -143,44 +143,36 @@ deg_results <- generateResults(
 )
 
 # export MES and ADR genes and create custom terms from them
-ADR_genes <- deg_results$results_signif %>%
-  filter(log2FoldChange < 0) %>%
-  pull(gene_symbol)
-MES_genes <- deg_results$results_signif %>%
-  filter(log2FoldChange > 0) %>%
-  pull(gene_symbol)
-hs <- org.Hs.eg.db
-ADR_genes <- AnnotationDbi::select(
-  hs,
-  keys = ADR_genes,
-  columns = c("ENTREZID", "SYMBOL"),
-  keytype = "SYMBOL"
-)
-ADR_genes <- ADR_genes[!is.na(ADR_genes$ENTREZID), ]
-ADR_genes$gs_id <- "ADRN"
+mes_adrn_gene_list <- deg_results$results_signif %>%
+  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
 
-MES_genes <- AnnotationDbi::select(hs,
-  keys = MES_genes,
-  columns = c("ENTREZID", "SYMBOL"),
-  keytype = "SYMBOL"
+genes <- getBM(
+  filters = "ensembl_gene_id",
+  attributes = c("ensembl_gene_id", "entrezgene_id"),
+  values = mes_adrn_gene_list$ensembl_id,
+  mart = mart
 )
-MES_genes <- MES_genes[!is.na(MES_genes$ENTREZID), ]
-MES_genes$gs_id <- "MES"
 
-ADRN_MES_terms <- data.frame(
-  rbind(
-    MES_genes %>% dplyr::select(gs_id, ENTREZID),
-    ADR_genes %>% dplyr::select(gs_id, ENTREZID)
-  )
-)
-colnames(ADRN_MES_terms) <- c("gs_id", "gene_id")
-write.table(ADRN_MES_terms,
-  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_from_RNA_seq.tsv",
-  quote = FALSE,
+mes_adrn_gene_list <-
+  merge.data.frame(
+    x = mes_adrn_gene_list,
+    y = genes,
+    by.x = "ensembl_id",
+    by.y = "ensembl_gene_id"
+  ) %>%
+  dplyr::select(Term, entrezgene_id) %>%
+  dplyr::rename(gs_id = Term, gene_id = entrezgene_id) %>%
+  dplyr::filter(!is.na(gene_id))
+
+write.table(
+  x = mes_adrn_gene_list,
+  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv",
   sep = "\t",
-  row.names = FALSE,
-  col.names = TRUE
+  row.names = F,
+  quote = F
 )
+
+
 
 # Save results to an xlsx sheet
 XLSX_OUT <- createWorkbook()
