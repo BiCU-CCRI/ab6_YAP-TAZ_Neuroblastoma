@@ -49,7 +49,19 @@ pheatmap.type <- function(Data, annRow, type=colnames(annRow)[1], doTranspose=FA
   invisible(res)
 }
 
-
+get_the_poissoon_p_val <- function(Number.of.peaks, Log2.Ratio..obs.exp.){
+  # Use poisson distributions
+  Log2.Ratio..obs.exp. <- as.numeric(Log2.Ratio..obs.exp.)
+  Number.of.peaks <- as.numeric(Number.of.peaks)
+  
+  ppois_Ka <- Number.of.peaks
+  ppois_lambda <- Number.of.peaks/(2^Log2.Ratio..obs.exp.)
+  
+  res <- poisson.test(x = ppois_Ka,
+                      r = ppois_lambda,
+                      alternative = "two.sided")
+  return(res$p.value)
+}
 
 generatePCA <- function(transf_object=NULL, cond_interest_varPart=NULL, color_variable=NULL, shape_variable=NULL, ntop_genes=500){
   
@@ -176,11 +188,29 @@ extract_results_DDS <- function(dds_object = NULL,
     dplyr::left_join(ensemblAnnot, "peak_id") %>% # adding annotationl   entrez_ids, gene symbols,...
     dplyr::left_join(normalized_counts_AddedMean, "peak_id") %>% # adding   normalized counts and average counts per group
     dplyr::arrange(padj) %>% # ordering based on p.adj
-    dplyr::select(peak_id, gencode_chr, gencode_start, gencode_end, 
-                  sEnh_type, YAP_TAZ, is_promoter_3kb, gene_category_our_RNAseq, gene_category_GROEN, 
-                  gencode_gene_name, gencode_characterization, homer_Annotation, 
-                  homer_Distance.to.TSS, homer_Nearest.PromoterID, homer_Nearest.Ensembl, 
-                  baseMean.y, MeanExpr_denominator, MeanExpr_numerator, log2FoldChange, lfcSE, FoldChange, pvalue, padj,
+    dplyr::select(peak_id,
+                  gencode_chr, 
+                  gencode_start, 
+                  gencode_end, 
+               #   sEnh_type, 
+               #   YAP_TAZ, 
+                  is_promoter_3kb, 
+                  gene_category_our_RNAseq, 
+              #    gene_category_GROEN, 
+                  gencode_gene_name, 
+                  gencode_characterization, 
+                  homer_Nearest.PromoterID,
+                  homer_Annotation, 
+                  homer_Nearest.Ensembl, 
+                  homer_Distance.to.TSS, 
+                  baseMean.y,
+                  MeanExpr_denominator, 
+                  MeanExpr_numerator, 
+                  log2FoldChange, 
+                  lfcSE, 
+                  FoldChange, 
+                  pvalue, 
+                  padj,
                   starts_with(paste0(cond_denominator,"-")), starts_with(paste0(cond_numerator,"-"))) %>% # everything() - other columns   not mentioned; arts_with(paste0(cond_denominator,"_S") may not work if other   references names dont follow with _S
     dplyr::rename_at(., .vars = "MeanExpr_numerator", .funs =   funs(gsub("numerator", "", paste0("MeanExpr_", cond_numerator)))) %>% # find   better way of renaming!  
     dplyr::rename_at(., .vars = "MeanExpr_denominator", .funs =   funs(gsub("denominator", "", paste0("MeanExpr_", cond_denominator))))

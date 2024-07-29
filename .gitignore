@@ -3,4 +3,5 @@
 .RData
 .Ruserdata
 homer
-
+core
+configureHomer.pl
