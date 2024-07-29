@@ -99,6 +99,8 @@ for (target_prot in unique(sample_names)) {
   DBobj_list_cons[[target_prot]] <- dba.peakset(dfbobj, bRetrieve = TRUE)
 }
 
+
+
 # ######
 # dba.overlap(DBobj_list$H3K27ac, mode = DBA_OLAP_RATE)
 # dba.overlap(DBobj_list$H3K4me1, mode = DBA_OLAP_RATE)
@@ -185,6 +187,9 @@ ChIPpeakAnno::makeVennDiagram(ol,
   col = c("black", "black"), # circle border color
   cat.col = c("#0072B2", "black")
 )
+
+ol <- ChIPpeakAnno::findOverlapsOfPeaks(TAZ_Peaks, YAP_Peaks, Jun_Peaks)
+ChIPpeakAnno::makeVennDiagram(ol)
 
 ##### Running Gene set enrichment using the chipenrich package ##########
 # turn RNA-seq results to Terms table
@@ -740,45 +745,68 @@ for (target_prot in names(DBobj_list)) {
 }
 
 
-  #############
-  # Peak profiles
-  pdf(file = file.path(res_dir, "/h3k27ac-h3k4me1-jun-taz-yap.pdf"), width = 12, height = 6)
-  for (dfbobj in DBobj_list) {
-    
-    #dfbobj <- DBobj_list[[1]]
-    rep <- dba.report(dfbobj, contrast = 2)
-    
-    repUP <- rep[rep$Fold > 2, ]
-    repDWN <- rep[rep$Fold < -1, ]
-    
-    repUP <- repUP[order(repUP$Fold, decreasing = TRUE), ]
-    repDWN <- repDWN[order(repDWN$Fold, decreasing = FALSE), ]
-    
-    repList <- GRangesList(
-      UP = repUP,
-      DWN = repDWN
-    )
-    
-    rep <- rep[abs(rep$Fold) > 2, ]
-    
-    if (length(repList$DWN) !=0){
-      profiles <- dba.plotProfile(dfbobj,
-                                  merge = c(DBA_TISSUE, DBA_REPLICATE),
-                                  contrast = 2,
-                                  sites = repList)
-    }else{
-      profiles <- dba.plotProfile(dfbobj,
-                                  merge = c(DBA_TISSUE, DBA_REPLICATE),
-                                  contrast = 2,
-                                  sites = rep)
-    }
-    print(paste("thsi is ", unique(dfbobj[["samples"]][["Factor"]])))
-    dba.plotProfile(profiles)
-  }
-  dev.off()
-  
-  
+#############
+# Peak profiles
+# Fix the BAM paths in the original DBobj
 
+pdf(file = file.path(res_dir, "/h3k27ac-h3k4me1-jun-taz-yap.pdf"), width = 12, height = 6)
+for (dfbobj in DBobj_list) {
+  str_to_be_replaced <- "/home/rstudio/workspace/neuroblastoma/data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/"
+  str_replacement <- "/home/rstudio/workspace/neuroblastoma/data/CnR/BAMs/"
+  dfbobj$class["bamRead",] <- dfbobj$class["bamRead",] %>% 
+    str_replace_all(string = .,
+                    pattern = str_to_be_replaced, 
+                    replacement = str_replacement)
+  dfbobj$class["bamControl",] <- dfbobj$class["bamControl",] %>% 
+    str_replace_all(string = .,
+                    pattern = str_to_be_replaced, 
+                    replacement = str_replacement)
+  # str_to_be_replaced <- "/home/rstudio/workspace/neuroblastoma/data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/04_called_peaks/macs2/"
+  # str_replacement <- "/home/rstudio/workspace/neuroblastoma/data/CnR/peaks/"
+  # dfbobj$samples$Peaks <- dfbobj$samples$Peaks %>% 
+  #   str_replace_all(string = .,
+  #                   pattern = str_to_be_replaced, 
+  #                   replacement = str_replacement)
+  #dfbobj <- DBobj_list[[1]]
+  rep <- dba.report(dfbobj, contrast = 2)
+  
+  repUP <- rep[rep$Fold > 2, ]
+  repDWN <- rep[rep$Fold < -1, ]
+  
+  repUP <- repUP[order(repUP$Fold, decreasing = TRUE), ]
+  repDWN <- repDWN[order(repDWN$Fold, decreasing = FALSE), ]
+  
+  repList <- GRangesList(
+    UP = repUP,
+    DWN = repDWN
+  )
+  
+  rep <- rep[abs(rep$Fold) > 2, ]
+  
+  if (length(repList$DWN) !=0){
+    profiles <- dba.plotProfile(dfbobj,
+                                merge = c(DBA_TISSUE, DBA_REPLICATE),
+                                contrast = 2,
+                                sites = repList)
+  }else{
+    profiles <- dba.plotProfile(dfbobj,
+                                merge = c(DBA_TISSUE, DBA_REPLICATE),
+                                contrast = 2,
+                                sites = rep)
+  }
+  print(paste("this is ", unique(dfbobj[["samples"]][["Factor"]])))
+  dba.plotProfile(profiles)
+}
+dev.off()
+
+
+
+
+
+
+  
+##### Playground
+  
 # Check the overlap between Groningen data and our data. Check how CnR peaks are overlapping with genes that are
 # known to be specific for ADRN or MES
 # Load data from Groeningen paper https://www.nature.com/articles/ng.3899 - genes
@@ -1115,7 +1143,6 @@ peakAnno <- annotatePeak(files[[4]],
 
 
 
-##### Playground
 # Identify TFBS
 # This part - we can identify binding sites of TFs and see if there they are differentially enriched between ADRN and MES lines
 
