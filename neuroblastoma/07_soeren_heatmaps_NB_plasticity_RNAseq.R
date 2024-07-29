@@ -3,6 +3,7 @@ library("pheatmap")
 library("dplyr")
 library(org.Hs.eg.db)
 # loading data ----
+system("unzip ~/workspace/neuroblastoma/data/other/decon_eda_louis.RData.zip")
 load("~/workspace/neuroblastoma/data/other/decon_eda_louis.RData")
 
 row_annotation_table <- data.frame(Symbol = genes_to_plot$SYMBOL, row.names = genes_to_plot$ENSEMBL)

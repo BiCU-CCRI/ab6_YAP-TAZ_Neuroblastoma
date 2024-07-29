@@ -73,12 +73,12 @@ import:::here(.from = DOSE, gseaScores)
 futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
 
 # loading the GO data
-gs_hallmark    <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"),                               clean = TRUE)
-gs_C2_kegg     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG",     clean = TRUE)
-gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
-gs_C5_GOBP     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP",       clean = TRUE)
-gs_C5_GOCC     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC",       clean = TRUE)
-gs_C5_GOMF     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF",       clean = TRUE)
+# gs_hallmark    <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"),                               clean = TRUE)
+# gs_C2_kegg     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG",     clean = TRUE)
+# gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
+# gs_C5_GOBP     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP",       clean = TRUE)
+# gs_C5_GOCC     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC",       clean = TRUE)
+# gs_C5_GOMF     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF",       clean = TRUE)
 
 system("zip -F neuroblastoma/data/CnR/consensus_peaks.zip --out neuroblastoma/data/CnR/consensus_peaks_u.zip")
 system("unzip neuroblastoma/data/CnR/consensus_peaks_u.zip")
@@ -90,13 +90,13 @@ files <- unlist(list.files(path = file.path(data_folder, "consensus_peaks"), pat
 sample_names <- stringr::str_extract(string = files, 
                                      pattern = ".*(dba_)(.*).RData", group = 2)
 DBobj_list <- list()
-DBobj_list_cons <- list()
+# DBobj_list_cons <- list()
 for (target_prot in unique(sample_names)) {
   print(paste("File", target_prot, "exists, loading ..."))
   fl_path <- file.path(data_folder, paste0("consensus_peaks/dba_", target_prot))
   dfbobj <- dba.load(fl_path, dir = "", pre = "")
   DBobj_list[[target_prot]] <- dfbobj
-  DBobj_list_cons[[target_prot]] <- dba.peakset(dfbobj, bRetrieve = TRUE)
+#  DBobj_list_cons[[target_prot]] <- dba.peakset(dfbobj, bRetrieve = TRUE)
 }
 
 
@@ -108,30 +108,30 @@ for (target_prot in unique(sample_names)) {
 # #####
 
 # # Load all peaks from .narrowPeaks files
-# folder_path <- "~/workspace/neuroblastoma/data/CnR/peaks/"
-# files <- unlist(list.files(path = folder_path, pattern = "(CLB-Ma|SK-N-SH).*.narrowPeak$", full.names = TRUE))
-# summits <- unlist(list.files(path = folder_path, pattern = "(CLB-Ma|SK-N-SH).*.macs2_summits.bed$", full.names = TRUE))
-# 
-# # assemble the samples object
-# samples <- data.frame(list(SampleID = str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)_(.*)_R(\\d)")))
-# samples$Tissue <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)")
-# samples$Factor <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)_(.*)_R", group = 3)
-# samples$Condition <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)", group = 2)
-# samples$Replicate <- str_extract(files, pattern = "_R(\\d)", group = 1)
-# samples$Peaks <- files
-# samples$PeakCaller <- "narrow"
-# samples$PeakSummits <- summits
-# peaks_count <- c()
-# peaks_count <- sapply(files, function(x) genio::count_lines(x) - 1)
-# samples$Peaks_count <- peaks_count
-# 
-# # Loading all narrowPeaks
-# DBobj_list_cons <- list()
-# for (target_prot in unique(samples$Factor)) {
-#   print(c("Current protein is ", target_prot))
-#   dfbobj <- dba(sampleSheet = samples %>% filter(., Factor == target_prot))
-#   DBobj_list_cons[[target_prot]] <- dba.peakset(dfbobj, bRetrieve = TRUE)
-# }
+folder_path <- "~/workspace/neuroblastoma/data/CnR/peaks/"
+files <- unlist(list.files(path = folder_path, pattern = "(CLB-Ma|SK-N-SH).*.narrowPeak$", full.names = TRUE))
+summits <- unlist(list.files(path = folder_path, pattern = "(CLB-Ma|SK-N-SH).*.macs2_summits.bed$", full.names = TRUE))
+
+# assemble the samples object
+samples <- data.frame(list(SampleID = str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)_(.*)_R(\\d)")))
+samples$Tissue <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)")
+samples$Factor <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)_(.*)_R", group = 3)
+samples$Condition <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)", group = 2)
+samples$Replicate <- str_extract(files, pattern = "_R(\\d)", group = 1)
+samples$Peaks <- files
+samples$PeakCaller <- "narrow"
+samples$PeakSummits <- summits
+peaks_count <- c()
+peaks_count <- sapply(files, function(x) genio::count_lines(x) - 1)
+samples$Peaks_count <- peaks_count
+
+# Loading all narrowPeaks
+DBobj_list_cons <- list()
+for (target_prot in unique(samples$Factor)) {
+  print(c("Current protein is ", target_prot))
+  dfbobj <- dba(sampleSheet = samples %>% filter(., Factor == target_prot))
+  DBobj_list_cons[[target_prot]] <- dba.peakset(dfbobj, bRetrieve = TRUE)
+}
 
 peakAnnoList <- list()
 # check features distribution
