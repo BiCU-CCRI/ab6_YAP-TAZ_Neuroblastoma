@@ -1,0 +1,6 @@
+[submodule "neuroblastoma/HMCan"]
+	path = neuroblastoma/HMCan
+	url = https://github.com/BoevaLab/HMCan
+[submodule "neuroblastoma/LILY"]
+	path = neuroblastoma/LILY
+	url = https://github.com/BoevaLab/LILY.git
