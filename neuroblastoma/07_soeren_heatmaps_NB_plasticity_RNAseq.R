@@ -1,16 +1,17 @@
 library("GSVA")
 library("pheatmap")
 library("dplyr")
+library(stringr)
 library(org.Hs.eg.db)
 # loading data ----
 system("unzip ~/workspace/neuroblastoma/data/other/decon_eda_louis.RData.zip")
 load("~/workspace/neuroblastoma/data/other/decon_eda_louis.RData")
 
-row_annotation_table <- data.frame(Symbol = genes_to_plot$SYMBOL, row.names = genes_to_plot$ENSEMBL)
-data_to_plot <- as.data.frame(vst_counts_removedBatchEffect) %>% filter(row.names(.) %in% genes_to_plot$ENSEMBL)
-row.names(data_to_plot) <- genes_to_plot$SYMBOL[match(row.names(data_to_plot), genes_to_plot$ENSEMBL)]
-data_to_plot %>% 
-  dplyr::select(starts_with(c("DTC", "MNC", "BMn"))) 
+# row_annotation_table <- data.frame(Symbol = genes_to_plot$SYMBOL, row.names = genes_to_plot$ENSEMBL)
+# data_to_plot <- as.data.frame(vst_counts_removedBatchEffect) %>% filter(row.names(.) %in% genes_to_plot$ENSEMBL)
+# row.names(data_to_plot) <- genes_to_plot$SYMBOL[match(row.names(data_to_plot), genes_to_plot$ENSEMBL)]
+# data_to_plot %>% 
+#   dplyr::select(starts_with(c("DTC", "MNC", "BMn"))) 
 # %>%
 #   dplyr::select(-matches("MNC_0[1-9].")) %>%
 #   dplyr::select(-matches("BMn_[6-9]."))
@@ -64,8 +65,9 @@ vst_counts_removedBatchEffect_subset <- as.data.frame(vst_counts_removedBatchEff
 
 tmp_ids_subset <- stringr::str_extract(string = colnames(vst_counts_removedBatchEffect_subset), 
                                 pattern = "(DTC)|(MNC)|(BMn)")
-
-heatmap_col_annot_DTC_subset <- data.frame(id = tmp_ids_subset)
+dx_rem <- stringr::str_extract(string = colnames(vst_counts_removedBatchEffect_subset),
+                               pattern = "(REL)|(DX)")
+heatmap_col_annot_DTC_subset <- data.frame(id = tmp_ids_subset, dx_rem = dx_rem)
 row.names(heatmap_col_annot_DTC_subset) <- colnames(vst_counts_removedBatchEffect_subset)
 
 row_annotation_table <- data.frame(Symbol = genes_to_plot$SYMBOL, 
@@ -85,14 +87,18 @@ row.names(heatmap_col_annot_DTC_subset) <- heatmap_col_annot_DTC_subset$OMICS_ID
 heatmap_col_annot_DTC_subset <- heatmap_col_annot_DTC_subset %>% 
   dplyr::select(-OMICS_ID)
 heatmap_col_annot_DTC_subset[is.na(heatmap_col_annot_DTC_subset$percent_DTC_AE), "percent_DTC_AE"] <- 0
-
+heatmap_col_annot_DTC_subset[heatmap_col_annot_DTC_subset$id != "DTC", "dx_rem"] <- "NA"
+heatmap_col_annot_DTC_subset[is.na(heatmap_col_annot_DTC_subset$dx_rem), "dx_rem"] <- "NA"
 
 colorRampPalette(c("white", "green"))(26)
 color_vector <- c(colorRampPalette(c("darkgrey"))(1), 
                   colorRampPalette(c("white", "forestgreen"))(26))
 names(color_vector) <- c("NAA", sort(unique(heatmap_col_annot_DTC_subset$percent_DTC_AE)))
+dx_rem_col_vector <- c("grey", "chocolate1", "deepskyblue1")
+names(dx_rem_col_vector) <- c("NA", "DX", "REL")
 ann_colors = list(
-  percent_DTC_AE = c(color_vector)
+  percent_DTC_AE = c(color_vector),
+  dx_rem = c(dx_rem_col_vector)
 )
 
 # data_to_plot_subset <- data_to_plot_subset %>%
@@ -146,7 +152,12 @@ vst_counts_removedBatchEffect <- as.data.frame(vst_counts_removedBatchEffect) %>
 
 tmp_ids <- stringr::str_extract(string = colnames(vst_counts_removedBatchEffect_subset), 
                                 pattern = "(DTC)|(MNC)|(BMn)")
-heatmap_col_annot_DTC <- data.frame(id = tmp_ids)
+dx_rem <- stringr::str_extract(string = colnames(vst_counts_removedBatchEffect_subset),
+                               pattern = "(REL)|(DX)")
+
+heatmap_col_annot_DTC <- data.frame(id = tmp_ids, dx_rem = dx_rem)
+heatmap_col_annot_DTC[heatmap_col_annot_DTC$id != "DTC", "dx_rem"] <- NA
+
 row.names(heatmap_col_annot_DTC) <- colnames(vst_counts_removedBatchEffect)
 
 

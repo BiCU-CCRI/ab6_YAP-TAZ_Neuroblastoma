@@ -141,7 +141,8 @@ for (factor in names(DBobj_list_cons)){
   peakAnnoList[[factor]] <- ChIPseeker::annotatePeak(peak = test_region, 
                                          tssRegion = c(-3000, 3000),
                                          TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, 
-                                         annoDb = "org.Hs.eg.db")
+                                         annoDb = "org.Hs.eg.db", 
+                                         level = "gene")
 }
 plotAnnoBar(peakAnnoList)
 
@@ -600,6 +601,24 @@ YAP_TAZ_JUN_peaks_list <- list(
   YAP_TAZ_JUN_peaks = YAP_TAZ_JUN_peaks
 )
 
+peakAnnoList <- list()
+DBobj_list_to_annotate <- list(
+  TAZ = TAZ_Peaks, 
+  YAP = YAP_Peaks, 
+  Jun = Jun_Peaks,
+  YAP_TAZ = YAP_TAZ_peaks,
+  YAP_TAZ_JUN = YAP_TAZ_JUN_peaks)
+# check features distribution
+for (factor in names(DBobj_list_to_annotate)){
+  test_region <- DBobj_list_to_annotate[[factor]]
+  seqlevelsStyle(test_region) <- "UCSC"
+  peakAnnoList[[factor]] <- ChIPseeker::annotatePeak(peak = test_region, 
+                                                     tssRegion = c(-3000, 3000),
+                                                     TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, 
+                                                     annoDb = "org.Hs.eg.db", 
+                                                     level = "gene")
+}
+plotAnnoBar(peakAnnoList)
 
 
 promoter <- ChIPseeker::getPromoters(TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, upstream = 3000, downstream = 3000)

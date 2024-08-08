@@ -670,8 +670,14 @@ annotCol_forHeatmap <- as.data.frame(colData(ATAC_dds_full)) %>%
   dplyr::select(phenotype)
 annotCol_forHeatmap_colors <- list(phenotype = c(A = "#525252", M = "#fc4e2a"))
 
+
+color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
+
+
 heatmap <- pheatmap::pheatmap(as.matrix(devToPlot),
-                              color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(100),
+                              color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+                              border_color = NA,
+                              #color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(100),
                               scale = "row",
                               cluster_cols = FALSE,
                               cluster_rows = TRUE,
@@ -682,6 +688,7 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot),
                               fontsize_row = 9,
                               fontsize = 9,
                               main = paste0("Heatmap of signif. Motifs ADRN vs MES. ", sbst, "- used"))
+
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ADRN_vs_MES_Motifs", sbst, "- used", ".png")), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")

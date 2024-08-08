@@ -1,40 +1,42 @@
 #!/bin/bash
 
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/CLB-Ma-A_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-A_IgG_R1.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/CLB-Ma-A_IgG_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-A_IgG_R2.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/CLB-Ma-A_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-A_H3K27ac_R1.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/CLB-Ma-A_H3K27ac_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-A_H3K27ac_R2.noDup.bam
-#
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/CLB-Ma-M_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-M_IgG_R1.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/CLB-Ma-M_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-M_H3K27ac_R1.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/CLB-Ma-M_H3K27ac_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-M_H3K27ac_R2.noDup.bam
-#
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/SK-N-SH-A_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-A_IgG_R1.target.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/SK-N-SH-A_IgG_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-A_IgG_R2.target.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/SK-N-SH-A_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-A_H3K27ac_R1.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/SK-N-SH-A_H3K27ac_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-A_H3K27ac_R2.noDup.bam
-#
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/SK-N-SH-M_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-M_IgG_R1.target.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/SK-N-SH-M_IgG_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-M_IgG_R2.target.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/SK-N-SH-M_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-M_H3K27ac_R1.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/SK-N-SH-M_H3K27ac_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-M_H3K27ac_R2.noDup.bam
-#
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/Ex251-STA-NB-10-MES-100k_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/Ex251-STA-NB-10-MES-100k_IgG_R1.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/Ex251-STA-NB-10-MES-200k_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/Ex251-STA-NB-10-MES-200k_IgG_R1.noDup.bam
-#
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/Ex251-STA-NB-10-MES-100k_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/Ex251-STA-NB-10-MES-100k_H3K27ac_R1.noDup.bam
-# samtools view -u -q 20 ./data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/Ex251-STA-NB-10-MES-200k_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/Ex251-STA-NB-10-MES-200k_H3K27ac_R1.noDup.bam
+samtools view -u -q 20 ./data/CnR/BAMs/CLB-Ma-A_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-A_IgG_R1.noDup.bam
+samtools view -u -q 20 ./data/CnR/BAMs/CLB-Ma-A_IgG_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-A_IgG_R2.noDup.bam
+samtools view -u -q 20 ./data/CnR/BAMs/CLB-Ma-A_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-A_H3K27ac_R1.noDup.bam
+samtools view -u -q 20 ./data/CnR/BAMs/CLB-Ma-A_H3K27ac_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-A_H3K27ac_R2.noDup.bam
 
-# configFile="./hmcan/configurations/HMCan.config.broad.custom.txt"
+# samtools view -u -q 20 ./data/CnR/BAMs/CLB-Ma-M_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-M_IgG_R1.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/CLB-Ma-M_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-M_H3K27ac_R1.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/CLB-Ma-M_H3K27ac_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/CLB-Ma-M_H3K27ac_R2.noDup.bam
+
+# samtools view -u -q 20 ./data/CnR/BAMs/SK-N-SH-A_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-A_IgG_R1.target.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/SK-N-SH-A_IgG_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-A_IgG_R2.target.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/SK-N-SH-A_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-A_H3K27ac_R1.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/SK-N-SH-A_H3K27ac_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-A_H3K27ac_R2.noDup.bam
+
+# samtools view -u -q 20 ./data/CnR/BAMs/SK-N-SH-M_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-M_IgG_R1.target.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/SK-N-SH-M_IgG_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-M_IgG_R2.target.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/SK-N-SH-M_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-M_H3K27ac_R1.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/SK-N-SH-M_H3K27ac_R2.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/SK-N-SH-M_H3K27ac_R2.noDup.bam
+
+# samtools view -u -q 20 ./data/CnR/BAMs/Ex251-STA-NB-10-MES-100k_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/Ex251-STA-NB-10-MES-100k_IgG_R1.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/Ex251-STA-NB-10-MES-200k_IgG_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/Ex251-STA-NB-10-MES-200k_IgG_R1.noDup.bam
+
+# samtools view -u -q 20 ./data/CnR/BAMs/Ex251-STA-NB-10-MES-100k_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/Ex251-STA-NB-10-MES-100k_H3K27ac_R1.noDup.bam
+# samtools view -u -q 20 ./data/CnR/BAMs/Ex251-STA-NB-10-MES-200k_H3K27ac_R1.target.markdup.sorted.bam | samtools rmdup -s - ./CnR_LILY/test/Ex251-STA-NB-10-MES-200k_H3K27ac_R1.noDup.bam
+
+#TODO Re-write the whole thing in a loop
+
+configFile="./hmcan/configurations/HMCan.config.broad.custom.txt"
 fai=./resources/Homo_sapiens_Genome.GRCh38.102.fa.fai
-#
+
 outFolder="./CnR_LILY/20240604/CLB-Ma-A_H3K27ac_R1/CLB-Ma-A_H3K27ac_R1"
-# mkdir $outFolder
-# ./HMCan/src/HMCan \
-# 	./CnR_LILY/test/CLB-Ma-A_H3K27ac_R1.noDup.bam \
-# 	./CnR_LILY/test/CLB-Ma-A_IgG_R1.noDup.bam \
-# 	$configFile \
-# 	$outFolder
+mkdir $outFolder
+./HMCan/src/HMCan \
+	./CnR_LILY/test/CLB-Ma-A_H3K27ac_R1.noDup.bam \
+	./CnR_LILY/test/CLB-Ma-A_IgG_R1.noDup.bam \
+	$configFile \
+	$outFolder
 ./resources/wigToBigWig -clip ${outFolder}.wig $fai ${outFolder}.bw
 
 #
