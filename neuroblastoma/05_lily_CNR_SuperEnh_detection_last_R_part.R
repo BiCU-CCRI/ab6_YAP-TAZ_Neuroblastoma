@@ -29,7 +29,8 @@ Export_my_BED <- function(obj, path_to_export){
   write.table(BED, file = file.path(path_to_export, paste0(file_name, ".bed")), quote=F, sep="\t", row.names=F, col.names=F)
 }
 
-dr_list <- list.dirs("/home/rstudio/workspace/neuroblastoma/CnR_LILY/20240604/", recursive = FALSE)
+#dr_list <- list.dirs("/home/rstudio/workspace/neuroblastoma/CnR_LILY/20240604/", recursive = FALSE)
+dr_list <- list.dirs("/home/rstudio/workspace/neuroblastoma/data/LILY/20240604/", recursive = FALSE)
 
 for(folder_name in dr_list){
   
@@ -345,7 +346,6 @@ SE_list <- lapply(SE_list, function(x){
                                   names = paste0(x$V4, "_", x$V5))))
 }
 )
-
 
 #CLB-Ma Enhancers
 Grange_CLB_Ma_A_merged <- reduce(c(SE_list[[1]], SE_list[[2]]), drop.empty.ranges = F, min.gapwidth = 1)
