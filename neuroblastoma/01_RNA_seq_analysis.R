@@ -23,13 +23,7 @@ library(fgsea)
 library(ggplot2)
 library(DESeq2)
 
-# Load 3rd party packages
-# Note - might take several attempts to actually load it
-# mart <- biomaRt::useMart(
-#   biomart = "ENSEMBL_MART_ENSEMBL",
-#   dataset = "hsapiens_gene_ensembl",
-#   host = "https://www.ensembl.org")
-# Loading MsigDB geneset collections
+# load gene sets
 gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean = TRUE)
 gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean = TRUE)
 gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
@@ -37,18 +31,20 @@ gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), 
 gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean = TRUE)
 gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean = TRUE)
 
+# loading BioMart
+mart <- biomaRt::useMart(
+  biomart = "ENSEMBL_MART_ENSEMBL", 
+  dataset = "hsapiens_gene_ensembl",
+  host = "https://www.ensembl.org")
+  
 # Set up the parameters
 param_list <- list(
   abs_filt_samples = 2,
   padj_cutoff = 0.05,
   log2FC_cutoff = 1,
   var_expl_needed = 0.6
-  # biomart_host="http://www.ensembl.org",
-  # biomart_dataset="hsapiens_gene_ensembl",
-  # biomart_Ens_version="Ensembl Genes 109"
 )
 deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq/"
-
 
 
 # Analysis of the RNA-seq data ####
@@ -124,12 +120,6 @@ ggsave(
   width = 20, height = 20, units = "cm"
 )
 
-#
-# ensemblAnnot <- generateEnsemblAnnotation(ensembl_ids = rownames(rnaseq_dds_filt),
-#                                           host=param_list$biomart_host,
-#                                           version=param_list$biomart_Ens_version,
-#                                           dataset=param_list$biomart_dataset)
-
 # Check the names of the dds object and generate results
 resultsNames(rnaseq_dds_filt)
 deg_results <- generateResults(
@@ -146,7 +136,7 @@ deg_results <- generateResults(
 mes_adrn_gene_list <- deg_results$results_signif %>%
   mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
 
-genes <- getBM(
+genes <- biomaRt::getBM(
   filters = "ensembl_gene_id",
   attributes = c("ensembl_gene_id", "entrezgene_id"),
   values = mes_adrn_gene_list$ensembl_id,
@@ -171,8 +161,6 @@ write.table(
   row.names = F,
   quote = F
 )
-
-
 
 # Save results to an xlsx sheet
 XLSX_OUT <- createWorkbook()
@@ -264,13 +252,12 @@ ggsave(
   width = 20, height = 20, units = "cm"
 )
 
-# Run Fast GSEA for GOBP, GOCC, GOMF, KEGG, reactome terms
+# Run FastGSEA for GOBP, GOCC, GOMF, KEGG, reactome terms
 
 # Rank genes based on L2FC
 de_genes_ranked <- deg_results$results_all
 de_genes_ranked <- de_genes_ranked %>% arrange(desc(log2FoldChange))
 de_genes_ranked <- setNames(c(de_genes_ranked$log2FoldChange), c(de_genes_ranked$gene_symbol))
-
 
 gene_set_list <- list(
   gs_hallmark = gs_hallmark,
@@ -350,278 +337,4 @@ ggsave(
   filename = paste0(deg_dir, "MES_vs_ADRN_volcano_plot.png"),
   plot = volcano_plot,
   width = 20, height = 20, units = "cm"
-)
-
-
-
-
-
-
-# # # # # # # # # # # # # # # # # # # # # # # 
-# # # # # # EOF         # # # # # # # # # # # 
-# # # # # # # # # # # # # # # # # # # # # # # 
-# perform ssGSEA on Thirant data
-thir_data <- read.table(file = "~/workspace/neuroblastoma/resources/Thiriant_data.csv", 
-                        sep = ";",
-                        header = TRUE)
-
-thir_data <- split(thir_data %>% select(group, gene_name), thir_data$group)
-thir_data <- lapply(thir_data, function(x) return(x$gene_name))
-
-fgseaRes <- fgsea(pathways = thir_data["OX-PHOS"], 
-                  stats    = de_genes_ranked,
-                  minSize  = 15,
-                  maxSize  = 500)
-topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n=10), pathway]
-topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n=10), pathway]
-topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
-p <- plotGseaTable(gs_C5_GOBP[["genesets"]][topPathways],
-                   de_genes_ranked,
-                   fgseaRes, 
-                   gseaParam=0.5) + labs(title = "C5_GOBP")
-p[["theme"]][["plot.title"]] <- NULL
-p
-
-
-###### DEV ZONE
-# Plot terms based on terms defined from Thirant supplementary data 1:
-thir_data <- read.table(file = "~/workspace/neuroblastoma/resources/Thirant_supplementary_data.tsv",
-                       sep = "\t",
-                       header = TRUE)
-thir_data$group_cluster <- paste0(thir_data$group, "_", thir_data$cluster)
-
-thir_data_group <- base::split(thir_data, thir_data$group)
-thir_data_group <- lapply(thir_data_group, function(x){pull(x, gene_name)})
-
-thir_data_cluster <- base::split(thir_data, thir_data$group_cluster)
-thir_data_cluster <- lapply(thir_data_cluster, function(x){pull(x, gene_name)})
-
-GSEA_thir_data <- hypeR::hypeR(signature = deg_results$results_signif$gene_symbol, 
-                        genesets = thir_data_group, 
-                        test="hypergeometric", 
-                        background=nrow(rnaseq_dds_filt))
-GSEA_thir_data_plot <- hypeR::hyp_dots(GSEA_thir_data, 
-                                       merge = TRUE, 
-                                       fdr = 0.05, 
-                                       top = 20, 
-                                       abrv = 70, 
-                                       val = "fdr", 
-                                       title = "Thirant sup. data: MES vs ADR") +
-  theme_bw()
-
-GSEA_thir_data <- hypeR::hypeR(signature = deg_results$results_signif$gene_symbol, 
-                               genesets = thir_data_cluster, 
-                               test = "hypergeometric", 
-                               background = nrow(rnaseq_dds_filt))
-GSEA_thir_data_plot <- hypeR::hyp_dots(GSEA_thir_data, 
-                                       merge = TRUE, 
-                                       fdr = 0.05, 
-                                       top = 20, 
-                                       abrv = 70, 
-                                       val = "fdr", 
-                                       title = "Thirant sup. data: MES vs ADR") +
-  theme_bw()
-
-#####
-thir_data <- read.table(file = "~/workspace/neuroblastoma/resources/Thirant_supplementary_data.tsv",
-                        sep = "\t",
-                        header = TRUE)
-thir_data <- read.table(file = "~/workspace/neuroblastoma/resources/Thiriant_data.csv",
-                        sep = ";",
-                        header = TRUE)
-
-thir_data$group_cluster <- paste0(thir_data$group, "_", thir_data$cluster)
-
-thir_data_group <- base::split(thir_data, thir_data$group)
-thir_data_group <- lapply(thir_data_group, function(x){pull(x, gene_name)})
-
-thir_data_cluster <- base::split(thir_data, thir_data$group_cluster)
-thir_data_cluster <- lapply(thir_data_cluster, function(x){pull(x, gene_name)})
-
-
-vsd_counts_matrix <- assay(vsd)
-row.names(vsd_counts_matrix) <- annotationData[, 'gene_symbol'][match(row.names(vsd_counts_matrix), annotationData[, 'ensembl_id'])]
-
-ssgsea_mes_adr_thir_data<- GSVA::gsva(vsd_counts_matrix,
-                                      thir_data_group,
-                                      method=c("ssgsea"),
-                                      min.sz=1, max.sz=Inf, 
-                                      #ssgsea.norm=TRUE, 
-                                      verbose=TRUE, 
-                                      parallel.sz=10,
-                                      )
-ssgsea_mes_adr_thir_data <- as.data.frame(ssgsea_mes_adr_thir_data)
-ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_thir_data,
-                                                        scale = "row",
-                                                        #annotation_col = heatmap_col_annot_DTC,
-                                                        cluster_rows = FALSE,
-                                                        cluster_cols = TRUE,
-                                                        color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-                                                        show_colnames = TRUE)
-
-
-ssgsea_mes_adr_thir_data_cluster<- GSVA::gsva(vsd_counts_matrix,
-                                      thir_data_cluster,
-                                      method=c("ssgsea"),
-                                      min.sz=1, max.sz=Inf, 
-                                      #ssgsea.norm=TRUE, 
-                                      verbose=TRUE, 
-                                      parallel.sz=10,
-)
-ssgsea_mes_adr_thir_data_cluster <- as.data.frame(ssgsea_mes_adr_thir_data_cluster)
-ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_thir_data_cluster,
-                                                        scale = "row",
-                                                        #annotation_col = heatmap_col_annot_DTC,
-                                                        cluster_rows = FALSE,
-                                                        cluster_cols = TRUE,
-                                                        color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-                                                        show_colnames = TRUE)
-
-#############
-
-
-
-
-# Produce heat map - all DE genes in ADR and MES lines 
-metadata_heatmap <- as.data.frame(colData(rnaseq_dds_filt))
-heatmap_counts <- SummarizedExperiment::assay(vsd)
-heatmap_counts_deg <- heatmap_counts[rownames(heatmap_counts) %in% deg_results$results_signif$ensembl_id, ]
-annotation_col <- metadata_heatmap %>%
-  dplyr::select(cell_type, cell_line) %>% 
-  dplyr::arrange(cell_type, cell_line)
-heatmap_counts_deg_ord <- heatmap_counts_deg[, match(rownames(annotation_col), colnames(heatmap_counts_deg))]
-color.scheme <- c("#001219","#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012")
-#color.scheme <- c("#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012")
-ann_colors = list(
-  cell_line = c(CLB_Ma = "#005f73", STA_NB_10 = "#0a9396", STA_NB_8 = "#DD3344", SK_N_SH = "#FF9F1C"),
-  cell_line_id = c(ADR = "#E9D8A6", MES = "#D9BE6D")
-)
-heatmap <- pheatmap::pheatmap(heatmap_counts_deg_ord,
-                                            main = "Heatmap of signif. DEG",
-                                            scale = "row",
-                                            annotation_col = annotation_col,
-                                            annotation_colors = ann_colors,
-                                            show_colnames = FALSE,
-                                            show_rownames = FALSE,
-                                            cluster_cols = FALSE,
-                                            color = color.scheme,
-                                            fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
-ggsave(filename = paste0(deg_dir, "ADRN_vs_MES_heatmap.png"), 
-       plot=heatmap,
-       width = 20, height = 20, units = "cm")
-
-
-
-
-
-### Extract counts for diffTF ###
-Counts_for_diffTF <- rnaseq_dds_filt@assays@data@listData[["counts"]]
-row.names(Counts_for_diffTF) <- row.names(rnaseq_dds_filt)
-colnames(Counts_for_diffTF) <- c( gsub("_RNA_S.*", replacement = "", colnames(Counts_for_diffTF)))
-#colnames(Counts_for_diffTF) <- c("ENSEMBL", gsub("_RNA_S.*", replacement = "", colnames(Counts_for_diffTF)))
-write.table(Counts_for_diffTF, file = file.path(deg_dir, "RNAseq.tsv"), 
-            sep = "\t", 
-            row.names = TRUE,
-            col.names = TRUE,
-            quote = FALSE)
-
-
-
-
-
-
-
-
-
-### xcore ####
-#promoters_f5_core <- xcoredata::promoters_f5_core()
-
-#taken from the previous steps
-dds_counts <- counts(rnaseq_dds_filt, normalized=FALSE)
-
-#subset the pattern to create Design table
-cond <- str_extract(string = colnames(dds_counts),
-                    pattern = "_(A|M)_", 
-                    group = 1)
-
-design <- data.frame(row.names = colnames(dds_counts))
-design$A <- ifelse(test = cond == "A", 
-                   yes = 1,
-                   no = 0)
-design$M <- ifelse(test = cond == "M", 
-                   yes = 1,
-                   no = 0)
-design <- as.matrix(design)
-
-# load F5 data and symbol2fantom
-promoters_f5_core <- xcoredata::promoters_f5_core()
-remap_promoters_f5 <- xcoredata::remap_promoters_f5()
-
-eh <- ExperimentHub::ExperimentHub()
-symbol2fantom <- eh[["EH7700"]]
-
-# using annotationData from previous step
-annotationData
-
-# replace ENSEMBL IDs with symbols and remove duplicates
-row.names(dds_counts) <-  annotationData$gene_symbol[match(row.names(dds_counts) , annotationData$ensembl_id)]
-dds_counts <- dds_counts[-which(duplicated(row.names(dds_counts))),]
-counts_rna_seq_fantom <- translateCounts(dds_counts, dict = symbol2fantom)
-
-# main xcore part
-mae_rna_seq <- prepareCountsForRegression(
-  counts = counts_rna_seq_fantom,
-  design = design,
-  base_lvl = "A"
-)
-mae_rna_seq <- addSignatures(mae_rna_seq, 
-                             remap = remap_promoters_f5)
-mae_rna_seq <- filterSignatures(mae_rna_seq, min = 0.05, max = 0.95)
-
-# register parralel backend
-doMC::registerDoMC(cores = 6L)
-# set seed
-set.seed(314159265)
-
-res_rna_seq <- modelGeneExpression(
-  mae = mae_rna_seq,
-  xnames = "remap",
-  nfolds = 6
-  )
-
-#find what factors have pval < 0.05
-list_of_factors <- list()
-list_of_factors_bool <- data.frame(row.names = res_rna_seq[["results"]][["remap"]][["name"]])
-
-for(sample_name in names(res_rna_seq[["regression_models"]][["remap"]])){
-  list_of_factors[[sample_name]] <- data.frame(res_rna_seq[["pvalues"]][["remap"]][[sample_name]]) %>% 
-                                    dplyr::select("pval") %>% 
-                                    dplyr::filter(pval < 0.05) %>% 
-                                    row.names()
-  list_of_factors_bool[,sample_name] <- res_rna_seq[["pvalues"]][["remap"]][[sample_name]][["pval"]] < 0.05
-}
-
-#create a bool vector
-list_of_factors_bool$n_pval_filt <- (apply(list_of_factors_bool, 1, sum))
-at_least_one_motif <- list_of_factors_bool %>% dplyr::filter(n_pval_filt > 0) %>% row.names()
-unique_motifs <- Reduce(intersect, list_of_factors)
-
-top_signatures  <- res_rna_seq$results$remap %>% dplyr::filter(name %in% unique_motifs)
-pheatmap::pheatmap(
-  mat = top_signatures[, "M"],
-  labels_row = top_signatures$name,
-  cluster_cols = FALSE,
-  color = colorRampPalette(c("blue", "white", "red"))(35),
-  breaks = seq(from = -0.2, to = 0.2, length.out = 36),
-  main = "ReMap2020 molecular signatures activity"
-)
-
-top_signatures2  <- res_rna_seq$results$remap %>% dplyr::filter(name %in% at_least_one_motif)
-pheatmap::pheatmap(
-  mat = top_signatures2[, "M"][1:100],
-  labels_row = top_signatures2$name[1:100],
-  cluster_cols = FALSE,
-  color = colorRampPalette(c("blue", "white", "red"))(35),
-  breaks = seq(from = -0.2, to = 0.2, length.out = 36),
-  main = "ReMap2020 molecular signatures activity"
 )
