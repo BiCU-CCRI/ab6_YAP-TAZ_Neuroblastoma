@@ -44,7 +44,8 @@ ATAC_counts_data <- readRDS(path_to_the_ATAC_counts_data)
 ATAC_annotation_data <- readRDS(path_annnotation_ATAC_data)
 
 # Subset the ATAC_annotation_data - keep the rows that are present in the ATAC_counts_data
-ATAC_annotation_data <- dplyr::filter(ATAC_annotation_data, peak_id %in% rownames(ATAC_counts_data))
+ATAC_annotation_data <- dplyr::filter(ATAC_annotation_data, 
+                                      peak_id %in% rownames(ATAC_counts_data))
 
 # Prepare metadata table 
 ATAC_metadata_df <- data.frame(matrix(nrow = dim(ATAC_counts_data)[2]))
@@ -186,6 +187,7 @@ openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "DAR_results_M_VS_A.xlsx"), 
 # Making volcanoplot
 genes_up <- c("VIM", "FOSL2", "FOSL1", "YAP1", "JUN", "WWTR1")
 genes_down <- c("PHOX2B", "HAND2", "GATA3")
+ATAC_dds_results$results_all$gene_symbol <- ATAC_dds_results$results_all$gencode_gene_name
 p1 <- plotVolcano(dds_results_obj = ATAC_dds_results$results_all,
                   genes_of_interest = c("VIM", "FOSL2", "FOSL1", "YAP1", "JUN", "WWTR1", "PHOX2B", "HAND2", "GATA3"))
 p1
@@ -198,15 +200,19 @@ rownames(heatmap_counts) <- vsd@rowRanges$peak_id
 # Subset different peaks that belong to different categories
 ATAC_signif <- ATAC_dds_results$results_signif
 heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id, ]
-heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_MES"],]
-heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_ADRN"],]
+heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% 
+                                                  ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_MES"],]
+heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% 
+                                                   ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_ADRN"],]
   
 annotation_col <- metadata_heatmap %>%
   dplyr::select(cell_line, phenotype) %>% 
   dplyr::arrange(phenotype, cell_line)
 heatmap_counts<- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
-heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_MES_spec_genes))]
-heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN_spec_genes))]
+heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(annotation_col), 
+                                                                       colnames(heatmap_counts_MES_spec_genes))]
+heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), 
+                                                                         colnames(heatmap_counts_ADRN_spec_genes))]
   
 ensembl2symbol_annot <- ATAC_dds_results$results_all %>%
   dplyr::select(peak_id, gencode_gene_name)

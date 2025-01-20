@@ -69,7 +69,7 @@ import::from(.from = chromVAR, addGCBias)
 import::from(.from = RColorBrewer, brewer.pal)
 import:::here(.from = DOSE, gseaScores)
 
-
+# this is necessary to prevent VennDiagrap package from spamming logs into workspace folder
 futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
 
 # loading the GO data
@@ -680,16 +680,125 @@ for(peak_names in names(YAP_TAZ_JUN_peaks_list)){
 piechart <- piechart %>% group_by(group) %>% mutate(percent = round(number_of_peaks / sum(number_of_peaks) * 100))
   #piechart$percent <- round(piechart$number_of_peaks / sum(piechart$number_of_peaks) * 100, 2)
   
-  ggplot(piechart) +
-    aes(x = group, y = percent, fill = Peaks) +
-    geom_col() +
-    scale_fill_brewer(palette = "Accent", direction = 1) +
-    theme_minimal() +
-    geom_text(aes(label = paste0(percent, "%")),
-              position = position_stack(vjust = 0.5), size = 6
+ggplot(piechart) +
+  aes(x = group, y = percent, fill = Peaks) +
+  geom_col() +
+  scale_fill_brewer(palette = "Accent", direction = 1) +
+  theme_minimal() +
+  geom_text(aes(label = paste0(percent, "%")),
+            position = position_stack(vjust = 0.5), size = 6
+  )
+  
+  
+# Trying to calculate the observed/expected ratio for active enhancers, promoters, bivalent promoters, poised enhancers
+genome_used <- getBSgenome("BSgenome.Hsapiens.UCSC.hg38")
+seqnames(genome_used) <- sub("^chr", "", seqnames(genome_used))
+seqnames(genome_used) <- sub("^.{1,2}_", "", seqnames(genome_used))
+seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
+seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
+
+# load mask regions 
+blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions$V1 <- sub("^chr", "", blacklist_regions$V1)
+blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
+                                              seqnames.field = "V1", 
+                                              start.field = "V2", 
+                                              end.field = "V3")
+
+
+
+
+# save for IGV
+rtracklayer::export.bed(object = random_Peaks,  "~/workspace/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV_randomized.bed")
+rtracklayer::export.bed(object = YAP_TAZ_JUN_peaks_list$Jun_Peaks, "~/workspace/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV.bed")
+rtracklayer::export.bed(object = promoter, "~/workspace/neuroblastoma/temp_results/BEDs/Promoters_for_IGV.bed")
+
+x = GenomicDistributions::calcChromBinsRef(makeGRangesFromDataFrame(as.data.frame(YAP_TAZ_JUN_peaks_list$Jun_Peaks) %>% mutate(seqnames = paste0("chr", seqnames))), "hg38")
+GenomicDistributions::plotChromBins(x)
+x = GenomicDistributions::calcChromBinsRef(makeGRangesFromDataFrame(as.data.frame(random_Peaks) %>% mutate(seqnames = paste0("chr", seqnames))), "hg38")
+GenomicDistributions::plotChromBins(x)
+
+
+# 
+# active_promoters <- tmp$peaklist$`promoter///H3k27ac_Peaks`
+# poised_promoters <- tmp$peaklist$promoter
+# active_enhancer  <- tmp$peaklist$`H3k27ac_Peaks///H3k4me1_Peaks`
+# poised_enhancer  <- tmp$peaklist$H3k4me1_Peaks
+# 
+# active_promoters <- as.data.frame(active_promoters, row.names = NULL, optional = FALSE)
+# active_promoters <- makeGRangesFromDataFrame(active_promoters)
+# x = GenomicDistributions::calcChromBinsRef(makeGRangesFromDataFrame(as.data.frame(active_promoters) %>% mutate(seqnames = paste0("chr", seqnames))), "hg38")
+# GenomicDistributions::plotChromBins(x)
+# 
+# poised_promoters <- as.data.frame(poised_promoters, row.names = NULL, optional = FALSE)
+# poised_promoters <- makeGRangesFromDataFrame(poised_promoters)
+# 
+# active_enhancer <- as.data.frame(active_enhancer, row.names = NULL, optional = FALSE)
+# active_enhancer <- makeGRangesFromDataFrame(active_enhancer)
+# 
+# poised_enhancer <- as.data.frame(poised_enhancer, row.names = NULL, optional = FALSE)
+# poised_enhancer <- makeGRangesFromDataFrame(poised_enhancer)
+piechart <- tibble()
+for(peak_names in names(YAP_TAZ_JUN_peaks_list)){
+  
+  #peak_names <- "Jun_Peaks"
+  
+  random_Peaks <- YAP_TAZ_JUN_peaks_list[[peak_names]]
+  random_Peaks@seqnames <- droplevels(random_Peaks@seqnames)
+  random_Peaks <- regioneR::randomizeRegions(random_Peaks,
+                                             allow.overlaps = FALSE,
+                                             genome = genome_used,
+                                             per.chromosome = TRUE,
+                                             mask = blacklist_regions)
+  random_Peaks <- as.data.frame(random_Peaks, row.names = NULL, optional = FALSE)
+  random_Peaks$seqnames <- droplevels(random_Peaks$seqnames)
+  random_Peaks <- makeGRangesFromDataFrame(random_Peaks)
+  
+  active_promoters_percent <- length(findOverlaps(random_Peaks, active_promoters))
+  poised_promoters_percent <- length(findOverlaps(random_Peaks, poised_promoters))
+  active_enhancer_percent <- length(findOverlaps(random_Peaks, active_enhancer))
+  poised_enhancer_percent <- length(findOverlaps(random_Peaks, poised_enhancer))
+
+  unchar <- length(peaks) - active_promoters_percent - poised_promoters_percent - active_enhancer_percent - poised_enhancer_percent
+
+  piechart <- rbind(piechart,
+                    
+    tibble(
+      group = c(peak_names),
+      Peaks = c("Unclassified", 
+                "Active Promoters H3K27Ac(+) H3K4me1(-)", 
+                "Inactive/Bivalient Promoters",
+                "Active Enhancers H3K27Ac(+) H3K4me1(+)", 
+                "Poised enhancers H3K27Ac(-) H3K4me1(+)"),
+      number_of_peaks = c(
+        unchar,
+        active_promoters_percent,
+        poised_promoters_percent,
+        active_enhancer_percent,
+        poised_enhancer_percent
+      )
     )
+  )
+} 
   
 
+piechart <- piechart %>% group_by(group) %>% mutate(percent = round(number_of_peaks / sum(number_of_peaks) * 100))
+  
+piechart <- piechart  %>% mutate(percent = round(number_of_peaks / sum(number_of_peaks) * 100))
+  
+p <- ggplot(piechart) +
+  aes(x = group, y = percent, fill = Peaks) +
+  geom_col() +
+  scale_fill_brewer(palette = "Accent", direction = 1) +
+  theme_minimal() +
+  geom_text(aes(label = paste0(percent, "%")),
+            position = position_stack(vjust = 0.5), size = 6
+  )
+plot(p)
+
+
+poisson.test(x = 156, r = 600, alternative = "two.sided")
+fisher.test(matrix(c( 600, 31552-600, 156, 31552-156), nrow = 2))
 
 # Checking the distribution of peaks in gene parts (promoters, 3' UTRs, etc.)
 # for (TF in names(DBobj_list)) {
