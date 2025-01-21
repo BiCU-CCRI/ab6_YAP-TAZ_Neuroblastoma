@@ -642,19 +642,24 @@ poised_enhancer  <- tmp$peaklist$H3k4me1_Peaks
 piechart <- tibble()
 for(peak_names in names(YAP_TAZ_JUN_peaks_list)){
   #peak_names <- "Jun_Peaks"
-  peaks <- YAP_TAZ_JUN_peaks_list[[peak_names]]
+  peaks <- reduce(YAP_TAZ_JUN_peaks_list[[peak_names]])
   
-  ol <- ChIPpeakAnno::findOverlapsOfPeaks(peaks, active_promoters)
-  active_promoters_percent <- length(peaks) - length(ol$peaklist$peaks)
+  # ol <- ChIPpeakAnno::findOverlapsOfPeaks(peaks, active_promoters)
+  # active_promoters_percent <- length(peaks) - length(ol$peaklist$peaks)
+  # 
+  # ol <- ChIPpeakAnno::findOverlapsOfPeaks(peaks, poised_promoters)
+  # poised_promoters_percent <- length(peaks) - length(ol$peaklist$peaks)
+  # 
+  # ol <- ChIPpeakAnno::findOverlapsOfPeaks(peaks,  active_enhancer)
+  # active_enhancer_percent <- length(peaks) - length(ol$peaklist$peaks)
+  # 
+  # ol <- ChIPpeakAnno::findOverlapsOfPeaks(peaks, poised_enhancer)
+  # poised_enhancer_percent <- length(peaks) - length(ol$peaklist$peaks)
   
-  ol <- ChIPpeakAnno::findOverlapsOfPeaks(peaks, poised_promoters)
-  poised_promoters_percent <- length(peaks) - length(ol$peaklist$peaks)
-  
-  ol <- ChIPpeakAnno::findOverlapsOfPeaks(peaks,  active_enhancer)
-  active_enhancer_percent <- length(peaks) - length(ol$peaklist$peaks)
-  
-  ol <- ChIPpeakAnno::findOverlapsOfPeaks(peaks, poised_enhancer)
-  poised_enhancer_percent <- length(peaks) - length(ol$peaklist$peaks)
+  active_promoters_percent <- length(findOverlaps(peaks, active_promoters))
+  poised_promoters_percent <- length(findOverlaps(peaks, poised_promoters))
+  active_enhancer_percent <- length(findOverlaps(peaks, active_enhancer))
+  poised_enhancer_percent <- length(findOverlaps(peaks, poised_enhancer))
   
   unchar <- length(peaks) - active_promoters_percent - poised_promoters_percent - active_enhancer_percent - poised_enhancer_percent
   
@@ -738,12 +743,13 @@ GenomicDistributions::plotChromBins(x)
 # 
 # poised_enhancer <- as.data.frame(poised_enhancer, row.names = NULL, optional = FALSE)
 # poised_enhancer <- makeGRangesFromDataFrame(poised_enhancer)
-piechart <- tibble()
+piechart_randomised <- tibble()
 for(peak_names in names(YAP_TAZ_JUN_peaks_list)){
   
   #peak_names <- "Jun_Peaks"
   
-  random_Peaks <- YAP_TAZ_JUN_peaks_list[[peak_names]]
+  initial_peak_set <- reduce(YAP_TAZ_JUN_peaks_list[[peak_names]])
+  random_Peaks <- initial_peak_set
   random_Peaks@seqnames <- droplevels(random_Peaks@seqnames)
   random_Peaks <- regioneR::randomizeRegions(random_Peaks,
                                              allow.overlaps = FALSE,
@@ -759,9 +765,13 @@ for(peak_names in names(YAP_TAZ_JUN_peaks_list)){
   active_enhancer_percent <- length(findOverlaps(random_Peaks, active_enhancer))
   poised_enhancer_percent <- length(findOverlaps(random_Peaks, poised_enhancer))
 
-  unchar <- length(peaks) - active_promoters_percent - poised_promoters_percent - active_enhancer_percent - poised_enhancer_percent
+  unchar <- length(initial_peak_set) - 
+    active_promoters_percent - 
+    poised_promoters_percent - 
+    active_enhancer_percent - 
+    poised_enhancer_percent
 
-  piechart <- rbind(piechart,
+  piechart_randomised <- rbind(piechart_randomised,
                     
     tibble(
       group = c(peak_names),
@@ -782,11 +792,11 @@ for(peak_names in names(YAP_TAZ_JUN_peaks_list)){
 } 
   
 
-piechart <- piechart %>% group_by(group) %>% mutate(percent = round(number_of_peaks / sum(number_of_peaks) * 100))
+piechart_randomised <- piechart_randomised %>% group_by(group) %>% mutate(percent = round(number_of_peaks / sum(number_of_peaks) * 100))
   
-piechart <- piechart  %>% mutate(percent = round(number_of_peaks / sum(number_of_peaks) * 100))
+piechart_randomised <- piechart_randomised  %>% mutate(percent = round(number_of_peaks / sum(number_of_peaks) * 100))
   
-p <- ggplot(piechart) +
+p <- ggplot(piechart_randomised) +
   aes(x = group, y = percent, fill = Peaks) +
   geom_col() +
   scale_fill_brewer(palette = "Accent", direction = 1) +
@@ -797,8 +807,60 @@ p <- ggplot(piechart) +
 plot(p)
 
 
-poisson.test(x = 156, r = 600, alternative = "two.sided")
-fisher.test(matrix(c( 600, 31552-600, 156, 31552-156), nrow = 2))
+# Check that namings are the same:
+piechart_randomised$Peaks == piechart$Peaks
+
+# Do fisher exact test for observed/expected peaks
+fisher_result_df <- tibble()
+
+for(peak_group_name in unique(piechart_randomised$group)){
+  total_number_of_peaks <- length(reduce(YAP_TAZ_JUN_peaks_list[[peak_group_name]]))
+  
+  for(feature_group_name in unique(piechart_randomised$Peaks)){
+    peak_subset_number <- piechart %>% 
+      dplyr::filter(group == peak_group_name & Peaks == feature_group_name) %>%
+      pull(number_of_peaks)
+    randomized_peak_subset_number <- piechart_randomised %>% 
+      dplyr::filter(group == peak_group_name & Peaks == feature_group_name) %>%
+      pull(number_of_peaks)
+  
+    fisher_matrix <- matrix(c(peak_subset_number, total_number_of_peaks - peak_subset_number,
+                              randomized_peak_subset_number, total_number_of_peaks - randomized_peak_subset_number),
+                            nrow = 2)
+    tmp <- fisher.test(fisher_matrix)
+    
+    fisher_result_df <- rbind(fisher_result_df,
+                              tibble(group = peak_group_name,
+                                     Peaks = feature_group_name,
+                                     odds_ratio = tmp$estimate,
+                                     p_value = tmp$p.value))
+   
+    }
+}
+
+fisher_result_df$odds_ratio_log <- log10(fisher_result_df$odds_ratio)
+fisher_result_df$p_value_mod <- fisher_result_df$p_value
+fisher_result_df$p_value_mod[fisher_result_df$p_value_mod < 1e-10] <- 1e-10
+fisher_result_df$p_value_log <- -log10(fisher_result_df$p_value_mod)
+
+# Plot
+ggplot(fisher_result_df, aes(x = Peaks, y = odds_ratio_log, group = group)) +
+  geom_segment(aes(xend = Peaks, y = 0, yend = odds_ratio_log), color = "gray") +
+  geom_point(aes(size = p_value_log), color = "blue") +
+  facet_wrap(~group, scales = "free_x") +
+  labs(
+    title = "Lollipop Plot",
+    x = "Peaks",
+    y = "-log10(Odds)",
+    size = "-log10(P-value)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+
+
 
 # Checking the distribution of peaks in gene parts (promoters, 3' UTRs, etc.)
 # for (TF in names(DBobj_list)) {
