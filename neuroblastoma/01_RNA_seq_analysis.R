@@ -30,7 +30,9 @@ gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2
 gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP", clean = TRUE)
 gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean = TRUE)
 gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean = TRUE)
-
+gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
+gs_wang_hippo <- list(wang_hippo_set = c("CYR61", "CTGF", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
+                                      "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
 # loading BioMart
 mart <- biomaRt::useMart(
   biomart = "ENSEMBL_MART_ENSEMBL", 
@@ -205,15 +207,32 @@ C2_reactome <- hypeR::hypeR(
   test = "hypergeometric",
   background = nrow(rnaseq_dds_filt)
 )
+C6_onco <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_C6_onco,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+wang_hippo <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_wang_hippo,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+
 
 C5_GOBP_plot <- hypeR::hyp_dots(C5_GOBP, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOBP: MES vs ADR") + theme_bw()
 C5_GOCC_plot <- hypeR::hyp_dots(C5_GOCC, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOCC: MES vs ADR") + theme_bw()
 C5_GOMF_plot <- hypeR::hyp_dots(C5_GOMF, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOMF: MES vs ADR") + theme_bw()
 C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "KEGG: MES vs ADR") + theme_bw()
 C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "REACTOME: MES vs ADR") + theme_bw()
+C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "ONCO: MES vs ADR") + theme_bw()
+wa
 
 # optional saving to excel tables
-# hypeR::hyp_to_excel(C5_GOBP, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOBP.xlsx"))
+hypeR::hyp_to_excel(C5_GOBP, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOBP.xlsx"))
+hypeR::hyp_to_excel(C2_reactome, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C2_reactome.xlsx"))
+hypeR::hyp_to_excel(C6_onco, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C6_onco.xlsx"))
 # hypeR::hyp_to_excel(C5_GOCC, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOCC.xlsx"))
 # hypeR::hyp_to_excel(C5_GOMF, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOMF.xlsx"))
 
@@ -313,6 +332,39 @@ for (gene_set_name in names(gene_set_list)) {
   print(p)
 }
 dev.off()
+
+# Additional separate fsGSEAs for hippos
+gene_set_list <- list(
+  GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = c("CYR61", "CTGF", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
+                "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80")
+)
+
+fgseaRes <- fgsea(
+  pathways = gene_set_list,
+  stats = de_genes_ranked,
+  minSize = 15,
+  maxSize = 500
+)
+
+pdf(file = file.path(deg_dir, "MES_vs_ADR_fGSEA_hippos.pdf"), width = 10, height = 8)
+for(gene_set_to_plot_name in names(gene_set_list)){
+ # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
+  gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
+  
+  title_values <- fgseaRes %>% filter(pathway == gene_set_to_plot_name) %>% select(pathway, NES, padj)
+  p <- plotEnrichment(pathway = gene_set_to_plot, stats = de_genes_ranked) + 
+    labs(title = paste(title_values$pathway,
+                       "NES =", title_values$NES,
+                       "padj = ", title_values$padj))
+  plot(p)
+}
+dev.off()
+
+
+
 
 
 # Create a volcano plot
