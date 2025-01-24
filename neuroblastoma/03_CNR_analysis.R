@@ -284,6 +284,101 @@ for(TF_name in names(DBobj_list)){
   }
 }
 
+# Addition for a reviewer - combining YAP/TAZ and YAP/TAZ/Jun
+
+YAP_p_MES_up <- as.data.frame(dba.report(DBobj_list[["YAP"]], contrast = 2)) %>%
+  dplyr::filter(Fold > 0) %>%
+  dplyr::select(seqnames, start, end)
+TAZ_p_MES_up <- as.data.frame(dba.report(DBobj_list[["TAZ"]], contrast = 2)) %>%
+  dplyr::filter(Fold > 0) %>%
+  dplyr::select(seqnames, start, end)
+JUN_p_MES_up <- as.data.frame(dba.report(DBobj_list[["Jun"]], contrast = 2)) %>%
+  dplyr::filter(Fold > 0) %>%
+  dplyr::select(seqnames, start, end)
+
+ol <- ChIPpeakAnno::findOverlapsOfPeaks(GRanges(YAP_p_MES_up), GRanges(TAZ_p_MES_up))
+YAP_TAZ_MES_p_up <- ol$mergedPeaks
+ol <- ChIPpeakAnno::findOverlapsOfPeaks(YAP_TAZ_MES_p_up, GRanges(JUN_p_MES_up))
+YAP_TAZ_JUN_MES_p_up <- ol$mergedPeaks
+# process up-regulated peaks
+# remove scaffolds - their name is longer than 2 charcaters
+YAP_TAZ_MES_p_up <- as.data.frame(YAP_TAZ_MES_p_up) %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
+YAP_TAZ_MES_p_up$seqnames <- droplevels(YAP_TAZ_MES_p_up$seqnames)
+YAP_TAZ_MES_p_up <- YAP_TAZ_MES_p_up %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
+colnames(YAP_TAZ_MES_p_up)[1] <- "chrom"
+
+YAP_TAZ_JUN_MES_p_up <- as.data.frame(YAP_TAZ_JUN_MES_p_up) %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
+YAP_TAZ_JUN_MES_p_up$seqnames <- droplevels(YAP_TAZ_JUN_MES_p_up$seqnames)
+YAP_TAZ_JUN_MES_p_up <- YAP_TAZ_JUN_MES_p_up %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
+colnames(YAP_TAZ_JUN_MES_p_up)[1] <- "chrom"
+#plot_dist_to_tss(peaks = p_MES_up, genome = "hg38")
+
+chipEnrichAndExport(peaks = YAP_TAZ_MES_p_up,
+                    peaksName = "MES", 
+                    TF_name = "yap-taz", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_up,
+                    peaksName = "MES", 
+                    TF_name = "yap-taz-jun", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+YAP_p_MES_down <- as.data.frame(dba.report(DBobj_list[["YAP"]], contrast = 2)) %>%
+  dplyr::filter(Fold < 0) %>%
+  dplyr::select(seqnames, start, end)
+TAZ_p_MES_down <- as.data.frame(dba.report(DBobj_list[["TAZ"]], contrast = 2)) %>%
+  dplyr::filter(Fold < 0) %>%
+  dplyr::select(seqnames, start, end)
+JUN_p_MES_down <- as.data.frame(dba.report(DBobj_list[["Jun"]], contrast = 2)) %>%
+  dplyr::filter(Fold < 0) %>%
+  dplyr::select(seqnames, start, end)
+
+# YAP down is absent - 0 peaks, so we use just TAZ peaks
+YAP_TAZ_MES_p_down <- GRanges(TAZ_p_MES_down)
+ol <- ChIPpeakAnno::findOverlapsOfPeaks(YAP_TAZ_MES_p_down, GRanges(JUN_p_MES_down))
+YAP_TAZ_JUN_MES_p_down <- ol$mergedPeaks
+# process up-regulated peaks
+# remove scaffolds - their name is longer than 2 charcaters
+YAP_TAZ_MES_p_down <- as.data.frame(YAP_TAZ_MES_p_down) %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
+YAP_TAZ_MES_p_down$seqnames <- droplevels(YAP_TAZ_MES_p_down$seqnames)
+YAP_TAZ_MES_p_down <- YAP_TAZ_MES_p_down %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
+colnames(YAP_TAZ_MES_p_down)[1] <- "chrom"
+
+YAP_TAZ_JUN_MES_p_down <- as.data.frame(YAP_TAZ_JUN_MES_p_down) %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
+YAP_TAZ_JUN_MES_p_down$seqnames <- droplevels(YAP_TAZ_JUN_MES_p_down$seqnames)
+YAP_TAZ_JUN_MES_p_down <- YAP_TAZ_JUN_MES_p_down %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
+colnames(YAP_TAZ_JUN_MES_p_down)[1] <- "chrom"
+#plot_dist_to_tss(peaks = p_MES_up, genome = "hg38")
+
+
+chipEnrichAndExport(peaks = YAP_TAZ_MES_p_down,
+                    peaksName = "ADRN", 
+                    TF_name = "yap-taz", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_down,
+                    peaksName = "ADRN", 
+                    TF_name = "yap-taz-jun", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+  
+
+
 # alternative enrichment analysis
 ####### test how to visualize #########
 enrich_results_files <- unlist(list.files(path = res_dir, pattern = "^Enricher_.*.xlsx", full.names = TRUE))
@@ -300,7 +395,7 @@ summary_table <- data.frame(Protein = NULL,
                             Odds_ratio = NULL)
 
 #pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP)_(Our_data|Groen).*(ADRN|MES).*"
-pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP)_(Our_data|Groen).*(ADRN|MES).*"
+pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP|yap-taz|yap-taz-jun)_(Our_data|Groen).*(ADRN|MES).*"
 
 for (file_name in enrich_results_files){
   tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)

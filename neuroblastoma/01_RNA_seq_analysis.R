@@ -31,8 +31,11 @@ gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), 
 gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean = TRUE)
 gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean = TRUE)
 gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
-gs_wang_hippo <- list(wang_hippo_set = c("CYR61", "CTGF", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
-                                      "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
+gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
+                                         "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
+
+
+
 # loading BioMart
 mart <- biomaRt::useMart(
   biomart = "ENSEMBL_MART_ENSEMBL", 
@@ -227,7 +230,7 @@ C5_GOMF_plot <- hypeR::hyp_dots(C5_GOMF, merge = TRUE, fdr = 0.05, top = 20, abr
 C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "KEGG: MES vs ADR") + theme_bw()
 C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "REACTOME: MES vs ADR") + theme_bw()
 C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "ONCO: MES vs ADR") + theme_bw()
-wa
+
 
 # optional saving to excel tables
 hypeR::hyp_to_excel(C5_GOBP, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOBP.xlsx"))
@@ -272,7 +275,6 @@ ggsave(
 )
 
 # Run FastGSEA for GOBP, GOCC, GOMF, KEGG, reactome terms
-
 # Rank genes based on L2FC
 de_genes_ranked <- deg_results$results_all
 de_genes_ranked <- de_genes_ranked %>% arrange(desc(log2FoldChange))
@@ -338,8 +340,7 @@ gene_set_list <- list(
   GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
   REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
   C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
-  Hippo_Wang = c("CYR61", "CTGF", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
-                "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80")
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set
 )
 
 fgseaRes <- fgsea(
