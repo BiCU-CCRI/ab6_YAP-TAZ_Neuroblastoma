@@ -204,7 +204,7 @@ heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in%
                                                   ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_MES"],]
 heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% 
                                                    ATAC_signif$peak_id[ATAC_signif$gene_category_our_RNAseq == "g_ADRN"],]
-  
+
 annotation_col <- metadata_heatmap %>%
   dplyr::select(cell_line, phenotype) %>% 
   dplyr::arrange(phenotype, cell_line)
@@ -213,7 +213,7 @@ heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(
                                                                        colnames(heatmap_counts_MES_spec_genes))]
 heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), 
                                                                          colnames(heatmap_counts_ADRN_spec_genes))]
-  
+
 ensembl2symbol_annot <- ATAC_dds_results$results_all %>%
   dplyr::select(peak_id, gencode_gene_name)
 
@@ -243,8 +243,8 @@ clustered_peaks <- cutree(gene_hclust, k = 2)
 df_clustered_peaks <- data_frame(names(clustered_peaks), clustered_peaks)
 colnames(df_clustered_peaks) <- c("peak_id", "cluster")
 df_clustered_peaks <- merge(x = ATAC_dds_results$results_signif, 
-      y = df_clustered_peaks,
-      by = "peak_id")
+                            y = df_clustered_peaks,
+                            by = "peak_id")
 df_clustered_peaks <- df_clustered_peaks %>% dplyr::select(gencode_chr, gencode_start, gencode_end, peak_id, cluster)
 write.table(
   df_clustered_peaks %>% 
@@ -722,39 +722,39 @@ ADR_genes <- ATAC_dds_results$results_signif %>% dplyr::filter(log2FoldChange < 
 
 
 C5_GOBP_MES <- hypeR::hypeR(signature = MES_genes, 
-                        genesets = gs_C5_GOBP, 
-                        test = "hypergeometric", 
-                        background = nrow(ATAC_dds))
+                            genesets = gs_C5_GOBP, 
+                            test = "hypergeometric", 
+                            background = nrow(ATAC_dds))
 C5_GOBP_ADR <- hypeR::hypeR(signature = ADR_genes, 
-                        genesets = gs_C5_GOBP, 
-                        test = "hypergeometric", 
-                        background = nrow(ATAC_dds))
+                            genesets = gs_C5_GOBP, 
+                            test = "hypergeometric", 
+                            background = nrow(ATAC_dds))
 C5_GOBP_plot_MES <- hypeR::hyp_dots(C5_GOBP_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="GOBP: MES") +theme_bw()
 C5_GOBP_plot_ADR <- hypeR::hyp_dots(C5_GOBP_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="GOBP: ADR") +theme_bw()
 C5_GOBP_plot_MES
 C5_GOBP_plot_ADR
 
 C2_kegg_MES <- hypeR::hypeR(signature = MES_genes, 
-                        genesets = gs_C2_kegg, 
-                        test="hypergeometric", 
-                        background=nrow(ATAC_dds))
+                            genesets = gs_C2_kegg, 
+                            test="hypergeometric", 
+                            background=nrow(ATAC_dds))
 C2_kegg_ADR <- hypeR::hypeR(signature = ADR_genes, 
-                        genesets = gs_C2_kegg, 
-                        test="hypergeometric", 
-                        background=nrow(ATAC_dds))
+                            genesets = gs_C2_kegg, 
+                            test="hypergeometric", 
+                            background=nrow(ATAC_dds))
 C2_kegg_plot_MES <- hypeR::hyp_dots(C2_kegg_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Kegg: MES") +theme_bw()
 C2_kegg_plot_ADR <- hypeR::hyp_dots(C2_kegg_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Kegg: ADR") +theme_bw()
 C2_kegg_plot_MES
 C2_kegg_plot_ADR
 
 C2_reactome_MES <- hypeR::hypeR(signature = MES_genes, 
-                        genesets = gs_C2_reactome, 
-                        test="hypergeometric", 
-                        background=nrow(ATAC_dds))
+                                genesets = gs_C2_reactome, 
+                                test="hypergeometric", 
+                                background=nrow(ATAC_dds))
 C2_reactome_ADR <- hypeR::hypeR(signature = ADR_genes, 
-                        genesets = gs_C2_reactome, 
-                        test="hypergeometric", 
-                        background=nrow(ATAC_dds))
+                                genesets = gs_C2_reactome, 
+                                test="hypergeometric", 
+                                background=nrow(ATAC_dds))
 C2_reactome_plot_MES <- hypeR::hyp_dots(C2_reactome_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: MES") +theme_bw()
 C2_reactome_plot_ADR <- hypeR::hyp_dots(C2_reactome_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: ADR") +theme_bw()
 C2_reactome_plot_MES
@@ -773,5 +773,212 @@ dev.off()
 
 
 
+# analysis for review 
+# Checking if adjacent TEAD and AP1 binding motifs enriched in MES ATAC peaks
+# take ATAC MES and ADR -specific peaks and check for TEAD and AP1 enrichments in both
+ATAC_dds <- ATAC_dds_full
+ATAC_signif
+MES_specific_peaks <- ATAC_signif %>% dplyr::filter(log2FoldChange > 0) %>% dplyr::pull(peak_id)
+ADR_specific_peaks <- ATAC_signif %>% dplyr::filter(log2FoldChange < 0) %>% dplyr::pull(peak_id)
+
+opts <- list()
+opts[["tax_group"]] <- "vertebrates"
+opts[["species"]] <- "9606"
+opts[["collection"]] <- "CORE"
+opts[["all_versions"]] <- FALSE
+motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
+TEAD_AP1_motifsToScan_names <- c("MA0090.3", "MA0808.1", "MA0809.2", "MA1121.1",
+                                 "MA0099.3")
+TEAD_AP1_motifsToScan <- motifsToScan[TEAD_AP1_motifsToScan_names,]
+# Using different subsets of peaks to check 
+
+# here we check if there are any peaks that have less than 5 reads across all samples.
+
+counts_consensus_filt <- ATAC_dds[rowSums(assay(ATAC_dds)) > 5, ]
+counts_consensus_filt_MES <- ATAC_dds[ATAC_dds@rowRanges@elementMetadata@listData[["peak_id"]] %in% MES_specific_peaks, ]
+counts_consensus_filt_ADR <- ATAC_dds[ATAC_dds@rowRanges@elementMetadata@listData[["peak_id"]] %in% ADR_specific_peaks, ]
+
+
+print(paste("procesing: ", sbst ))
+
+# ChromVar package uses GC content to identify background peaks that are likely to be non-functional and exclude them from further analysis. 
+# This is because GC-rich regions tend to have higher nucleosome occupancy and lower DNase I hypersensitivity, 
+# which are indicators of closed chromatin and reduced accessibility to transcription factors.
+# By identifying and removing background peaks that are likely to be non-functional, 
+# ChromVar is able to focus on the regulatory regions that are most likely to be involved in transcriptional regulation. 
+# This increases the sensitivity and specificity of the analysis and helps to avoid false positive results.
+# Therefore, GC content is an important parameter to consider when working with the ChromVar package.
+counts_consensus_filt_MES <- chromVAR::addGCBias(counts_consensus_filt_MES, genome = BSgenome.Hsapiens.UCSC.hg38) 
+counts_consensus_filt_ADR <- chromVAR::addGCBias(counts_consensus_filt_ADR, genome = BSgenome.Hsapiens.UCSC.hg38) 
+
+# Having corrected for bias, we can use the matchMotifs function to identify motifs under our ATACseq peaks.
+# Here we supply our RangedSummarizedExperiment of counts in peaks and the genome of interest to the matchMotifs function and use the default out of matches.
+
+motif_matches_MES <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                          subject = counts_consensus_filt_MES, 
+                                          genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                          out = "positions")
+MES_TEAD <- c(motif_matches_MES$MA0090.3, motif_matches_MES$MA0808.1, motif_matches_MES$MA0809.2, motif_matches_MES$MA1121.1)
+MES_TEAD <- reduce(MES_TEAD)
+MES_AP1 <- reduce(motif_matches_MES$MA0099.3)
+MES_AP1_TEAD_overlaps <- findOverlaps(MES_AP1, MES_TEAD, ignore.strand = TRUE, maxgap = 50)
+
+
+motif_matches_ADR <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                          subject = counts_consensus_filt_ADR, 
+                                          genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                          out = "positions")
+ADR_TEAD <- c(motif_matches_ADR$MA0090.3, motif_matches_ADR$MA0808.1, motif_matches_ADR$MA0809.2, motif_matches_ADR$MA1121.1)
+ADR_TEAD <- reduce(ADR_TEAD)
+ADR_AP1 <- reduce(motif_matches_ADR$MA0099.3)
+ADR_AP1_TEAD_overlaps <- findOverlaps(ADR_AP1, ADR_TEAD, ignore.strand = TRUE, maxgap = 50)
+
+
+contingency_table <- matrix(c(length(MES_AP1_TEAD_overlaps), length(MES_TEAD) + length(MES_AP1) - length(MES_AP1_TEAD_overlaps), 
+                              length(ADR_AP1_TEAD_overlaps), length(ADR_TEAD) + length(ADR_AP1) - length(ADR_AP1_TEAD_overlaps)
+                              ), nrow=2, byrow=TRUE)
+fisher.test(contingency_table, alternative="two.sided")
+chisq.test(contingency_table)
+
+# fister test for TEAD peaks
+contingency_table_TEAD <- matrix(c(length(MES_TEAD), length(counts_consensus_filt_MES) - length(MES_TEAD),
+                                   length(ADR_TEAD), length(counts_consensus_filt_ADR) - length(ADR_TEAD)
+                                   ), nrow=2, byrow=TRUE)
+row.names(contingency_table_TEAD) <- c("MES_peaks", "ADR_peaks")
+colnames(contingency_table_TEAD) <- c("TEAD_site_present", "TEAD_site_absent")
+contingency_table_TEAD
+fisher.test(contingency_table_TEAD, alternative="two.sided")
+chisq.test(contingency_table_TEAD)
+
+# fister test for AP1 peaks
+contingency_table_AP1 <- matrix(c(length(MES_AP1), length(counts_consensus_filt_MES) - length(MES_AP1),
+                                   length(ADR_AP1), length(counts_consensus_filt_ADR) - length(ADR_AP1)
+), nrow=2, byrow=TRUE)
+row.names(contingency_table_AP1) <- c("MES_peaks", "ADR_peaks")
+colnames(contingency_table_AP1) <- c("AP1_site_present", "AP1_site_absent")
+contingency_table_AP1
+fisher.test(contingency_table_AP1, alternative="two.sided")
+chisq.test(contingency_table_AP1)
+
+
+
+import::from(
+  .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+  "chipEnrichAndExport"
+)
+locusdef <-  "5kb"
+our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+res_dir <- "/home/rstudio/workspace/neuroblastoma/results/ATAC-seq/"
+
+
+
+
+ADR_AP1_TEAD_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ADR_AP1, ADR_TEAD, maxgap = 50)
+ADR_AP1_TEAD_overlaps <- ADR_AP1_TEAD_overlaps$peaksInMergedPeaks
+ADR_AP1_TEAD_overlaps <- as.data.frame(ADR_AP1_TEAD_overlaps)
+results <- chipenrich::chipenrich(peaks = ADR_AP1_TEAD_overlaps, genome = "hg38", genesets = our_rna_seq_terms, 
+                      locusdef = locusdef, qc_plots = TRUE, out_name = NULL, 
+                      n_cores = 1, max_geneset_size = 5000)
+chipEnrichAndExport(peaks = ADR_AP1_TEAD_overlaps,
+                    peaksName = "ADR", 
+                    TF_name = "ADR_AP1_TEAD", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+
+MES_AP1_TEAD_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(MES_AP1, MES_TEAD, maxgap = 50)
+MES_AP1_TEAD_overlaps <- MES_AP1_TEAD_overlaps$peaksInMergedPeaks
+MES_AP1_TEAD_overlaps <- as.data.frame(MES_AP1_TEAD_overlaps)
+results <- chipenrich::chipenrich(peaks = MES_AP1_TEAD_overlaps, genome = "hg38", genesets = our_rna_seq_terms, 
+                                  locusdef = locusdef, qc_plots = TRUE, out_name = NULL, 
+                                  n_cores = 1, max_geneset_size = 5000)
+chipEnrichAndExport(peaks = MES_AP1_TEAD_overlaps,
+                    peaksName = "MES", 
+                    TF_name = "MES_AP1_TEAD", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+enrich_results_files <- unlist(list.files(path = res_dir, pattern = "^Enricher_.*.xlsx", full.names = TRUE))
+summary_table <- data.frame(Protein = NULL,
+                            Data_source = NULL,
+                            Selected_peaks = NULL,
+                            Description = NULL,
+                            P.value = NULL,
+                            FDR = NULL,
+                            Effect = NULL,
+                            Status = NULL,
+                            Gene_set_size = NULL,
+                            Peaks_in_set = NULL,
+                            Odds_ratio = NULL)
+
+#pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP)_(Our_data|Groen).*(ADRN|MES).*"
+pattern <-  ".*(ADR_AP1_TEAD|MES_AP1_TEAD)_(Our_data|Groen).*(ADR|MES).*"
+
+for (file_name in enrich_results_files){
+  tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)
+  
+  basename_tmp <- basename(file_name)
+  basename_tmp <- str_extract(basename_tmp, 
+                              pattern, 
+                              group = c(1,2,3))
+  
+  summary_table_tmp <- data.frame(Protein = basename_tmp[1],
+                                  Data_source = basename_tmp[2],
+                                  Selected_peaks = basename_tmp[3],
+                                  Description = tmp$Description,
+                                  P.value = tmp$P.value,
+                                  FDR = tmp$FDR,
+                                  Effect = tmp$Effect,
+                                  Status = tmp$Status,
+                                  Gene_set_size = tmp$N.Geneset.Genes,
+                                  Peaks_in_set = tmp$N.Geneset.Peak.Genes,
+                                  Odds_ratio = tmp$Odds.Ratio)
+  
+  summary_table <- rbind(summary_table,
+                         summary_table_tmp)
+  
+}
+
+# Make a plot for MES data
+summary_table_MES <- summary_table %>% filter(Data_source == "Our_data", Description == "MES")
+custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
+custom_breaks <- c(seq(0, 1, length.out = 2), seq(1, 60, length.out = 256))
+# making lolipop plot with enrichments
+summary_table_MES %>%
+  ggplot() +
+  geom_bar(position = position_dodge(0.5), 
+           width = 0.1, 
+           aes(y = Protein, 
+               fill = Selected_peaks, 
+               weight = Effect)) +
+  scale_fill_manual(values =  c("navy", "firebrick3")) +
+  ggnewscale::new_scale_fill() +
+  geom_point(aes(y = Protein, 
+                 x = Effect, 
+                 color = Selected_peaks,
+                 size = Peaks_in_set/Gene_set_size*100,
+                 fill = -log10(FDR)
+                 ), 
+             shape = "circle filled",
+             position = position_dodge2(0.5)
+             ) +
+  scale_color_manual(values =  c("navy", "firebrick3")) +
+  scale_fill_gradientn(colors = custom_colors, 
+                       values = scales::rescale(custom_breaks),
+                       limits = c(0, 70)) +
+#  scale_fill_viridis(option="viridis")+
+  theme_minimal() +
+  labs(color = "TEAD & AP1 colocolized binding sites in:", 
+       fill = "-log10(FDR)\n red - non significant (FDR < 0.05)",
+       size =  "Percentage of genes in set\n overlaping with gene-set collection ",
+       y = "Samples",
+       x = "Enrichment Effect",
+       title = "Enrichment of MES-signature in\n collocalized TEAD & AP1 predicted BS in MES and ADR samples")
 
 
