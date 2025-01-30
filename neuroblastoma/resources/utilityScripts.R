@@ -499,7 +499,8 @@ gseaplot3 <- function (x, geneSetID, title = "", color = "green", base_size = 11
 
 
 chipEnrichAndExport <- function(peaks, peaksName, locusdef, res_dir, TF_name, genesets, genesets_name ) {
-  
+  require(chipenrich) 
+  require(openxlsx)
   results <- chipenrich(
     peaks = peaks,
     genome = "hg38",
