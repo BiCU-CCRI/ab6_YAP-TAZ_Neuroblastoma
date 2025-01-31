@@ -790,16 +790,51 @@ motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
 TEAD_AP1_motifsToScan_names <- c("MA0090.3", "MA0808.1", "MA0809.2", "MA1121.1",
                                  "MA0099.3")
 TEAD_AP1_motifsToScan <- motifsToScan[TEAD_AP1_motifsToScan_names,]
+
 # Using different subsets of peaks to check 
-
-# here we check if there are any peaks that have less than 5 reads across all samples.
-
-counts_consensus_filt <- ATAC_dds[rowSums(assay(ATAC_dds)) > 5, ]
 counts_consensus_filt_MES <- ATAC_dds[ATAC_dds@rowRanges@elementMetadata@listData[["peak_id"]] %in% MES_specific_peaks, ]
 counts_consensus_filt_ADR <- ATAC_dds[ATAC_dds@rowRanges@elementMetadata@listData[["peak_id"]] %in% ADR_specific_peaks, ]
 
+# Create a set of random peaks for ADR and MES
+# Load genome
+genome_used <- getBSgenome("BSgenome.Hsapiens.UCSC.hg38")
+seqnames(genome_used) <- sub("^.{1,2}_", "", seqnames(genome_used))
+seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
+seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
+# load mask regions 
+blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
+                                              seqnames.field = "V1", 
+                                              start.field = "V2", 
+                                              end.field = "V3")
 
-print(paste("procesing: ", sbst ))
+# Create set of random Peaks for MES 
+initial_peak_set <- reduce(counts_consensus_filt_MES@rowRanges)
+random_peaks_MES <- initial_peak_set
+random_peaks_MES@seqnames <- droplevels(random_peaks_MES@seqnames)
+random_peaks_MES <- regioneR::randomizeRegions(random_peaks_MES,
+                                           allow.overlaps = FALSE,
+                                           genome = genome_used,
+                                           per.chromosome = TRUE,
+                                           mask = blacklist_regions)
+random_peaks_MES <- as.data.frame(random_peaks_MES, row.names = NULL, optional = FALSE)
+random_peaks_MES$seqnames <- droplevels(random_peaks_MES$seqnames)
+random_peaks_MES <- makeGRangesFromDataFrame(random_peaks_MES)
+
+# Create set of random Peaks for ADR 
+initial_peak_set <- reduce(counts_consensus_filt_ADR@rowRanges)
+random_peaks_ADR <- initial_peak_set
+random_peaks_ADR@seqnames <- droplevels(random_peaks_ADR@seqnames)
+random_peaks_ADR <- regioneR::randomizeRegions(random_peaks_ADR,
+                                           allow.overlaps = FALSE,
+                                           genome = genome_used,
+                                           per.chromosome = TRUE,
+                                           mask = blacklist_regions)
+random_peaks_ADR <- as.data.frame(random_peaks_ADR, row.names = NULL, optional = FALSE)
+random_peaks_ADR$seqnames <- droplevels(random_peaks_ADR$seqnames)
+random_peaks_ADR <- makeGRangesFromDataFrame(random_peaks_ADR)
+
+
 
 # ChromVar package uses GC content to identify background peaks that are likely to be non-functional and exclude them from further analysis. 
 # This is because GC-rich regions tend to have higher nucleosome occupancy and lower DNase I hypersensitivity, 
@@ -811,9 +846,12 @@ print(paste("procesing: ", sbst ))
 counts_consensus_filt_MES <- chromVAR::addGCBias(counts_consensus_filt_MES, genome = BSgenome.Hsapiens.UCSC.hg38) 
 counts_consensus_filt_ADR <- chromVAR::addGCBias(counts_consensus_filt_ADR, genome = BSgenome.Hsapiens.UCSC.hg38) 
 
+# For random peaks we don't do GC correction
+
 # Having corrected for bias, we can use the matchMotifs function to identify motifs under our ATACseq peaks.
 # Here we supply our RangedSummarizedExperiment of counts in peaks and the genome of interest to the matchMotifs function and use the default out of matches.
 
+# find TEAD and AP1 motifs in real MES data
 motif_matches_MES <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
                                           subject = counts_consensus_filt_MES, 
                                           genome = BSgenome.Hsapiens.UCSC.hg38, 
@@ -823,7 +861,17 @@ MES_TEAD <- reduce(MES_TEAD)
 MES_AP1 <- reduce(motif_matches_MES$MA0099.3)
 MES_AP1_TEAD_overlaps <- findOverlaps(MES_AP1, MES_TEAD, ignore.strand = TRUE, maxgap = 50)
 
+# find TEAD and AP1 motifs in simulated MES data
+motif_matches_MES_random <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                              subject = random_peaks_MES, 
+                                              genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                              out = "positions")
+MES_random_TEAD <- c(motif_matches_MES_random$MA0090.3, motif_matches_MES_random$MA0808.1, motif_matches_MES_random$MA0809.2, motif_matches_MES_random$MA1121.1)
+MES_random_TEAD <- reduce(MES_random_TEAD)
+MES_random_AP1 <- reduce(motif_matches_MES_random$MA0099.3)
+MES_random_AP1_TEAD_overlaps <- findOverlaps(MES_random_AP1, MES_random_TEAD, ignore.strand = TRUE, maxgap = 50)
 
+# find TEAD and AP1 motifs in real ADR data
 motif_matches_ADR <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
                                           subject = counts_consensus_filt_ADR, 
                                           genome = BSgenome.Hsapiens.UCSC.hg38, 
@@ -833,14 +881,63 @@ ADR_TEAD <- reduce(ADR_TEAD)
 ADR_AP1 <- reduce(motif_matches_ADR$MA0099.3)
 ADR_AP1_TEAD_overlaps <- findOverlaps(ADR_AP1, ADR_TEAD, ignore.strand = TRUE, maxgap = 50)
 
+# find TEAD and AP1 motifs in simulated ADR data
+motif_matches_ADR_random <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                              subject = random_peaks_ADR, 
+                                              genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                              out = "positions")
+ADR_random_TEAD <- c(motif_matches_ADR_random$MA0090.3, motif_matches_ADR_random$MA0808.1, motif_matches_ADR_random$MA0809.2, motif_matches_ADR_random$MA1121.1)
+ADR_random_TEAD <- reduce(ADR_random_TEAD)
+ADR_random_AP1 <- reduce(motif_matches_ADR_random$MA0099.3)
+ADR_random_AP1_TEAD_overlaps <- findOverlaps(ADR_random_AP1, ADR_random_TEAD, ignore.strand = TRUE, maxgap = 50)
 
+summary_table_peaks <- data.frame(total_number_of_peaks = c(length(counts_consensus_filt_ADR), 
+                                                            length(random_peaks_ADR),
+                                                            length(counts_consensus_filt_MES),
+                                                            length(random_peaks_MES)),
+                                  TEAD_sites = c(length(ADR_TEAD),
+                                                 length(ADR_random_TEAD),
+                                                 length(MES_TEAD),
+                                                 length(MES_random_TEAD)),
+                                  AP1_sites = c(length(ADR_AP1),
+                                                 length(ADR_random_AP1),
+                                                 length(MES_AP1),
+                                                 length(MES_random_AP1)),
+                                  TEAD_AP1_coloc_sites = c(length(ADR_AP1_TEAD_overlaps),
+                                                           length(ADR_random_AP1_TEAD_overlaps),
+                                                           length(MES_AP1_TEAD_overlaps),
+                                                           length(MES_random_AP1_TEAD_overlaps)),
+                                  row.names = c("ADR", "Simulated ADR", "MES", "Simulated MES")
+                                  )
+summary_table_peaks
+# Create contingency tables to do Ftest on overlap
 contingency_table <- matrix(c(length(MES_AP1_TEAD_overlaps), length(MES_TEAD) + length(MES_AP1) - length(MES_AP1_TEAD_overlaps), 
                               length(ADR_AP1_TEAD_overlaps), length(ADR_TEAD) + length(ADR_AP1) - length(ADR_AP1_TEAD_overlaps)
                               ), nrow=2, byrow=TRUE)
 fisher.test(contingency_table, alternative="two.sided")
 chisq.test(contingency_table)
 
-# fister test for TEAD peaks
+# Fisher test comparing real MES AP1_TEAD peaks vs simulated
+contingency_table_MES_vs_simulated <- matrix(c(length(MES_AP1_TEAD_overlaps), length(MES_TEAD) + length(MES_AP1) - length(MES_AP1_TEAD_overlaps),
+                                               length(MES_random_AP1_TEAD_overlaps), length(MES_random_TEAD) + length(MES_random_AP1) - length(MES_random_AP1_TEAD_overlaps)
+                                   ), nrow=2, byrow=TRUE)
+row.names(contingency_table_MES_vs_simulated) <- c("MES_peaks", "MES_peaks_random")
+colnames(contingency_table_MES_vs_simulated) <- c("TEAD_AB1_colocalisation_present", "TEAD_AB1_colocalisation_absent")
+contingency_table_MES_vs_simulated
+fisher.test(contingency_table_MES_vs_simulated, alternative="two.sided")
+chisq.test(contingency_table_MES_vs_simulated)
+
+# Fisher test comparing real ADR AP1_TEAD peaks vs simulated
+contingency_table_ADR_vs_simulated <- matrix(c(length(ADR_AP1_TEAD_overlaps), length(ADR_TEAD) + length(ADR_AP1) - length(ADR_AP1_TEAD_overlaps),
+                                               length(ADR_random_AP1_TEAD_overlaps), length(ADR_random_TEAD) + length(ADR_random_AP1) - length(ADR_random_AP1_TEAD_overlaps)
+), nrow=2, byrow=TRUE)
+row.names(contingency_table_ADR_vs_simulated) <- c("ADR_peaks", "ADR_peaks_random")
+colnames(contingency_table_ADR_vs_simulated) <- c("TEAD_AB1_colocalisation_present", "TEAD_AB1_colocalisation_absent")
+contingency_table_ADR_vs_simulated
+fisher.test(contingency_table_ADR_vs_simulated, alternative="two.sided")
+chisq.test(contingency_table_ADR_vs_simulated)
+
+# Fisher test for TEAD peaks
 contingency_table_TEAD <- matrix(c(length(MES_TEAD), length(counts_consensus_filt_MES) - length(MES_TEAD),
                                    length(ADR_TEAD), length(counts_consensus_filt_ADR) - length(ADR_TEAD)
                                    ), nrow=2, byrow=TRUE)
@@ -850,7 +947,7 @@ contingency_table_TEAD
 fisher.test(contingency_table_TEAD, alternative="two.sided")
 chisq.test(contingency_table_TEAD)
 
-# fister test for AP1 peaks
+# Fisher test for AP1 peaks
 contingency_table_AP1 <- matrix(c(length(MES_AP1), length(counts_consensus_filt_MES) - length(MES_AP1),
                                    length(ADR_AP1), length(counts_consensus_filt_ADR) - length(ADR_AP1)
 ), nrow=2, byrow=TRUE)
