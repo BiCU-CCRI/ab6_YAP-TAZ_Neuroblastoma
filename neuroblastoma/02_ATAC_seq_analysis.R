@@ -8,6 +8,7 @@ deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq/"
 
 ## Loading libraries ####
 library(dplyr)
+library(tidyr)
 library(DESeq2)
 library(ggplot2)
 library(BSgenome.Hsapiens.UCSC.hg38)
@@ -910,12 +911,44 @@ summary_table_peaks <- data.frame(total_number_of_peaks = c(length(counts_consen
                                   row.names = c("ADR", "Simulated ADR", "MES", "Simulated MES")
                                   )
 summary_table_peaks
-# Create contingency tables to do Ftest on overlap
+
+# Prepare the data for stacked barplot
+summary_table_peaks$other_peaks <- apply(summary_table_peaks,1,FUN = function(x){x[1] - x[2] - x[3] - x[4]})
+summary_table_peaks <- summary_table_peaks[,c("TEAD_sites", "AP1_sites", "TEAD_AP1_coloc_sites", "other_peaks")]
+summary_table_peaks$peak_type <- row.names(summary_table_peaks)
+
+summary_table_peaks <- tidyr::pivot_longer(as.data.frame(summary_table_peaks), 
+                    cols = c("TEAD_sites", "AP1_sites", "TEAD_AP1_coloc_sites", "other_peaks"), 
+                    names_to = "Peaks",
+                    values_to = "Number_of_peaks")
+summary_table_peaks$peak_type <- factor(summary_table_peaks$peak_type,
+                                        levels = c("ADR", "Simulated ADR", "MES", "Simulated MES"))
+summary_table_peaks$Peaks <- factor(summary_table_peaks$Peaks,
+                                    levels = c( "other_peaks", "AP1_sites", "TEAD_AP1_coloc_sites", "TEAD_sites"))
+
+# stacked bar plot
+plot <- ggplot(summary_table_peaks, aes(fill=Peaks, y=Number_of_peaks, x=peak_type)) + 
+  geom_bar(position="stack", stat="identity") +
+  scale_fill_manual(values = c("other_peaks" = "grey",
+                               "AP1_sites" = "navy", 
+                               "TEAD_AP1_coloc_sites" = "yellow", 
+                               "TEAD_sites" = "firebrick3")) +
+  theme_minimal()
+ggsave(filename = file.path(deg_dir, paste0("Distribution_of_TEAD_AP1_BS_in_ATAC-seq_peaks.eps")), 
+       plot = plot,
+       width = 18, height = 20, units = "cm")
+
+
+
+
+# Create contingency tables to do Ftest on overlap MES vs ADR
 contingency_table <- matrix(c(length(MES_AP1_TEAD_overlaps), length(MES_TEAD) + length(MES_AP1) - length(MES_AP1_TEAD_overlaps), 
                               length(ADR_AP1_TEAD_overlaps), length(ADR_TEAD) + length(ADR_AP1) - length(ADR_AP1_TEAD_overlaps)
                               ), nrow=2, byrow=TRUE)
-fisher.test(contingency_table, alternative="two.sided")
-chisq.test(contingency_table)
+fisher_results <- fisher.test(contingency_table, alternative="two.sided")
+fisher_summary_table <- data.table::data.table(comparison = "MES_vs_ADR",
+                                               pval = fisher_results$p.value,
+                                               odds_ratio = fisher_results$estimate)
 
 # Fisher test comparing real MES AP1_TEAD peaks vs simulated
 contingency_table_MES_vs_simulated <- matrix(c(length(MES_AP1_TEAD_overlaps), length(MES_TEAD) + length(MES_AP1) - length(MES_AP1_TEAD_overlaps),
@@ -924,8 +957,11 @@ contingency_table_MES_vs_simulated <- matrix(c(length(MES_AP1_TEAD_overlaps), le
 row.names(contingency_table_MES_vs_simulated) <- c("MES_peaks", "MES_peaks_random")
 colnames(contingency_table_MES_vs_simulated) <- c("TEAD_AB1_colocalisation_present", "TEAD_AB1_colocalisation_absent")
 contingency_table_MES_vs_simulated
-fisher.test(contingency_table_MES_vs_simulated, alternative="two.sided")
-chisq.test(contingency_table_MES_vs_simulated)
+fisher_results <- fisher.test(contingency_table_MES_vs_simulated, alternative="two.sided")
+fisher_summary_table <- rbind(fisher_summary_table,
+                              data.table::data.table(comparison = "MES_vs_MESsim",
+                                                     pval = fisher_results$p.value,
+                                                     odds_ratio = fisher_results$estimate))
 
 # Fisher test comparing real ADR AP1_TEAD peaks vs simulated
 contingency_table_ADR_vs_simulated <- matrix(c(length(ADR_AP1_TEAD_overlaps), length(ADR_TEAD) + length(ADR_AP1) - length(ADR_AP1_TEAD_overlaps),
@@ -934,8 +970,60 @@ contingency_table_ADR_vs_simulated <- matrix(c(length(ADR_AP1_TEAD_overlaps), le
 row.names(contingency_table_ADR_vs_simulated) <- c("ADR_peaks", "ADR_peaks_random")
 colnames(contingency_table_ADR_vs_simulated) <- c("TEAD_AB1_colocalisation_present", "TEAD_AB1_colocalisation_absent")
 contingency_table_ADR_vs_simulated
-fisher.test(contingency_table_ADR_vs_simulated, alternative="two.sided")
-chisq.test(contingency_table_ADR_vs_simulated)
+fisher_results <- fisher.test(contingency_table_ADR_vs_simulated, alternative="two.sided")
+fisher_summary_table <- rbind(fisher_summary_table,
+                              data.table::data.table(comparison = "ADR_vs_ADRsim",
+                                                     pval = fisher_results$p.value,
+                                                     odds_ratio = fisher_results$estimate))
+
+# Visualisation of the fisher test results
+fisher_summary_table$pval <- -log10(fisher_summary_table$pval)
+# fisher_summary_table <- fisher_summary_table %>% pivot_longer(cols = c("pval", "odds_ratio"), 
+#                                                               names_to = "parameter", 
+#                                                               values_to = "value")
+
+
+custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
+custom_breaks <- c(seq(0, 1.3, length.out = 2), seq(1.3, 25, length.out = 256))
+plot <- fisher_summary_table %>%
+  ggplot() +
+  geom_bar(position = position_dodge(0.5), 
+           width = 0.05, 
+           aes(y = comparison, 
+               weight = odds_ratio, fill = comparison)) +
+  scale_fill_manual(values = c(MES_vs_MESsim = "firebrick3", 
+                               ADR_vs_ADRsim = "navy",
+                               MES_vs_ADR = "#71155a")) +
+  ggnewscale::new_scale_fill() +
+  geom_point(aes(y = comparison, 
+                 x = odds_ratio, 
+                 size = pval,
+                 fill = pval,
+                 color = comparison
+  ), 
+  shape = "circle filled",
+  position = position_dodge2(0.5)
+  ) +
+  scale_color_manual(values = c(MES_vs_MESsim = "firebrick3", 
+                                ADR_vs_ADRsim = "navy",
+                                MES_vs_ADR = "#71155a")) +
+  scale_fill_gradientn(colors = custom_colors, 
+                       values = scales::rescale(custom_breaks),
+                       limits = c(0, 30)) +
+  #  scale_fill_viridis(option="viridis")+
+  theme_minimal() +
+  labs(color = "TEAD & AP1 colocolized binding sites in:", 
+       fill = "-log10(pval)\n red - non significant (FDR < 0.05)",
+       size =  "-log10(pval)",
+       y = "Comparisons",
+       x = "Odds ratio",
+       title = "Fisher exact test - checking encrichment of \nAP1 & TEAD BS colocolized in MES, ADR \nand simulated peaks")
+
+ggsave(filename = file.path(deg_dir, paste0("Fisher_exact_test_results_MESADR_MESsim_ADRsim.eps")), 
+       plot = plot,
+       width = 18, height = 20, units = "cm")
+
+
 
 # Fisher test for TEAD peaks
 contingency_table_TEAD <- matrix(c(length(MES_TEAD), length(counts_consensus_filt_MES) - length(MES_TEAD),
@@ -1045,12 +1133,12 @@ for (file_name in enrich_results_files){
 # Make a plot for MES data
 summary_table_MES <- summary_table %>% filter(Data_source == "Our_data", Description == "MES")
 custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
-custom_breaks <- c(seq(0, 1, length.out = 2), seq(1, 60, length.out = 256))
+custom_breaks <- c(seq(0, 1.3, length.out = 2), seq(1.3, 3, length.out = 256))
 # making lolipop plot with enrichments
-summary_table_MES %>%
+plot <- summary_table_MES %>%
   ggplot() +
   geom_bar(position = position_dodge(0.5), 
-           width = 0.1, 
+           width = 0.05, 
            aes(y = Protein, 
                fill = Selected_peaks, 
                weight = Effect)) +
@@ -1061,21 +1149,23 @@ summary_table_MES %>%
                  color = Selected_peaks,
                  size = Peaks_in_set/Gene_set_size*100,
                  fill = -log10(FDR)
-                 ), 
-             shape = "circle filled",
-             position = position_dodge2(0.5)
-             ) +
+  ), 
+  shape = "circle filled",
+  position = position_dodge2(0.5)
+  ) +
   scale_color_manual(values =  c("navy", "firebrick3")) +
   scale_fill_gradientn(colors = custom_colors, 
                        values = scales::rescale(custom_breaks),
-                       limits = c(0, 70)) +
-#  scale_fill_viridis(option="viridis")+
+                       limits = c(0, 3)) +
+  #  scale_fill_viridis(option="viridis")+
   theme_minimal() +
   labs(color = "TEAD & AP1 colocolized binding sites in:", 
        fill = "-log10(FDR)\n red - non significant (FDR < 0.05)",
        size =  "Percentage of genes in set\n overlaping with gene-set collection ",
        y = "Samples",
        x = "Enrichment Effect",
-       title = "Enrichment of MES-signature in\n collocalized TEAD & AP1 predicted BS in MES and ADR samples")
+       title = "Enrichment of MES-signature in\n collocalized TEAD & AP1 predicted BS \nin MES and ADR samples")
 
-
+ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES-sig_in_coloc_TEAD_AP1_BS", ".eps")), 
+       plot=plot,
+       width = 18, height = 20, units = "cm")

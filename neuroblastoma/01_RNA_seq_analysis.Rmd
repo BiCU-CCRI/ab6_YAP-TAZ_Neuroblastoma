@@ -5,7 +5,7 @@ date: '2025-01-30'
 output: html_document
 ---
 
-```{r Load libraries}
+```{r Load libraries, include=FALSE}
 knitr::opts_chunk$set(include = FALSE)
 
 # Set up the environment ####
@@ -57,7 +57,138 @@ param_list <- list(
 deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq/"
 ```
 
+```{r Load RNA-seq data and produce PCA plot with ALL samples included}
+# Analysis of the RNA-seq data ####
+# Loading the DESeq2 file and annotation file that was used during the pre-processing of the data
+path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/RNAseq"
+rnaseq_dds <- readRDS(file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_deseq_data_set.rds"))
+design(rnaseq_dds) <- as.formula("~ cell_line + cell_type")
+annotationData <- read.table(
+  file = file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_annotation_gene.tsv"),
+  sep = "\t",
+  header = TRUE
+)
+# This is necessary to rename columns so that extraction of the data works correctly
+colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
+# make PCA with ALL samples
+# Filtering lowly expressed genes
+tmp_rnaseq_dds_filt <- filterDatasets(rnaseq_dds,
+  abs_filt = TRUE,
+  abs_filt_samples = param_list$abs_filt_samples
+)
+# Estimate size factors and running DESEQ2
+tmp_rnaseq_dds_filt <- DESeq2::estimateSizeFactors(tmp_rnaseq_dds_filt)
+tmp_rnaseq_dds_filt <- DESeq2::DESeq(tmp_rnaseq_dds_filt)
+# Stabilize variance
+tmp_vsd <- DESeq2::vst(tmp_rnaseq_dds_filt, blind = TRUE) # blind = TRUE for QC
+
+# generate PCA plots
+tmp_pca_deg <- generatePCA(
+  transf_object = tmp_vsd,
+  cond_interest_varPart = c("cell_type", "cell_line"),
+  color_variable = "cell_type",
+  shape_variable = "cell_line",
+  ntop_genes = 1000
+) +
+  scale_color_manual(values = c("navy", "firebrick3")) +
+  scale_shape_manual(values = c(16, 7, 17, 15, 3)) +
+  ggtitle("RNA-seq Original dataset")
+ggsave(
+  filename = paste0(deg_dir, "PCA_full_dataset.png"),
+  plot = tmp_pca_deg,
+  width = 20, height = 20, units = "cm"
+)
+tmp_pca_deg
+```
+
+```{r Filtering RNA-seq data and performing }
+
+# Removing NB6 sample - this is intermixed sample
+rnaseq_dds <- rnaseq_dds[, rnaseq_dds$cell_line != "STA_NB_6"]
+rnaseq_dds$cell_line <- droplevels(rnaseq_dds$cell_line)
+# Filtering lowly expressed genes
+rnaseq_dds_filt <- filterDatasets(rnaseq_dds,
+  abs_filt = TRUE,
+  abs_filt_samples = param_list$abs_filt_samples
+)
+# Estimate size factors and running DESEQ2
+rnaseq_dds_filt <- DESeq2::estimateSizeFactors(rnaseq_dds_filt)
+rnaseq_dds_filt <- DESeq2::DESeq(rnaseq_dds_filt)
+# Stabilize variance
+vsd <- DESeq2::vst(rnaseq_dds_filt, blind = TRUE) # blind = TRUE for QC
+
+# generate PCA plots
+pca_deg <- generatePCA(
+  transf_object = vsd,
+  cond_interest_varPart = c("cell_type", "cell_line"),
+  color_variable = "cell_type",
+  shape_variable = "cell_line",
+  ntop_genes = 1000
+) +
+  scale_color_manual(values = c("navy", "firebrick3")) +
+  ggtitle("Original dataset")
+ggsave(
+  filename = file.path(deg_dir, "PCA_MES_vs_ADRN_DEG.png"),
+  plot = pca_deg,
+  width = 20, height = 20, units = "cm"
+)
+
+# Check the names of the dds object and generate results
+resultsNames(rnaseq_dds_filt)
+deg_results <- generateResults(
+  dds_object = rnaseq_dds_filt,
+  coeff_name = "cell_type_MES_vs_ADR",
+  cond_numerator = "MES",
+  cond_denominator = "ADR",
+  cond_variable = "cell_type",
+  ensemblAnnot = annotationData,
+  log2FC_cutoff = param_list$log2FC_cutoff
+)
+
+# export MES and ADR genes and create custom terms from them
+mes_adrn_gene_list <- deg_results$results_signif %>%
+  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
+
+genes <- biomaRt::getBM(
+  filters = "ensembl_gene_id",
+  attributes = c("ensembl_gene_id", "entrezgene_id"),
+  values = mes_adrn_gene_list$ensembl_id,
+  mart = mart
+)
+
+mes_adrn_gene_list <-
+  merge.data.frame(
+    x = mes_adrn_gene_list,
+    y = genes,
+    by.x = "ensembl_id",
+    by.y = "ensembl_gene_id"
+  ) %>%
+  dplyr::select(Term, entrezgene_id) %>%
+  dplyr::rename(gs_id = Term, gene_id = entrezgene_id) %>%
+  dplyr::filter(!is.na(gene_id))
+
+write.table(
+  x = mes_adrn_gene_list,
+  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv",
+  sep = "\t",
+  row.names = F,
+  quote = F
+)
+
+# Save results to an xlsx sheet
+XLSX_OUT <- createWorkbook()
+addWorksheet(XLSX_OUT, "results_signif")
+addWorksheet(XLSX_OUT, "de_details")
+addWorksheet(XLSX_OUT, "results_all")
+
+writeData(XLSX_OUT, x = deg_results$results_signif, sheet = "results_signif")
+writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
+writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
+
+saveWorkbook(XLSX_OUT, file.path(deg_dir, "cell_type_MES_vs_ADR.xlsx"))
+
+```
 ## Including Plots
 
 You can also embed plots, for example:
