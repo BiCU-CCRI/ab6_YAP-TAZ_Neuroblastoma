@@ -280,7 +280,7 @@ plotVolcano <- function(dds_results_obj=NULL, genes_of_interest=NULL, plot_title
                                                  levels = c("NO", "DOWN", "UP"))
   table(results_data_annot_forPlot$signif_DE)
   
-  signif_volcanoPlot <- ggplot(data = results_data_annot_forPlot, aes(x = log2FoldChange, y = -log10(pvalue), col=signif_DE)) +
+  signif_volcanoPlot <- ggplot(data = results_data_annot_forPlot, aes(x = log2FoldChange, y = -log10(padj), col=signif_DE)) +
     geom_point() +
     #gghighlight::gghighlight(signif_DE %in% c("DOWN", "UP")) +
     ggrepel::geom_label_repel(data = . %>% filter(gene_symbol %in% genes_of_interest), 
