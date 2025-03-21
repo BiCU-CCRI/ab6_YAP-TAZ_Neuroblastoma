@@ -901,9 +901,9 @@ summary_table_peaks <- data.frame(total_number_of_peaks = c(length(counts_consen
                                                  length(MES_TEAD),
                                                  length(MES_random_TEAD)),
                                   AP1_sites = c(length(ADR_AP1),
-                                                 length(ADR_random_AP1),
-                                                 length(MES_AP1),
-                                                 length(MES_random_AP1)),
+                                                length(ADR_random_AP1),
+                                                length(MES_AP1),
+                                                length(MES_random_AP1)),
                                   TEAD_AP1_coloc_sites = c(length(ADR_AP1_TEAD_overlaps),
                                                            length(ADR_random_AP1_TEAD_overlaps),
                                                            length(MES_AP1_TEAD_overlaps),
@@ -1046,7 +1046,7 @@ fisher.test(contingency_table_AP1, alternative="two.sided")
 chisq.test(contingency_table_AP1)
 
 
-
+# Enrichment of MES, ADR signatures in AP1/TEAD/AP1_TEAD_overlaped peaks
 import::from(
   .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
   "chipEnrichAndExport"
@@ -1054,8 +1054,6 @@ import::from(
 locusdef <-  "5kb"
 our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
 res_dir <- "/home/rstudio/workspace/neuroblastoma/results/ATAC-seq/"
-
-
 
 
 ADR_AP1_TEAD_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ADR_AP1, ADR_TEAD, maxgap = 50)
@@ -1073,6 +1071,32 @@ chipEnrichAndExport(peaks = ADR_AP1_TEAD_overlaps,
                     locusdef = locusdef
 )
 
+chipEnrichAndExport(peaks = as.data.frame(ADR_AP1),
+                    peaksName = "ADR", 
+                    TF_name = "ADR_AP1", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+chipEnrichAndExport(peaks = as.data.frame(ADR_TEAD),
+                    peaksName = "ADR", 
+                    TF_name = "ADR_TEAD", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+ADR <- reduce(counts_consensus_filt_ADR@rowRanges)
+chipEnrichAndExport(peaks = as.data.frame(ADR),
+                    peaksName = "ADR", 
+                    TF_name = "ADR_Total", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
 
 MES_AP1_TEAD_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(MES_AP1, MES_TEAD, maxgap = 50)
 MES_AP1_TEAD_overlaps <- MES_AP1_TEAD_overlaps$peaksInMergedPeaks
@@ -1083,6 +1107,34 @@ results <- chipenrich::chipenrich(peaks = MES_AP1_TEAD_overlaps, genome = "hg38"
 chipEnrichAndExport(peaks = MES_AP1_TEAD_overlaps,
                     peaksName = "MES", 
                     TF_name = "MES_AP1_TEAD", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+chipEnrichAndExport(peaks = as.data.frame(MES_AP1),
+                    peaksName = "MES", 
+                    TF_name = "MES_AP1", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+chipEnrichAndExport(peaks = as.data.frame(MES_TEAD),
+                    peaksName = "MES", 
+                    TF_name = "MES_TEAD", 
+                    res_dir = res_dir, 
+                    genesets = our_rna_seq_terms, 
+                    genesets_name = "Our_data_",
+                    locusdef = locusdef
+)
+
+MES <- reduce(counts_consensus_filt_MES@rowRanges)
+chipEnrichAndExport(peaks = as.data.frame(MES),
+                    peaksName = "MES", 
+                    TF_name = "MES_Total", 
                     res_dir = res_dir, 
                     genesets = our_rna_seq_terms, 
                     genesets_name = "Our_data_",
@@ -1103,7 +1155,7 @@ summary_table <- data.frame(Protein = NULL,
                             Odds_ratio = NULL)
 
 #pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP)_(Our_data|Groen).*(ADRN|MES).*"
-pattern <-  ".*(ADR_AP1_TEAD|MES_AP1_TEAD)_(Our_data|Groen).*(ADR|MES).*"
+pattern <-  ".*(ADR_Total|ADR_AP1|ADR_TEAD|ADR_AP1_TEAD|MES_Total|MES_AP1|MES_TEAD|MES_AP1_TEAD)_(Our_data|Groen).*(ADR|MES).*"
 
 for (file_name in enrich_results_files){
   tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)
@@ -1164,7 +1216,7 @@ plot <- summary_table_MES %>%
        size =  "Percentage of genes in set\n overlaping with gene-set collection ",
        y = "Samples",
        x = "Enrichment Effect",
-       title = "Enrichment of MES-signature in\n collocalized TEAD & AP1 predicted BS \nin MES and ADR samples")
+       title = "Enrichment of MES-signature in\n AP1, TEAD and collocalized TEAD & AP1 predicted BS \nin MES and ADR samples")
 
 ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES-sig_in_coloc_TEAD_AP1_BS", ".eps")), 
        plot=plot,
