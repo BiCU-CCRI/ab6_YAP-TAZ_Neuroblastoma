@@ -194,26 +194,11 @@ ChIPpeakAnno::makeVennDiagram(ol)
 
 ##### Running Gene set enrichment using the chipenrich package ##########
 # turn RNA-seq results to Terms table
-RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
-mes_adrn_gene_list <- RNA_SEQ_data %>%
-  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
-genes <- getBM(
-  filters = "ensembl_gene_id",
-  attributes = c("ensembl_gene_id", "entrezgene_id"),
-  values = mes_adrn_gene_list$ensembl_id,
-  mart = mart
+mes_adrn_gene_list <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", 
+                                       name_for_negative_values = "ADRN",
+                                       name_for_positive_values = "MES",
+                                       mart = mart
 )
-mes_adrn_gene_list <-
-  merge.data.frame(
-    x = mes_adrn_gene_list,
-    y = genes,
-    by.x = "ensembl_id",
-    by.y = "ensembl_gene_id"
-  ) %>%
-  dplyr::select(Term, entrezgene_id) %>%
-  dplyr::rename(gs_id = Term, gene_id = entrezgene_id) %>%
-  dplyr::filter(!is.na(gene_id))
-
 write.table(
   x = mes_adrn_gene_list,
   file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv",
@@ -224,40 +209,40 @@ write.table(
 
 locusdef <-  "5kb"
 
+# Create a term from K975 experiment
+RNA_K975_SEQ_data_24h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx",
+                                          name_for_negative_values = "K975_24h_down",
+                                          name_for_positive_values = "K975_24h_up",
+                                          mart = mart
+)
+write.table(
+  x = mes_adrn_gene_list_k975_24h,
+  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv",
+  sep = "\t",
+  row.names = F,
+  quote = F
+)
+
+locusdef <-  "5kb"
+
+#our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+#our_rna_seq_terms <- mes_adrn_gene_list
+
+res_dir <- "/home/rstudio/workspace/neuroblastoma/results/CnR/"
+res_dir_k975 <- "/home/rstudio/workspace/neuroblastoma/results/CnR/k975/"
+
 #our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
 #our_rna_seq_terms <- mes_adrn_gene_list
 our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+our_rna_seq_terms_k975_24h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv"
 
 for(TF_name in names(DBobj_list)){
   #TF_name <- "YAP"  
   print(paste0("Processing ", TF_name))
   
   # subset peaks that up-regulated in MES samples
-  p_MES_up <- as.data.frame(dba.report(DBobj_list[[TF_name]], contrast = 2)) %>%
-    dplyr::filter(Fold > 0) %>%
-    dplyr::select(seqnames, start, end)
-  
-  # process up-regulated peaks
-  # remove scaffolds - their name is longer than 2 charcaters
-  p_MES_up <- p_MES_up %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
-  p_MES_up$seqnames <- droplevels(p_MES_up$seqnames)
-  p_MES_up <- p_MES_up %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
-  colnames(p_MES_up)[1] <- "chrom"
-  #plot_dist_to_tss(peaks = p_MES_up, genome = "hg38")
-  
-  # subset peaks that down-regulated in MES samples
-  p_MES_dwn <- as.data.frame(dba.report(DBobj_list[[TF_name]], contrast = 2)) %>%
-    filter(Fold < 0) %>%
-    dplyr::select(seqnames, start, end)
-  
-  # process down-regulated peaks
-  # remove scaffolds - their name is longer than 2 charcaters
-  # add chr tag to seqnames
-  
-  p_MES_dwn <- p_MES_dwn %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
-  p_MES_dwn$seqnames <- droplevels(p_MES_dwn$seqnames)
-  p_MES_dwn <- p_MES_dwn %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
-  colnames(p_MES_dwn)[1] <- "chrom"
+  p_MES_up <- subsetPeaksInSamples(DBobj_list, TF_name, select_up_or_down_regulated = "up", remove_scaffolds = TRUE)
+  p_MES_dwn <- subsetPeaksInSamples(DBobj_list, TF_name, select_up_or_down_regulated = "down", remove_scaffolds = TRUE)
   #plot_dist_to_tss(peaks = p_MES_dwn, genome = "hg38")
   
   if (nrow(p_MES_up) > 0) {
@@ -268,7 +253,15 @@ for(TF_name in names(DBobj_list)){
                         genesets = our_rna_seq_terms, 
                         genesets_name = "Our_data_",
                         locusdef = locusdef
-                        )
+    )
+    chipEnrichAndExport(peaks = p_MES_up,
+                        peaksName = "MES", 
+                        TF_name = TF_name, 
+                        res_dir = res_dir_k975, 
+                        genesets = our_rna_seq_terms_k975_24h, 
+                        genesets_name = "Our_k975_24h_data_",
+                        locusdef = locusdef
+    )
   }
   
   if (nrow(p_MES_dwn) > 0){
@@ -281,37 +274,27 @@ for(TF_name in names(DBobj_list)){
                         genesets_name = "Our_data_",
                         locusdef = locusdef
     )
+    chipEnrichAndExport(peaks = p_MES_dwn,
+                        peaksName = "ADRN", 
+                        TF_name = TF_name, 
+                        res_dir = res_dir_k975, 
+                        genesets = our_rna_seq_terms_k975_24h, 
+                        genesets_name = "Our_k975_24h_data_",
+                        locusdef = locusdef
+    ) 
   }
 }
 
 # Addition for a reviewer - combining YAP/TAZ and YAP/TAZ/Jun
-
-YAP_p_MES_up <- as.data.frame(dba.report(DBobj_list[["YAP"]], contrast = 2)) %>%
-  dplyr::filter(Fold > 0) %>%
-  dplyr::select(seqnames, start, end)
-TAZ_p_MES_up <- as.data.frame(dba.report(DBobj_list[["TAZ"]], contrast = 2)) %>%
-  dplyr::filter(Fold > 0) %>%
-  dplyr::select(seqnames, start, end)
-JUN_p_MES_up <- as.data.frame(dba.report(DBobj_list[["Jun"]], contrast = 2)) %>%
-  dplyr::filter(Fold > 0) %>%
-  dplyr::select(seqnames, start, end)
-
-ol <- ChIPpeakAnno::findOverlapsOfPeaks(GRanges(YAP_p_MES_up), GRanges(TAZ_p_MES_up))
-YAP_TAZ_MES_p_up <- ol$mergedPeaks
-ol <- ChIPpeakAnno::findOverlapsOfPeaks(YAP_TAZ_MES_p_up, GRanges(JUN_p_MES_up))
-YAP_TAZ_JUN_MES_p_up <- ol$mergedPeaks
+YAP_p_MES_up <- subsetPeaksInSamples(DBobj_list, "YAP", contrast = 2, select_up_or_down_regulated = "up", remove_scaffolds = TRUE)
+TAZ_p_MES_up <- subsetPeaksInSamples(DBobj_list, "TAZ", contrast = 2, select_up_or_down_regulated = "up", remove_scaffolds = TRUE)
+JUN_p_MES_up <- subsetPeaksInSamples(DBobj_list, "Jun", contrast = 2, select_up_or_down_regulated = "up", remove_scaffolds = TRUE)
 # process up-regulated peaks
 # remove scaffolds - their name is longer than 2 charcaters
-YAP_TAZ_MES_p_up <- as.data.frame(YAP_TAZ_MES_p_up) %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
-YAP_TAZ_MES_p_up$seqnames <- droplevels(YAP_TAZ_MES_p_up$seqnames)
-YAP_TAZ_MES_p_up <- YAP_TAZ_MES_p_up %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
-colnames(YAP_TAZ_MES_p_up)[1] <- "chrom"
-
-YAP_TAZ_JUN_MES_p_up <- as.data.frame(YAP_TAZ_JUN_MES_p_up) %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
-YAP_TAZ_JUN_MES_p_up$seqnames <- droplevels(YAP_TAZ_JUN_MES_p_up$seqnames)
-YAP_TAZ_JUN_MES_p_up <- YAP_TAZ_JUN_MES_p_up %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
-colnames(YAP_TAZ_JUN_MES_p_up)[1] <- "chrom"
-#plot_dist_to_tss(peaks = p_MES_up, genome = "hg38")
+ol <- ChIPpeakAnno::findOverlapsOfPeaks(GRanges(YAP_p_MES_up), GRanges(TAZ_p_MES_up))
+YAP_TAZ_MES_p_up <- as.data.frame(ol$mergedPeaks)
+ol <- ChIPpeakAnno::findOverlapsOfPeaks(YAP_TAZ_MES_p_up, GRanges(JUN_p_MES_up))
+YAP_TAZ_JUN_MES_p_up <- as.data.frame(ol$mergedPeaks)
 
 chipEnrichAndExport(peaks = YAP_TAZ_MES_p_up,
                     peaksName = "MES", 
@@ -330,33 +313,32 @@ chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_up,
                     locusdef = locusdef
 )
 
-YAP_p_MES_down <- as.data.frame(dba.report(DBobj_list[["YAP"]], contrast = 2)) %>%
-  dplyr::filter(Fold < 0) %>%
-  dplyr::select(seqnames, start, end)
-TAZ_p_MES_down <- as.data.frame(dba.report(DBobj_list[["TAZ"]], contrast = 2)) %>%
-  dplyr::filter(Fold < 0) %>%
-  dplyr::select(seqnames, start, end)
-JUN_p_MES_down <- as.data.frame(dba.report(DBobj_list[["Jun"]], contrast = 2)) %>%
-  dplyr::filter(Fold < 0) %>%
-  dplyr::select(seqnames, start, end)
+chipEnrichAndExport(peaks = YAP_TAZ_MES_p_up,
+                    peaksName = "MES", 
+                    TF_name = "yap-taz", 
+                    res_dir = res_dir_k975, 
+                    genesets = our_rna_seq_terms_k975_24h, 
+                    genesets_name = "Our_k975_24h_data_",
+                    locusdef = locusdef
+)
+chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_up,
+                    peaksName = "MES", 
+                    TF_name = "yap-taz-jun", 
+                    res_dir = res_dir_k975, 
+                    genesets = our_rna_seq_terms_k975_24h, 
+                    genesets_name = "Our_k975_24h_data_",
+                    locusdef = locusdef
+)
 
-# YAP down is absent - 0 peaks, so we use just TAZ peaks
-YAP_TAZ_MES_p_down <- GRanges(TAZ_p_MES_down)
+
+YAP_p_MES_down <- subsetPeaksInSamples(DBobj_list, "YAP", contrast = 2, select_up_or_down_regulated = "down", remove_scaffolds = TRUE)
+TAZ_p_MES_down <- subsetPeaksInSamples(DBobj_list, "TAZ", contrast = 2, select_up_or_down_regulated = "down", remove_scaffolds = TRUE)
+JUN_p_MES_down <- subsetPeaksInSamples(DBobj_list, "Jun", contrast = 2, select_up_or_down_regulated = "down", remove_scaffolds = TRUE)
+
+ol <- ChIPpeakAnno::findOverlapsOfPeaks(GRanges(YAP_p_MES_down), GRanges(TAZ_p_MES_down))
+YAP_TAZ_MES_p_down <- as.data.frame(ol$mergedPeaks)
 ol <- ChIPpeakAnno::findOverlapsOfPeaks(YAP_TAZ_MES_p_down, GRanges(JUN_p_MES_down))
-YAP_TAZ_JUN_MES_p_down <- ol$mergedPeaks
-# process up-regulated peaks
-# remove scaffolds - their name is longer than 2 charcaters
-YAP_TAZ_MES_p_down <- as.data.frame(YAP_TAZ_MES_p_down) %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
-YAP_TAZ_MES_p_down$seqnames <- droplevels(YAP_TAZ_MES_p_down$seqnames)
-YAP_TAZ_MES_p_down <- YAP_TAZ_MES_p_down %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
-colnames(YAP_TAZ_MES_p_down)[1] <- "chrom"
-
-YAP_TAZ_JUN_MES_p_down <- as.data.frame(YAP_TAZ_JUN_MES_p_down) %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
-YAP_TAZ_JUN_MES_p_down$seqnames <- droplevels(YAP_TAZ_JUN_MES_p_down$seqnames)
-YAP_TAZ_JUN_MES_p_down <- YAP_TAZ_JUN_MES_p_down %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
-colnames(YAP_TAZ_JUN_MES_p_down)[1] <- "chrom"
-#plot_dist_to_tss(peaks = p_MES_up, genome = "hg38")
-
+YAP_TAZ_JUN_MES_p_down <- as.data.frame(ol$mergedPeaks)
 
 chipEnrichAndExport(peaks = YAP_TAZ_MES_p_down,
                     peaksName = "ADRN", 
@@ -366,7 +348,6 @@ chipEnrichAndExport(peaks = YAP_TAZ_MES_p_down,
                     genesets_name = "Our_data_",
                     locusdef = locusdef
 )
-
 chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_down,
                     peaksName = "ADRN", 
                     TF_name = "yap-taz-jun", 
@@ -376,11 +357,24 @@ chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_down,
                     locusdef = locusdef
 )
 
+chipEnrichAndExport(peaks = YAP_TAZ_MES_p_down,
+                    peaksName = "ADRN", 
+                    TF_name = "yap-taz", 
+                    res_dir = res_dir_k975, 
+                    genesets = our_rna_seq_terms_k975_24h, 
+                    genesets_name = "Our_k975_24h_data_",
+                    locusdef = locusdef
+)
+chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_down,
+                    peaksName = "ADRN", 
+                    TF_name = "yap-taz-jun", 
+                    res_dir = res_dir_k975, 
+                    genesets = our_rna_seq_terms_k975_24h, 
+                    genesets_name = "Our_k975_24h_data_",
+                    locusdef = locusdef
+)
   
-
-
-# alternative enrichment analysis
-####### test how to visualize #########
+####### visualize our data #########
 enrich_results_files <- unlist(list.files(path = res_dir, pattern = "^Enricher_.*.xlsx", full.names = TRUE))
 summary_table <- data.frame(Protein = NULL,
                             Data_source = NULL,
@@ -424,76 +418,77 @@ for (file_name in enrich_results_files){
 
 # Make a plot for MES data
 summary_table_MES <- summary_table %>% filter(Data_source == "Our_data", Selected_peaks == "MES")
-custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
-custom_breaks <- c(seq(0, 1, length.out = 2), seq(1, 60, length.out = 256))
 # making lolipop plot with enrichments
-summary_table_MES %>%
-  ggplot() +
-  geom_bar(position = position_dodge(0.5), 
-           width = 0.1, 
-           aes(y = Protein, 
-               fill = Description, 
-               weight = Odds_ratio)) +
-  scale_fill_manual(values =  c("navy", "firebrick3")) +
-  ggnewscale::new_scale_fill() +
-  geom_point(aes(y = Protein, 
-                 x = Odds_ratio, 
-                 color = Description,
-                 size = Peaks_in_set/Gene_set_size*100,
-                 fill = -log10(FDR)
-                 ), 
-             shape = "circle filled",
-             position = position_dodge2(0.5)
-             ) +
-  scale_color_manual(values =  c("navy", "firebrick3")) +
-  scale_fill_gradientn(colors = custom_colors, 
-                       values = scales::rescale(custom_breaks),
-                       limits = c(0, 70)) +
-#  scale_fill_viridis(option="viridis")+
-  theme_minimal() +
-  labs(color = "selected peaks", 
-       fill = "-log10(FDR)\n red - non significant (FDR < 0.05)",
-       size =  "Percentage of genes in set\n overlaping with gene-set collection ",
-       y = "Proteins",
-       x = "Odds ratio",
-       title = "Enrichment of peaks in MES samples in MES/ADR-specific regions determined from RNA-seq")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
+       title = "Enrichment of peaks in MES samples in MES/ADR-specific regions determined from RNA-seq",
+       p.val_treshold = 0.05)
+plot
 
 # Make a plot for ADRN data
 summary_table_ADRN <- summary_table %>% filter(Data_source == "Our_data", Selected_peaks == "ADRN")
-custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
-custom_breaks <- c(seq(0, 1, length.out = 2), seq(1, 60, length.out = 256))
 # making lolipop plot with enrichments
-summary_table_ADRN %>%
-  ggplot() +
-  geom_bar(position = position_dodge(0.5), 
-           width = 0.1, 
-           aes(y = Protein, 
-               fill = Description, 
-               weight = Odds_ratio)) +
-  scale_fill_manual(values =  c("navy", "firebrick3")) +
-  scale_x_continuous(limits = c(0, 15)) +
-  ggnewscale::new_scale_fill() +
-  geom_point(aes(y = Protein, 
-                 x = Odds_ratio, 
-                 color = Description,
-                 size = Peaks_in_set/Gene_set_size*100,
-                 fill = -log10(FDR)
-  ), 
-  shape = "circle filled",
-  position = position_dodge2(0.5)
-  ) +
-  scale_color_manual(values =  c("navy", "firebrick3")) +
-  scale_fill_gradientn(colors = custom_colors, 
-                       values = scales::rescale(custom_breaks),
-                       limits = c(0, 70)) +
-  #  scale_fill_viridis(option="viridis")+
-  theme_minimal() +
-  labs(color = "selected peaks", 
-       fill = "-log10(FDR)\n red - non significant (FDR < 0.05)",
-       size =  "Percentage of genes in set\n overlaping with gene-set collection ",
-       y = "Proteins",
-       x = "Odds ratio",
-       title = "Enrichment of peaks in ADRN samples in MES/ADR-specific regions determined from RNA-seq")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
+                              title = "Enrichment of peaks in ADRN samples in MES/ADR-specific regions determined from RNA-seq",
+                              p.val_treshold = 0.05)
+plot
+
+
+# Visualization, but with genes that comes from K975 inhibition assay
+enrich_results_files <- unlist(list.files(path = res_dir_k975, pattern = "^Enricher_.*.xlsx", full.names = TRUE))
+summary_table <- data.frame(Protein = NULL,
+                            Data_source = NULL,
+                            Selected_peaks = NULL,
+                            Description = NULL,
+                            P.value = NULL,
+                            FDR = NULL,
+                            Effect = NULL,
+                            Status = NULL,
+                            Gene_set_size = NULL,
+                            Peaks_in_set = NULL,
+                            Odds_ratio = NULL)
+
+pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP|yap-taz|yap-taz-jun)_(Our_k975_24h_data|Groen).*(ADRN|MES).*"
+
+for (file_name in enrich_results_files){
+  tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)
+  
+  basename_tmp <- basename(file_name)
+  basename_tmp <- str_extract(basename_tmp, 
+                              pattern, 
+                              group = c(1,2,3))
+  
+  summary_table_tmp <- data.frame(Protein = basename_tmp[1],
+                                  Data_source = basename_tmp[2],
+                                  Selected_peaks = basename_tmp[3],
+                                  Description = tmp$Description,
+                                  P.value = tmp$P.value,
+                                  FDR = tmp$FDR,
+                                  Effect = tmp$Effect,
+                                  Status = tmp$Status,
+                                  Gene_set_size = tmp$N.Geneset.Genes,
+                                  Peaks_in_set = tmp$N.Geneset.Peak.Genes,
+                                  Odds_ratio = tmp$Odds.Ratio)
+  
+  summary_table <- rbind(summary_table,
+                         summary_table_tmp)
+  
+}
+
+# Make a plot for MES data
+summary_table_MES <- summary_table %>% filter(Data_source == "Our_k975_24h_data", Selected_peaks == "MES")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
+                              p.val_treshold = 0.05,
+                              title = "Enrichment of peaks in MES samples in MES/ADR-specific \n regions determined from K-975 RNA-seq 24h"
+                              )
+plot
+
+# Make a plot for ADRN data
+summary_table_ADRN <- summary_table %>% filter(Data_source == "Our_k975_24h_data", Selected_peaks == "ADRN")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
+                              p.val_treshold = 0.05,
+                              title = "Enrichment of peaks in ADRN samples in MES/ADR-specific \n regions determined from K-975 RNA-seq 24h"
+)
+plot
 
 
 # making lolipop plot with enrichments

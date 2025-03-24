@@ -494,6 +494,42 @@ gseaplot3 <- function (x, geneSetID, title = "", color = "green", base_size = 11
 
 
 
+# create Terms table for chipEnrichAndExport
+createTermsTable <- function(path_to_RNAseq_xlsx_table, 
+                             name_for_negative_values,
+                             name_for_positive_values,
+                             mart = mart){
+  require(openxlsx2)
+  require(dplyr)
+  require(biomaRt)
+  
+  RNA_SEQ_data <- openxlsx2::read_xlsx(path_to_RNAseq_xlsx_table, sheet = 1)
+  
+  terms_gene_list <- RNA_SEQ_data %>%
+    mutate(Term = if_else(log2FoldChange < 0, 
+                          name_for_negative_values,
+                          name_for_positive_values))
+  genes <- getBM(
+    filters = "ensembl_gene_id",
+    attributes = c("ensembl_gene_id", "entrezgene_id"),
+    values = terms_gene_list$ensembl_id,
+    mart = mart
+  )
+  terms_gene_list <-
+    merge.data.frame(
+      x = terms_gene_list,
+      y = genes,
+      by.x = "ensembl_id",
+      by.y = "ensembl_gene_id"
+    ) %>%
+    dplyr::select(Term, entrezgene_id) %>%
+    dplyr::rename(gs_id = Term, gene_id = entrezgene_id) %>%
+    dplyr::filter(!is.na(gene_id))
+  
+  return(terms_gene_list)
+}
+
+
 
 
 
@@ -530,3 +566,88 @@ chipEnrichAndExport <- function(peaks, peaksName, locusdef, res_dir, TF_name, ge
 
 }
 
+subsetPeaksInSamples <- function(DBobj_list,
+                                 TF_name,
+                                 contrast = 2,
+                                 select_up_or_down_regulated, # "up" or "down"
+                                 remove_scaffolds = TRUE){
+  
+  # subset peaks that up-regulated in MES samples
+  peaks <- as.data.frame(dba.report(DBobj_list[[TF_name]], contrast = contrast))
+  
+  if(!(select_up_or_down_regulated %in% c("up", "down"))){
+    stop("You need to selec either 'up' or 'down'")
+  }
+    
+  if(select_up_or_down_regulated == "up"){
+    peaks <- peaks %>% dplyr::filter(Fold > 0)
+  }
+  
+  if(select_up_or_down_regulated == "up"){
+    peaks <- peaks %>% dplyr::filter(Fold > 0)
+  }
+  
+  peaks <- peaks %>% dplyr::select(seqnames, start, end)
+  
+  # process peaks
+  # remove scaffolds - their name is longer than 2 charcaters
+  if(remove_scaffolds == TRUE){
+    peaks <- peaks %>% dplyr::filter(nchar(as.character(seqnames)) <= 2)
+    peaks$seqnames <- droplevels(peaks$seqnames)
+  }
+ 
+  peaks <- peaks %>% dplyr::mutate(seqnames = paste0("chr", seqnames))
+  colnames(peaks)[1] <- "chrom"
+  
+  return(peaks)
+  #plot_dist_to_tss(peaks = p_MES_up, genome = "hg38")
+}
+
+
+LolipopEnrichmentPlot <- function(summary_table, 
+                                  title = "Don't forget your title",
+                                  p.val_treshold = 0.05,
+                                  scale_x_continuous_limits = c(NULL, NULL)
+                                  ){
+  
+  upper_FDR_limit <- max(-log10(summary_table$FDR))
+  # Create custom breaks in color for 
+  custom_colors <- c("red", "red", colorRampPalette(brewer.pal(7, "Greys"))(99))
+  custom_breaks <- c(seq(0, -log10(p.val_treshold) - 0.00001, length.out = 2), 
+                     seq(-log10(p.val_treshold), upper_FDR_limit, length.out = 99))
+  
+  plot <- summary_table %>%
+    ggplot() +
+    geom_bar(position = position_dodge(0.5), 
+             width = 0.1, 
+             aes(y = Protein, 
+                 fill = Description, 
+                 weight = Odds_ratio)) +
+    scale_fill_manual(values =  c("navy", "firebrick3")) +
+    scale_x_continuous(limits = scale_x_continuous_limits) +
+    ggnewscale::new_scale_fill() +
+    geom_point(aes(y = Protein, 
+                   x = Odds_ratio, 
+                   color = Description,
+                   size = Peaks_in_set/Gene_set_size*100,
+                   fill = -log10(FDR)
+    ), 
+    shape = "circle filled",
+    position = position_dodge2(0.5)
+    ) +
+    scale_color_manual(values =  c("navy", "firebrick3")) +
+    scale_fill_gradientn(colors = custom_colors, 
+                         values = scales::rescale(custom_breaks),
+                         limits = c(0, upper_FDR_limit), 
+                         na.value = "red") +
+    #  scale_fill_viridis(option="viridis")+
+    theme_minimal() +
+    labs(color = "selected peaks", 
+         fill = "-log10(FDR)\n red - non significant (FDR < 0.05)",
+         size =  "Percentage of genes in set\n overlaping with gene-set collection ",
+         y = "Proteins",
+         x = "Odds ratio",
+         title = title)
+  
+  return(plot)
+}
