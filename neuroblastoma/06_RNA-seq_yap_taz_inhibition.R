@@ -21,6 +21,7 @@ library(pheatmap)
 library(xcore)
 library(ExperimentHub)
 library(xcoredata)
+yes
 library(stringr)
 library(org.Hs.eg.db)
 library(fgsea)
@@ -142,7 +143,7 @@ writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
 writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
 
 saveWorkbook(XLSX_OUT, 
-             file.path(deg_dir, "cell_type_24р_vs_control.xlsx"),
+             file.path(deg_dir, "cell_type_24h_vs_control.xlsx"),
              overwrite = TRUE)
 
 # VOLCANO PLOT 24h
