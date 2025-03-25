@@ -27,7 +27,10 @@ import::from(
   "gseaplot3",
   "tableGrob2",
   "gsInfo",
-  "chipEnrichAndExport"
+  "chipEnrichAndExport",
+  "createTermsTable",
+  "subsetPeaksInSamples",
+  "LolipopEnrichmentPlot"
 )
 library(dplyr)
 library(DESeq2)
@@ -207,21 +210,55 @@ write.table(
   quote = F
 )
 
-locusdef <-  "5kb"
-
-# Create a term from K975 experiment
-RNA_K975_SEQ_data_24h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx",
+# Create a term from K975 experiment 24h
+RNA_K975_SEQ_data_24h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_24h_vs_control.xlsx",
                                           name_for_negative_values = "K975_24h_down",
                                           name_for_positive_values = "K975_24h_up",
                                           mart = mart
 )
 write.table(
-  x = mes_adrn_gene_list_k975_24h,
+  x = RNA_K975_SEQ_data_24h,
   file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv",
   sep = "\t",
   row.names = F,
   quote = F
 )
+
+
+# Create a term from K975 experiment 24h
+RNA_K975_SEQ_data_48h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx",
+                                          name_for_negative_values = "K975_48h_down",
+                                          name_for_positive_values = "K975_48h_up",
+                                          mart = mart
+)
+write.table(
+  x = RNA_K975_SEQ_data_48h,
+  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_48h.tsv",
+  sep = "\t",
+  row.names = F,
+  quote = F
+)
+
+
+RNA_K975_SEQ_data_24h_48h <- rbind(
+  data.frame(gs_id = "K975_24h_48h_up",
+             gene_id = intersect(RNA_K975_SEQ_data_24h %>% filter(gs_id == "K975_24h_up") %>% pull(gene_id),
+                                 RNA_K975_SEQ_data_48h %>% filter(gs_id == "K975_48h_up") %>% pull(gene_id))
+  ),
+  data.frame(gs_id = "K975_24h_48h_down",
+             gene_id = intersect(RNA_K975_SEQ_data_24h %>% filter(gs_id == "K975_24h_down") %>% pull(gene_id),
+                                 RNA_K975_SEQ_data_48h %>% filter(gs_id == "K975_48h_down") %>% pull(gene_id))
+  )
+)
+write.table(
+  x = RNA_K975_SEQ_data_24h_48h,
+  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h_48h.tsv",
+  sep = "\t",
+  row.names = F,
+  quote = F
+)
+
+
 
 locusdef <-  "5kb"
 
@@ -235,6 +272,16 @@ res_dir_k975 <- "/home/rstudio/workspace/neuroblastoma/results/CnR/k975/"
 #our_rna_seq_terms <- mes_adrn_gene_list
 our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
 our_rna_seq_terms_k975_24h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv"
+our_rna_seq_terms_k975_48h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_48h.tsv"
+our_rna_seq_terms_k975_24h_48h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h_48h.tsv"
+
+rna_seq_terms_list <- list(
+  rna_seq_terms = list(name = "Our_data_", path = our_rna_seq_terms),
+  k975_24h = list(name = "Our_k975_24h_data_", path = our_rna_seq_terms_k975_24h),
+  k975_48h = list(name = "Our_k975_48h_data_", path =our_rna_seq_terms_k975_48h),
+  k975_24h_48h = list(name = "Our_k975_24h_48h_data_", path = our_rna_seq_terms_k975_24h_48h)
+)
+
 
 for(TF_name in names(DBobj_list)){
   #TF_name <- "YAP"  
@@ -246,42 +293,29 @@ for(TF_name in names(DBobj_list)){
   #plot_dist_to_tss(peaks = p_MES_dwn, genome = "hg38")
   
   if (nrow(p_MES_up) > 0) {
-    chipEnrichAndExport(peaks = p_MES_up,
-                        peaksName = "MES", 
-                        TF_name = TF_name, 
-                        res_dir = res_dir, 
-                        genesets = our_rna_seq_terms, 
-                        genesets_name = "Our_data_",
-                        locusdef = locusdef
-    )
-    chipEnrichAndExport(peaks = p_MES_up,
-                        peaksName = "MES", 
-                        TF_name = TF_name, 
-                        res_dir = res_dir_k975, 
-                        genesets = our_rna_seq_terms_k975_24h, 
-                        genesets_name = "Our_k975_24h_data_",
-                        locusdef = locusdef
-    )
+    for(rna_seq_term in rna_seq_terms_list){
+      chipEnrichAndExport(peaks = p_MES_up,
+                          peaksName = "MES", 
+                          TF_name = TF_name, 
+                          res_dir = res_dir, 
+                          genesets = rna_seq_term$path, 
+                          genesets_name = rna_seq_term$name,
+                          locusdef = locusdef
+      )
+    }
   }
   
   if (nrow(p_MES_dwn) > 0){
-    
-    chipEnrichAndExport(peaks = p_MES_dwn,
-                        peaksName = "ADRN", 
-                        TF_name = TF_name, 
-                        res_dir = res_dir, 
-                        genesets = our_rna_seq_terms, 
-                        genesets_name = "Our_data_",
-                        locusdef = locusdef
-    )
-    chipEnrichAndExport(peaks = p_MES_dwn,
-                        peaksName = "ADRN", 
-                        TF_name = TF_name, 
-                        res_dir = res_dir_k975, 
-                        genesets = our_rna_seq_terms_k975_24h, 
-                        genesets_name = "Our_k975_24h_data_",
-                        locusdef = locusdef
-    ) 
+    for(rna_seq_term in rna_seq_terms_list){
+      chipEnrichAndExport(peaks = p_MES_dwn,
+                          peaksName = "ADRN", 
+                          TF_name = TF_name, 
+                          res_dir = res_dir, 
+                          genesets = rna_seq_term$path, 
+                          genesets_name = rna_seq_term$name,
+                          locusdef = locusdef
+      )
+    }
   }
 }
 
@@ -293,42 +327,30 @@ JUN_p_MES_up <- subsetPeaksInSamples(DBobj_list, "Jun", contrast = 2, select_up_
 # remove scaffolds - their name is longer than 2 charcaters
 ol <- ChIPpeakAnno::findOverlapsOfPeaks(GRanges(YAP_p_MES_up), GRanges(TAZ_p_MES_up))
 YAP_TAZ_MES_p_up <- as.data.frame(ol$mergedPeaks)
-ol <- ChIPpeakAnno::findOverlapsOfPeaks(YAP_TAZ_MES_p_up, GRanges(JUN_p_MES_up))
+ol <- ChIPpeakAnno::findOverlapsOfPeaks(GRanges(YAP_TAZ_MES_p_up), GRanges(JUN_p_MES_up))
 YAP_TAZ_JUN_MES_p_up <- as.data.frame(ol$mergedPeaks)
 
-chipEnrichAndExport(peaks = YAP_TAZ_MES_p_up,
-                    peaksName = "MES", 
-                    TF_name = "yap-taz", 
-                    res_dir = res_dir, 
-                    genesets = our_rna_seq_terms, 
-                    genesets_name = "Our_data_",
-                    locusdef = locusdef
-)
-chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_up,
-                    peaksName = "MES", 
-                    TF_name = "yap-taz-jun", 
-                    res_dir = res_dir, 
-                    genesets = our_rna_seq_terms, 
-                    genesets_name = "Our_data_",
-                    locusdef = locusdef
-)
+for(rna_seq_term in rna_seq_terms_list){
+  chipEnrichAndExport(peaks = YAP_TAZ_MES_p_up,
+                      peaksName = "MES", 
+                      TF_name = "yap-taz", 
+                      res_dir = res_dir, 
+                      genesets = rna_seq_term$path, 
+                      genesets_name = rna_seq_term$name,
+                      locusdef = locusdef
+  )
+}
 
-chipEnrichAndExport(peaks = YAP_TAZ_MES_p_up,
-                    peaksName = "MES", 
-                    TF_name = "yap-taz", 
-                    res_dir = res_dir_k975, 
-                    genesets = our_rna_seq_terms_k975_24h, 
-                    genesets_name = "Our_k975_24h_data_",
-                    locusdef = locusdef
-)
-chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_up,
-                    peaksName = "MES", 
-                    TF_name = "yap-taz-jun", 
-                    res_dir = res_dir_k975, 
-                    genesets = our_rna_seq_terms_k975_24h, 
-                    genesets_name = "Our_k975_24h_data_",
-                    locusdef = locusdef
-)
+for(rna_seq_term in rna_seq_terms_list){
+  chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_up,
+                      peaksName = "MES", 
+                      TF_name = "yap-taz-jun", 
+                      res_dir = res_dir, 
+                      genesets = rna_seq_term$path, 
+                      genesets_name = rna_seq_term$name,
+                      locusdef = locusdef
+  )
+}
 
 
 YAP_p_MES_down <- subsetPeaksInSamples(DBobj_list, "YAP", contrast = 2, select_up_or_down_regulated = "down", remove_scaffolds = TRUE)
@@ -340,39 +362,27 @@ YAP_TAZ_MES_p_down <- as.data.frame(ol$mergedPeaks)
 ol <- ChIPpeakAnno::findOverlapsOfPeaks(YAP_TAZ_MES_p_down, GRanges(JUN_p_MES_down))
 YAP_TAZ_JUN_MES_p_down <- as.data.frame(ol$mergedPeaks)
 
-chipEnrichAndExport(peaks = YAP_TAZ_MES_p_down,
-                    peaksName = "ADRN", 
-                    TF_name = "yap-taz", 
-                    res_dir = res_dir, 
-                    genesets = our_rna_seq_terms, 
-                    genesets_name = "Our_data_",
-                    locusdef = locusdef
-)
-chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_down,
-                    peaksName = "ADRN", 
-                    TF_name = "yap-taz-jun", 
-                    res_dir = res_dir, 
-                    genesets = our_rna_seq_terms, 
-                    genesets_name = "Our_data_",
-                    locusdef = locusdef
-)
+for(rna_seq_term in rna_seq_terms_list){
+  chipEnrichAndExport(peaks = YAP_TAZ_MES_p_down,
+                      peaksName = "ADRN", 
+                      TF_name = "yap-taz", 
+                      res_dir = res_dir, 
+                      genesets = rna_seq_term$path, 
+                      genesets_name = rna_seq_term$name,
+                      locusdef = locusdef
+  )
+}
 
-chipEnrichAndExport(peaks = YAP_TAZ_MES_p_down,
-                    peaksName = "ADRN", 
-                    TF_name = "yap-taz", 
-                    res_dir = res_dir_k975, 
-                    genesets = our_rna_seq_terms_k975_24h, 
-                    genesets_name = "Our_k975_24h_data_",
-                    locusdef = locusdef
-)
-chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_down,
-                    peaksName = "ADRN", 
-                    TF_name = "yap-taz-jun", 
-                    res_dir = res_dir_k975, 
-                    genesets = our_rna_seq_terms_k975_24h, 
-                    genesets_name = "Our_k975_24h_data_",
-                    locusdef = locusdef
-)
+for(rna_seq_term in rna_seq_terms_list){
+  chipEnrichAndExport(peaks = YAP_TAZ_JUN_MES_p_down,
+                      peaksName = "ADRN", 
+                      TF_name = "yap-taz-jun", 
+                      res_dir = res_dir, 
+                      genesets = rna_seq_term$path, 
+                      genesets_name = rna_seq_term$name,
+                      locusdef = locusdef
+  )
+}
   
 ####### visualize our data #########
 enrich_results_files <- unlist(list.files(path = res_dir, pattern = "^Enricher_.*.xlsx", full.names = TRUE))
@@ -389,7 +399,7 @@ summary_table <- data.frame(Protein = NULL,
                             Odds_ratio = NULL)
 
 #pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP)_(Our_data|Groen).*(ADRN|MES).*"
-pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP|yap-taz|yap-taz-jun)_(Our_data|Groen).*(ADRN|MES).*"
+pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP|yap-taz|yap-taz-jun)_(Our_data|Our_k975_24h_data|Our_k975_48h_data|Our_k975_24h_48h_data).*(ADRN|MES).*"
 
 for (file_name in enrich_results_files){
   tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)
@@ -416,6 +426,7 @@ for (file_name in enrich_results_files){
   
 }
 
+pdf(file = paste0(res_dir, "enrichment_lolipop_plots.pdf"))
 # Make a plot for MES data
 summary_table_MES <- summary_table %>% filter(Data_source == "Our_data", Selected_peaks == "MES")
 # making lolipop plot with enrichments
@@ -433,47 +444,7 @@ plot <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
 plot
 
 
-# Visualization, but with genes that comes from K975 inhibition assay
-enrich_results_files <- unlist(list.files(path = res_dir_k975, pattern = "^Enricher_.*.xlsx", full.names = TRUE))
-summary_table <- data.frame(Protein = NULL,
-                            Data_source = NULL,
-                            Selected_peaks = NULL,
-                            Description = NULL,
-                            P.value = NULL,
-                            FDR = NULL,
-                            Effect = NULL,
-                            Status = NULL,
-                            Gene_set_size = NULL,
-                            Peaks_in_set = NULL,
-                            Odds_ratio = NULL)
-
-pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP|yap-taz|yap-taz-jun)_(Our_k975_24h_data|Groen).*(ADRN|MES).*"
-
-for (file_name in enrich_results_files){
-  tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)
-  
-  basename_tmp <- basename(file_name)
-  basename_tmp <- str_extract(basename_tmp, 
-                              pattern, 
-                              group = c(1,2,3))
-  
-  summary_table_tmp <- data.frame(Protein = basename_tmp[1],
-                                  Data_source = basename_tmp[2],
-                                  Selected_peaks = basename_tmp[3],
-                                  Description = tmp$Description,
-                                  P.value = tmp$P.value,
-                                  FDR = tmp$FDR,
-                                  Effect = tmp$Effect,
-                                  Status = tmp$Status,
-                                  Gene_set_size = tmp$N.Geneset.Genes,
-                                  Peaks_in_set = tmp$N.Geneset.Peak.Genes,
-                                  Odds_ratio = tmp$Odds.Ratio)
-  
-  summary_table <- rbind(summary_table,
-                         summary_table_tmp)
-  
-}
-
+# Visualization, but with genes that comes from K975 24 h inhibition assay
 # Make a plot for MES data
 summary_table_MES <- summary_table %>% filter(Data_source == "Our_k975_24h_data", Selected_peaks == "MES")
 plot <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
@@ -484,12 +455,48 @@ plot
 
 # Make a plot for ADRN data
 summary_table_ADRN <- summary_table %>% filter(Data_source == "Our_k975_24h_data", Selected_peaks == "ADRN")
-plot <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
                               p.val_treshold = 0.05,
                               title = "Enrichment of peaks in ADRN samples in MES/ADR-specific \n regions determined from K-975 RNA-seq 24h"
 )
 plot
 
+# Visualization, but with genes that comes from 48h K975 inhibition assay
+# Make a plot for MES data
+summary_table_MES <- summary_table %>% filter(Data_source == "Our_k975_48h_data", Selected_peaks == "MES")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
+                              p.val_treshold = 0.05,
+                              title = "Enrichment of peaks in MES samples in MES/ADR-specific \n regions determined from K-975 RNA-seq 48h"
+)
+plot
+
+# Make a plot for ADRN data
+summary_table_ADRN <- summary_table %>% filter(Data_source == "Our_k975_48h_data", Selected_peaks == "ADRN")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
+                              p.val_treshold = 0.05,
+                              title = "Enrichment of peaks in ADRN samples in MES/ADR-specific \n regions determined from K-975 RNA-seq 48h"
+)
+plot
+
+# Visualization, but with genes that comes from 48h K975 inhibition assay
+# Make a plot for MES data
+summary_table_MES <- summary_table %>% filter(Data_source == "Our_k975_24h_48h_data", Selected_peaks == "MES")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
+                              p.val_treshold = 0.05,
+                              title = "Enrichment of peaks in MES samples in MES/ADR-specific \n regions determined from K-975 RNA-seq 24_48h"
+)
+plot
+
+# Make a plot for ADRN data
+summary_table_ADRN <- summary_table %>% filter(Data_source == "Our_k975_24h_48h_data", Selected_peaks == "ADRN")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
+                              p.val_treshold = 0.05,
+                              title = "Enrichment of peaks in ADRN samples in MES/ADR-specific \n regions determined from K-975 RNA-seq 24_48h"
+)
+plot
+
+
+dev.off()
 
 # making lolipop plot with enrichments
 
