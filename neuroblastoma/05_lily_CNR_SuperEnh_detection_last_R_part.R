@@ -645,12 +645,14 @@ library(biomaRt)
 # BEDs must be annotated first using homer:
 # "~/workspace/neuroblastoma/05_SEs_annotation.sh"
 # Then load the files:
-CLB_SKN_A_SEs_annot <- read.csv("~/workspace/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
-CLB_SKN_M_SEs_annot <- read.csv("~/workspace/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
-CLB_SKN_AM_SEs_annot <- read.csv("~/workspace/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
+CLB_SKN_A_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
+CLB_SKN_M_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
+CLB_SKN_AM_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
 
 # load genes from RNA-seq MES/ADR-specific genes
-RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/20240515/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+#RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_24h_vs_control.xlsx", sheet = 1)
+
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
 mes_adrn_gene_list <- RNA_SEQ_data %>%
   mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
 mes_adrn_gene_list <- list(
