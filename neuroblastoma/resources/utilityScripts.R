@@ -583,8 +583,8 @@ subsetPeaksInSamples <- function(DBobj_list,
     peaks <- peaks %>% dplyr::filter(Fold > 0)
   }
   
-  if(select_up_or_down_regulated == "up"){
-    peaks <- peaks %>% dplyr::filter(Fold > 0)
+  if(select_up_or_down_regulated == "down"){
+    peaks <- peaks %>% dplyr::filter(Fold < 0)
   }
   
   peaks <- peaks %>% dplyr::select(seqnames, start, end)
@@ -615,6 +615,11 @@ LolipopEnrichmentPlot <- function(summary_table,
   custom_colors <- c("red", "red", colorRampPalette(brewer.pal(7, "Greys"))(99))
   custom_breaks <- c(seq(0, -log10(p.val_treshold) - 0.00001, length.out = 2), 
                      seq(-log10(p.val_treshold), upper_FDR_limit, length.out = 99))
+  
+  #DELTE TEST
+ # summary_table$Odds_ratio <- log2(summary_table$Odds_ratio)
+  
+  
   
   plot <- summary_table %>%
     ggplot() +
