@@ -1,14 +1,7 @@
 #!/bin/bash
 
-
+# 
 homer_dir=/home/rstudio/workspace/neuroblastoma/homer
-
-mkdir ${homer_dir}
-wget http://homer.ucsd.edu/homer/configureHomer.pl -O ${homer_dir}/configureHomer.pl
-perl ${homer_dir}/configureHomer.pl -install
-perl ${homer_dir}/configureHomer.pl -install hg38
-
-PATH=$PATH:/home/rstudio/workspace/neuroblastoma/homer/bin/
 
 perl ${homer_dir}/bin/annotatePeaks.pl \
   /home/rstudio/workspace/neuroblastoma/results/ATAC-seq/bed_diff_ADR.bed \
