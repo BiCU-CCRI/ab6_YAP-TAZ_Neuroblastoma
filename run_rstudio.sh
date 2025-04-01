@@ -16,10 +16,19 @@ new_port=48907
 RENV_PATHS_CACHE_HOST=/home/aleksandr_b/bioinf_isilon/core_bioinformatics_unit/Internal/aleksandr/resources/renv_cache/ # the path to an renv cache on the host (global) machine
 RENV_PATHS_CACHE_CONTAINER=/renv_cache                                                                                  # the path to the cache within the container
 # potentially bind to local cache to speed up package installation
-project_name="ab6_atacseq_rna_seq" # used to name the container
-USER="aleksandr_b"
+project_name="Soeren_Neuroblastoma" # used to name the container
+USER=$(whoami)
 dotconfig=$(pwd)/.config/rstudio
-raw_bams=/home/aleksandr_b/bioinf_isilon/core_bioinformatics_unit/Internal/aleksandr/projects/ab6_20230508_soren_YAP_TAZ/strohmenger/neuroblastoma/data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/
+#raw_bams=/home/aleksandr_b/bioinf_isilon/core_bioinformatics_unit/Internal/aleksandr/projects/ab6_20230508_soren_YAP_TAZ/strohmenger/neuroblastoma/data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/
+
+echo "####################################################"
+echo "To connect to the RStudio type in your browser:"
+echo "IP_ADRESS.OF.YOUR.SERVER:48907"
+echo "NOTE! If you use your local machine, use localhost ip: 127.0.0.1:48907"
+echo "Use the Username: 'rstudio'"
+echo "Use the password: 'test0'"
+echo "####################################################"
+echo " "
 
 docker run --rm \
 	--memory=1g \
@@ -33,5 +42,6 @@ docker run --rm \
 	--volume=$(pwd):"/home/rstudio/workspace" \
 	--workdir="/home/rstudio/workspace" \
 	--volume ${dotconfig}:"/home/rstudio/.config/rstudio" \
-	--volume ${raw_bams}:"/home/rstudio/workspace/neuroblastoma/data/CnR/BAMs/" \
-	ccribioinf/dockrstudio:4.2.0-v1
+	core_bioinf/dockrstudio:4.2.0-TEST_ab6
+
+#--volume ${raw_bams}:"/home/rstudio/workspace/neuroblastoma/data/CnR/BAMs/" \
