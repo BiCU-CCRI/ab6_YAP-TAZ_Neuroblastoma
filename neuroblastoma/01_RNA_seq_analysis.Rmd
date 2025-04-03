@@ -2,12 +2,11 @@
 title: "RNA-seq analysis"
 author: "Aleksandr Bykov"
 date: '2025-01-30'
-output: html_document
+output:
+  html_document: default
 ---
 
 ```{r Load libraries, include=FALSE}
-knitr::opts_chunk$set(include = FALSE)
-
 # Set up the environment ####
 # Importing only key functions that are actually used - not to polute namespace!
 import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
@@ -30,7 +29,7 @@ library(DESeq2)
 
 ```
 
-```{r Load essentials assets}
+```{r Load essentials assets, echo=FALSE}
 # load gene sets
 gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean = TRUE)
 gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean = TRUE)
@@ -42,6 +41,7 @@ gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), 
 gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A","TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
 
 # loading BioMart
+options(timeout = 30000)
 mart <- biomaRt::useMart(
   biomart = "ENSEMBL_MART_ENSEMBL", 
   dataset = "hsapiens_gene_ensembl",
@@ -56,6 +56,8 @@ param_list <- list(
 )
 deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq/"
 ```
+
+This module loads RNA-seq count table and produces PCA plot, including all samples, including the STA_NB_6 (that is removed later on).
 
 ```{r Load RNA-seq data and produce PCA plot with ALL samples included}
 # Analysis of the RNA-seq data ####
@@ -99,11 +101,12 @@ ggsave(
   plot = tmp_pca_deg,
   width = 20, height = 20, units = "cm"
 )
-tmp_pca_deg
+plot(tmp_pca_deg)
 ```
 
-```{r Filtering RNA-seq data and performing }
+Remove STA_NB_6 sample and produce PCA plot
 
+```{r Filtering RNA-seq data and performing }
 # Removing NB6 sample - this is intermixed sample
 rnaseq_dds <- rnaseq_dds[, rnaseq_dds$cell_line != "STA_NB_6"]
 rnaseq_dds$cell_line <- droplevels(rnaseq_dds$cell_line)
@@ -134,6 +137,9 @@ ggsave(
   width = 20, height = 20, units = "cm"
 )
 
+pca_deg
+
+# Produce the result table with DEGs
 # Check the names of the dds object and generate results
 resultsNames(rnaseq_dds_filt)
 deg_results <- generateResults(
@@ -147,10 +153,11 @@ deg_results <- generateResults(
 )
 
 # export MES and ADR genes and create custom terms from them
+# This will be later used by other scripts
 mes_adrn_gene_list <- deg_results$results_signif %>%
   mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
 
-genes <- biomaRt::getBM(
+BiomaRt_genes <- biomaRt::getBM(
   filters = "ensembl_gene_id",
   attributes = c("ensembl_gene_id", "entrezgene_id"),
   values = mes_adrn_gene_list$ensembl_id,
@@ -160,7 +167,7 @@ genes <- biomaRt::getBM(
 mes_adrn_gene_list <-
   merge.data.frame(
     x = mes_adrn_gene_list,
-    y = genes,
+    y = BiomaRt_genes,
     by.x = "ensembl_id",
     by.y = "ensembl_gene_id"
   ) %>%
@@ -186,15 +193,257 @@ writeData(XLSX_OUT, x = deg_results$results_signif, sheet = "results_signif")
 writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
 writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
 
-saveWorkbook(XLSX_OUT, file.path(deg_dir, "cell_type_MES_vs_ADR.xlsx"))
+saveWorkbook(XLSX_OUT, file.path(deg_dir, "cell_type_MES_vs_ADR.xlsx"), overwrite = TRUE)
 
 ```
-## Including Plots
 
-You can also embed plots, for example:
+Produce GSEA plots
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r GSEA, echo=FALSE}
+# Produce GSEA plots
+C5_GOBP <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_C5_GOBP,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C5_GOCC <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_C5_GOCC,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C5_GOMF <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_C5_GOMF,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C2_kegg <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_C2_kegg,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C2_reactome <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_C2_reactome,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C6_onco <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_C6_onco,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+wang_hippo <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gs_wang_hippo,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+
+C5_GOBP_plot <- hypeR::hyp_dots(C5_GOBP, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOBP: MES vs ADR") + theme_bw()
+C5_GOCC_plot <- hypeR::hyp_dots(C5_GOCC, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOCC: MES vs ADR") + theme_bw()
+C5_GOMF_plot <- hypeR::hyp_dots(C5_GOMF, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOMF: MES vs ADR") + theme_bw()
+C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "KEGG: MES vs ADR") + theme_bw()
+C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "REACTOME: MES vs ADR") + theme_bw()
+C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "ONCO: MES vs ADR") + theme_bw()
+
+plot(C5_GOBP_plot)
+plot(C5_GOCC_plot)
+plot(C5_GOMF_plot)
+plot(C2_kegg_plot)
+plot(C2_rctm_plot)
+
+# optional saving to excel tables
+hypeR::hyp_to_excel(C5_GOBP, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOBP.xlsx"))
+hypeR::hyp_to_excel(C2_reactome, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C2_reactome.xlsx"))
+hypeR::hyp_to_excel(C6_onco, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C6_onco.xlsx"))
+# hypeR::hyp_to_excel(C5_GOCC, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOCC.xlsx"))
+# hypeR::hyp_to_excel(C5_GOMF, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOMF.xlsx"))
+
+# saving the report to a PDF file
+pdf(file = file.path(deg_dir, "MES_vs_ADR_GSEA.pdf"), width = 10, height = 10)
+plot(C5_GOBP_plot)
+plot(C5_GOCC_plot)
+plot(C5_GOMF_plot)
+plot(C2_kegg_plot)
+plot(C2_rctm_plot)
+dev.off()
+
+# Additionally - save as individual plots
+ggsave(
+  filename = paste0(deg_dir, "MES_vs_ADRN_GSEA_C5_GOBP.png"),
+  plot = C5_GOBP_plot,
+  width = 20, height = 20, units = "cm"
+)
+ggsave(
+  filename = paste0(deg_dir, "MES_vs_ADRN_GSEA_C5_GOCC.png"),
+  plot = C5_GOCC_plot,
+  width = 20, height = 20, units = "cm"
+)
+ggsave(
+  filename = paste0(deg_dir, "MES_vs_ADRN_GSEA_C5_GOMF.png"),
+  plot = C5_GOMF_plot,
+  width = 20, height = 20, units = "cm"
+)
+ggsave(
+  filename = paste0(deg_dir, "MES_vs_ADRN_GSEA_C2_KEGG.png"),
+  plot = C2_kegg_plot,
+  width = 20, height = 20, units = "cm"
+)
+ggsave(
+  filename = paste0(deg_dir, "MES_vs_ADRN_GSEA_C2_REACTOME.png"),
+  plot = C2_rctm_plot,
+  width = 20, height = 20, units = "cm"
+)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Produce fgsea plots
+
+```{r fgsea}
+# Run FastGSEA for GOBP, GOCC, GOMF, KEGG, reactome terms
+# Rank genes based on L2FC
+# The slice_max is necessary to remove duplicated gene names (which are 6 in total). 
+# The reason why they are present is that originally the DEG is done on Transcript IDs which can have identical 
+# gene_symbol. And duplicated values are disrupting the fgsea, so they must be removed for a correct work.
+# There is no ideal way to deal with this problem, so according to advice from the creator of fgsea
+# https://www.biostars.org/p/9591990/#9591997 , The gene with the highest BaseMean kept.
+
+de_genes_ranked <- deg_results$results_all
+de_genes_ranked <- de_genes_ranked %>%
+  group_by(gene_symbol) %>%
+  slice_max(baseMean, n = 1, with_ties = FALSE) %>%
+  ungroup()
+de_genes_ranked <- de_genes_ranked %>% arrange(desc(log2FoldChange))
+de_genes_ranked <- setNames(c(de_genes_ranked$log2FoldChange), c(de_genes_ranked$gene_symbol))
+
+gene_set_list <- list(
+  gs_hallmark = gs_hallmark,
+  gs_C2_kegg = gs_C2_kegg,
+  gs_C2_reactome = gs_C2_reactome,
+  gs_C5_GOBP = gs_C5_GOBP,
+  gs_C5_GOCC = gs_C5_GOCC,
+  gs_C5_GOMF = gs_C5_GOMF
+)
+
+# pdf(file = file.path(deg_dir, "MES_vs_ADR_fGSEA_and_dotPLOT2.pdf"), width = 10, height = 10)
+for (gene_set_name in names(gene_set_list)) {
+  # gene_set_name <- "gs_hallmark"
+  print(gene_set_name)
+  gene_set <- gene_set_list[[gene_set_name]]
+
+  fgseaRes <- fgsea(
+    pathways = gene_set[["genesets"]],
+    stats = de_genes_ranked,
+    minSize = 15,
+    maxSize = 500
+  )
+  topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n = 10), pathway]
+  topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n = 10), pathway]
+  topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+
+  p <- plotGseaTable(gene_set[["genesets"]][topPathways],
+    de_genes_ranked,
+    fgseaRes,
+    gseaParam = 0.5
+  ) +
+    labs(title = gene_set_name)
+  p[["theme"]][["plot.title"]] <- NULL
+  print(p)
+
+  # Dot plot
+  fgseaRes_dot <- fgseaRes %>%
+    select(pathway, NES, padj) %>%
+    filter(pathway %in% topPathways) %>%
+    arrange(NES) %>%
+    mutate(pathway = factor(pathway, levels = pathway)) %>%
+    mutate(padj_log2 = -log2(padj))
+
+  p <- ggplot(fgseaRes_dot) +
+    aes(x = NES, y = pathway, colour = NES, size = padj_log2) +
+    geom_point(shape = "circle") +
+    scale_color_distiller(palette = "RdBu", direction = -1) +
+    scale_size(range = c(4, 10)) +
+    theme_minimal() +
+    labs(
+      title = gene_set_name,
+      size = "-log2p_adj"
+    )
+  print(p)
+}
+# dev.off()
+
+```
+
+Separate fgsea plots for hippo pathway 
+```{r}
+# Additional separate fsGSEAs for hippos
+gene_set_list <- list(
+  GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set
+)
+
+fgseaRes <- fgsea(
+  pathways = gene_set_list,
+  stats = de_genes_ranked,
+  minSize = 15,
+  maxSize = 500
+)
+
+#pdf(file = file.path(deg_dir, "MES_vs_ADR_fGSEA_hippos.pdf"), width = 10, height = 8)
+for(gene_set_to_plot_name in names(gene_set_list)){
+ # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
+  gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
+  
+  title_values <- fgseaRes %>% filter(pathway == gene_set_to_plot_name) %>% select(pathway, NES, padj)
+  p <- plotEnrichment(pathway = gene_set_to_plot, stats = de_genes_ranked) + 
+    labs(title = paste(title_values$pathway, "\n",
+                       "NES =", title_values$NES, "\n",
+                       "padj = ", title_values$padj))
+  plot(p)
+  
+ggsave(
+  filename = paste0(deg_dir, "fgsea_",gene_set_to_plot_name, ".png"),
+  plot = p,
+  width = 20, height = 20, units = "cm"
+)
+}
+#dev.off()
+
+
+```
+
+Volcano plot for selected proteins
+```{r volcano plot}
+# Create a volcano plot
+# Genes to highlight
+genes_to_highlight <- c(
+  "VIM",
+  "YAP1",
+  "WWTR1",
+  "JUN",
+  "FOSL1",
+  "FOSL2",
+  "PHOX2B",
+  "HAND2",
+  "GATA3"
+)
+volcano_plot <- plotVolcano(
+  dds_results_obj = deg_results$results_all,
+  genes_of_interest = genes_to_highlight,
+  plot_title = "MES vs ADRN genes"
+)
+plot(volcano_plot)
+
+ggsave(
+  filename = paste0(deg_dir, "MES_vs_ADRN_volcano_plot.png"),
+  plot = volcano_plot,
+  width = 20, height = 20, units = "cm"
+)
+
+```
