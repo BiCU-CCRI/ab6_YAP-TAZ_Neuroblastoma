@@ -31,7 +31,7 @@ library(dplyr)
 param_list <- list(
   abs_filt_samples=2,
   padj_cutoff = 0.05,
-  log2FC_cutoff = 0.58,
+  log2FC_cutoff = 0.37, #MAybe need to be changed later 
   var_expl_needed = 0.6,
   biomart_host="http://www.ensembl.org", 
   biomart_dataset="hsapiens_gene_ensembl", 

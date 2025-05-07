@@ -34,7 +34,7 @@ annotationData <- read.table(file = "~/workspace/neuroblastoma/data_soren/ATAC_B
 param_list <- list(
   abs_filt_samples=2,
   padj_cutoff = 0.05,
-  log2FC_cutoff = 0.58,
+  log2FC_cutoff = 0.37, #MAybe need to be changed later 
   var_expl_needed = 0.6,
   biomart_host="http://www.ensembl.org", 
   biomart_dataset="hsapiens_gene_ensembl", 
@@ -180,3 +180,10 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
 pdf(file = file.path(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"))
 ssgsea_mes_adr_ncc_noradr_heatmap
 dev.off()
+
+
+
+
+
+##################### 
+# JunDN analysis
