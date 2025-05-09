@@ -21,11 +21,47 @@ library(pheatmap)
 library(xcore)
 library(ExperimentHub)
 library(xcoredata)
-yes
+yes #this is necessary for the initial setup of the correct structure of folders
 library(stringr)
 library(org.Hs.eg.db)
 library(fgsea)
 library(dplyr)
+
+# Declare fGSEA function 
+plot_fGSEA <- function(deg_results, gene_set_list, title_prefix, save_dir, figure_extention = ".png"){
+  de_genes_ranked <- deg_results
+  de_genes_ranked <- de_genes_ranked %>%
+    group_by(gene_symbol) %>%
+    slice_max(baseMean, n = 1, with_ties = FALSE) %>%
+    ungroup()
+  de_genes_ranked <- de_genes_ranked %>% arrange(desc(log2FoldChange))
+  de_genes_ranked <- setNames(c(de_genes_ranked$log2FoldChange), c(de_genes_ranked$gene_symbol))
+ 
+  fgseaRes <- fgsea(
+    pathways = gene_set_list,
+    stats = de_genes_ranked,
+    minSize = 15,
+    maxSize = 500
+  )
+   
+  for(gene_set_to_plot_name in names(gene_set_list)){
+    # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
+    gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
+    
+    title_values <- fgseaRes %>% filter(pathway == gene_set_to_plot_name) %>% select(pathway, NES, padj)
+    p <- plotEnrichment(pathway = gene_set_to_plot, 
+                        stats = de_genes_ranked) + 
+      labs(title = paste(title_prefix, "\n",
+                         title_values$pathway, "\n",
+                         "NES =", title_values$NES,
+                         "padj = ", title_values$padj))
+    plot(p)
+    ggsave(file.path(save_dir, paste0(title_prefix, "_", title_values$pathway, figure_extention)), plot = p)
+  }
+  
+}
+
+
 
 # load annotation table. Could use Biomart, alternatively, but had this 
 param_list <- list(
@@ -48,6 +84,14 @@ gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), 
 gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
 gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
                                          "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
+
+gene_set_list <- list(
+  GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set
+)
+
 
 RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
 mes_adrn_gene_list <- RNA_SEQ_data %>%
@@ -72,6 +116,9 @@ colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
 
 deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/"
+if(!dir.exists(deg_dir)){
+  dir.create(deg_dir)
+} 
 
 #loading the new DESeq2 file
 load("~/workspace/neuroblastoma/data/RNAseq/taz_yap_inhibition/deseq2.dds.RData")
@@ -257,6 +304,21 @@ C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abr
 C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "REACTOME: 24h vs control downregulated") + theme_bw()
 C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "ONCO: 24h vs control downregulated") + theme_bw()
 
+pdf(file = file.path(deg_dir, "24H_GSEA_plots_downregulated.pdf"))
+C5_GOBP_plot
+C5_GOCC_plot
+C5_GOMF_plot
+C2_kegg_plot
+C2_rctm_plot
+C6_onco_plot
+dev.off()
+
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = gene_set_list,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           figure_extention = ".pdf"
+)
 
 
 
@@ -397,14 +459,24 @@ C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abr
 C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "REACTOME: 48h vs control downregulated") + theme_bw()
 C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "ONCO: 48h vs control downregulated") + theme_bw()
 
+pdf(file = file.path(deg_dir, "48H_GSEA_plots_downregulated.pdf"))
 C5_GOBP_plot
 C5_GOCC_plot
 C5_GOMF_plot
 C2_kegg_plot
 C2_rctm_plot
 C6_onco_plot
+dev.off()
 
 
+
+
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = gene_set_list,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           figure_extention = ".pdf"
+           )
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -435,3 +507,18 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
 pdf(file = file.path(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"))
 ssgsea_mes_adr_ncc_noradr_heatmap
 dev.off()
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # 
+# Analysis of JunDN #####
+
+
+
+
+
+
+
+
+
+
+
