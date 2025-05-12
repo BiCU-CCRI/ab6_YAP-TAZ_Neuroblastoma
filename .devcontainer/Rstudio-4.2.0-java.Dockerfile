@@ -14,6 +14,7 @@ LABEL version="4.2-java"
 RUN apt-get update && \
       DEBIAN_FRONTEND=noninteractive \
       apt-get install --assume-yes \
+	  libgsl-dev \
       libglpk40 \
       libcairo2-dev \
       liblzma-dev \
