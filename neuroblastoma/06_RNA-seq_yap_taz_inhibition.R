@@ -26,6 +26,9 @@ library(stringr)
 library(org.Hs.eg.db)
 library(fgsea)
 library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(rlang)
 
 # Declare fGSEA function 
 plot_fGSEA <- function(deg_results, gene_set_list, title_prefix, save_dir, figure_extention = ".png"){
@@ -61,7 +64,66 @@ plot_fGSEA <- function(deg_results, gene_set_list, title_prefix, save_dir, figur
   
 }
 
-
+produce_GSEA_plots <- function(gene_signature, dds_object, additional_title, path_to_pdf_report){
+  C5_GOBP <- hypeR::hypeR(
+    signature = gene_signature,
+    genesets = gs_C5_GOBP,
+    test = "hypergeometric",
+    background = nrow(dds_object)
+  )
+  C5_GOCC <- hypeR::hypeR(
+    signature = gene_signature,
+    genesets = gs_C5_GOCC,
+    test = "hypergeometric",
+    background = nrow(dds_object)
+  )
+  C5_GOMF <- hypeR::hypeR(
+    signature = gene_signature,
+    genesets = gs_C5_GOMF,
+    test = "hypergeometric",
+    background = nrow(dds_object)
+  )
+  C2_kegg <- hypeR::hypeR(
+    signature = gene_signature,
+    genesets = gs_C2_kegg,
+    test = "hypergeometric",
+    background = nrow(dds_object)
+  )
+  C2_reactome <- hypeR::hypeR(
+    signature = gene_signature,
+    genesets = gs_C2_reactome,
+    test = "hypergeometric",
+    background = nrow(dds_object)
+  )
+  C6_onco <- hypeR::hypeR(
+    signature = gene_signature,
+    genesets = gs_C6_onco,
+    test = "hypergeometric",
+    background = nrow(dds_object)
+  )
+  wang_hippo <- hypeR::hypeR(
+    signature = gene_signature,
+    genesets = gs_wang_hippo,
+    test = "hypergeometric",
+    background = nrow(dds_object)
+  )
+  
+  C5_GOBP_plot <- hypeR::hyp_dots(C5_GOBP, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = paste0("GOBP: ", additional_title)) + theme_bw()
+  C5_GOCC_plot <- hypeR::hyp_dots(C5_GOCC, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = paste0("GOCC: ", additional_title))+ theme_bw()
+  C5_GOMF_plot <- hypeR::hyp_dots(C5_GOMF, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = paste0("GOMF: ", additional_title)) + theme_bw()
+  C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = paste0("KEGG: ", additional_title)) + theme_bw()
+  C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = paste0("REACTOME: ", additional_title)) + theme_bw()
+  C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = paste0("ONCO: ", additional_title)) + theme_bw()
+  
+  pdf(file = file.path(path_to_pdf_report, paste0(additional_title, ".pdf")))
+  print(C5_GOBP_plot)
+  print(C5_GOCC_plot)
+  print(C5_GOMF_plot)
+  print(C2_kegg_plot)
+  print(C2_rctm_plot)
+  print(C6_onco_plot)
+  dev.off()
+}
 
 # load annotation table. Could use Biomart, alternatively, but had this 
 param_list <- list(
@@ -92,7 +154,6 @@ gene_set_list <- list(
   Hippo_Wang = gs_wang_hippo$wang_hippo_set
 )
 
-
 RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
 mes_adrn_gene_list <- RNA_SEQ_data %>%
   mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
@@ -100,8 +161,6 @@ sig_list_our_data <- list(
   Aderenergic = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "ADRN"],
   Mesenchymal = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "MES"]
 )
-
-
 
 # load annotation
 path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/RNAseq"
@@ -112,8 +171,6 @@ annotationData <- read.table(
 )
 # This is necessary to rename columns so that extraction of the data works correctly
 colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
-
-
 
 deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/"
 if(!dir.exists(deg_dir)){
@@ -166,6 +223,45 @@ dev.off()
 
 resultsNames(dds)
 
+# Barplots and statistics for CTGF ANKRD1
+genes_of_interest_symbols <- c("CCN2", "ANKRD1")
+annotationData$ensembl_id[annotationData$gene_symbol %in% genes_of_interest_symbols]
+genes_of_interest <- annotationData$ensembl_id[annotationData$gene_symbol %in% c("CCN2", "ANKRD1")]
+dds_sub <- dds[rownames(dds) %in% genes_of_interest, ]
+norm_counts <- counts(dds_sub, normalized = TRUE) %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("gene") %>%
+  pivot_longer(-gene, names_to = "sample", values_to = "expression")
+
+norm_counts <- left_join(norm_counts, as.data.frame(colData(dds)) , by = "sample")
+
+norm_counts$timepoint <- factor(norm_counts$timepoint, levels = c("control", "24h", "48h"))
+norm_counts$cell_line <- factor(norm_counts$cell_line)
+norm_counts$gene <- factor(norm_counts$gene)
+norm_counts <- norm_counts %>% mutate(gene = recode(gene, 
+                                                    "ENSG00000118523" = "CCN2",
+                                                    "ENSG00000148677" = "ANKRD1"))
+# Generate plot
+for (gene in genes_of_interest_symbols){
+  for (cell_line in c("CM", "SH")) {
+   p <- norm_counts %>% dplyr::filter(gene == !!gene, cell_line == !!cell_line) %>%
+      ggplot(aes(x = timepoint, y = expression, fill = timepoint)) +
+      geom_boxplot(outlier.shape = NA, alpha = 0.8) +
+      geom_jitter(width = 0.2, alpha = 0.6) +
+      stat_compare_means(method = "t.test", 
+                         comparisons = list(c("control", "24h"), c("control", "48h")),
+                        label = "p.format") +
+      theme_minimal(base_size = 14) +
+      labs(
+        title = paste0("Gene Expression by Timepoint in ", cell_line, " cell line"),
+        x = "Timepoint",
+        y = paste0("Normalized expression \n", gene )
+      ) +
+      scale_fill_brewer(palette = "Set2")
+   plot(p)
+  }
+}
+
 
 ######################################
 ## 24H vs control
@@ -206,7 +302,9 @@ genes_to_highlight <- c(
   "GATA3"
 )
 volcano_plot <- plotVolcano(
-  dds_results_obj = deg_results$results_all,
+  dds_results_obj = deg_results$results_all, 
+  log2FC_cutoff = param_list$log2FC_cutoff,
+  padj_cutoff = param_list$padj_cutoff,
   genes_of_interest = genes_to_highlight,
   plot_title = "24H vs control"
 )
@@ -215,7 +313,6 @@ ggsave(
   plot = volcano_plot,
   width = 20, height = 20, units = "cm"
 )
-
 
 # Prepare data for heatmaps 24H
 metadata_heatmap <- as.data.frame(colData(dds))
@@ -253,65 +350,10 @@ heatmap <- pheatmap::pheatmap(heatmap_counts,
 
 # Produce GSEA plots
 dwn_deg_results <- deg_results$results_signif %>% dplyr::filter(log2FoldChange < 0) %>% pull(gene_symbol)
-
-C5_GOBP <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C5_GOBP,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C5_GOCC <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C5_GOCC,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C5_GOMF <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C5_GOMF,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C2_kegg <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C2_kegg,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C2_reactome <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C2_reactome,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C6_onco <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C6_onco,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-wang_hippo <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_wang_hippo,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-
-C5_GOBP_plot <- hypeR::hyp_dots(C5_GOBP, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOBP: 24h vs control downregulated") + theme_bw()
-C5_GOCC_plot <- hypeR::hyp_dots(C5_GOCC, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOCC: 24h vs control downregulated") + theme_bw()
-C5_GOMF_plot <- hypeR::hyp_dots(C5_GOMF, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOMF: 24h vs control downregulated") + theme_bw()
-C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "KEGG: 24h vs control downregulated") + theme_bw()
-C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "REACTOME: 24h vs control downregulated") + theme_bw()
-C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "ONCO: 24h vs control downregulated") + theme_bw()
-
-pdf(file = file.path(deg_dir, "24H_GSEA_plots_downregulated.pdf"))
-C5_GOBP_plot
-C5_GOCC_plot
-C5_GOMF_plot
-C2_kegg_plot
-C2_rctm_plot
-C6_onco_plot
-dev.off()
+produce_GSEA_plots(gene_signature = dwn_deg_results, 
+                   dds_object = dds, 
+                   additional_title = "24h vs control downregulated", 
+                   path_to_pdf_report = deg_dir)
 
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = gene_set_list,
@@ -361,7 +403,9 @@ genes_to_highlight <- c(
   "GATA3"
 )
 volcano_plot <- plotVolcano(
-  dds_results_obj = deg_results$results_all,
+  dds_results_obj = deg_results$results_all, 
+  log2FC_cutoff = param_list$log2FC_cutoff,
+  padj_cutoff = param_list$padj_cutoff,
   genes_of_interest = genes_to_highlight,
   plot_title = "48H vs control"
 )
@@ -408,68 +452,10 @@ heatmap <- pheatmap::pheatmap(heatmap_counts,
 
 # Produce GSEA plots
 dwn_deg_results <- deg_results$results_signif %>% dplyr::filter(log2FoldChange < 0) %>% pull(gene_symbol)
-
-C5_GOBP <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C5_GOBP,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C5_GOCC <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C5_GOCC,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C5_GOMF <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C5_GOMF,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C2_kegg <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C2_kegg,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C2_reactome <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C2_reactome,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-C6_onco <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_C6_onco,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-wang_hippo <- hypeR::hypeR(
-  signature = dwn_deg_results,
-  genesets = gs_wang_hippo,
-  test = "hypergeometric",
-  background = nrow(dds)
-)
-
-C5_GOBP_plot <- hypeR::hyp_dots(C5_GOBP, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOBP: 48h vs control downregulated") + theme_bw()
-C5_GOCC_plot <- hypeR::hyp_dots(C5_GOCC, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOCC: 48h vs control downregulated") + theme_bw()
-C5_GOMF_plot <- hypeR::hyp_dots(C5_GOMF, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOMF: 48h vs control downregulated") + theme_bw()
-C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "KEGG: 48h vs control downregulated") + theme_bw()
-C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "REACTOME: 48h vs control downregulated") + theme_bw()
-C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "ONCO: 48h vs control downregulated") + theme_bw()
-
-pdf(file = file.path(deg_dir, "48H_GSEA_plots_downregulated.pdf"))
-C5_GOBP_plot
-C5_GOCC_plot
-C5_GOMF_plot
-C2_kegg_plot
-C2_rctm_plot
-C6_onco_plot
-dev.off()
-
-
-
+produce_GSEA_plots(gene_signature = dwn_deg_results, 
+                   dds_object = dds, 
+                   additional_title = "48h vs control downregulated", 
+                   path_to_pdf_report = deg_dir)
 
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = gene_set_list,
@@ -477,7 +463,6 @@ plot_fGSEA(deg_results = deg_results$results_all,
            save_dir = deg_dir, 
            figure_extention = ".pdf"
            )
-
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 ### ffGSEA to show a shift from MES to ADR identity for all samples ####
@@ -509,14 +494,171 @@ ssgsea_mes_adr_ncc_noradr_heatmap
 dev.off()
 
 
+
+
+
+
+
+
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # # # # # # # # # # # # # # # # # # # # # # # # # 
 # Analysis of JunDN #####
+deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/Jun_DN/"
+if(!dir.exists(deg_dir)){
+  dir.create(deg_dir)
+} 
+
+unzip(zipfile = "~/workspace/neuroblastoma/data/RNAseq/JunDN/rnaseq_deseq_jundn_counts_raw.tsv.zip",
+      overwrite = TRUE,
+      exdir = "~/workspace/neuroblastoma/data/RNAseq/JunDN/")
+
+raw_JunDN_counts <- read.csv(file = "~/workspace/neuroblastoma/data/RNAseq/JunDN/rnaseq_deseq_jundn_counts_raw.tsv", 
+                             header = TRUE, 
+                             sep = "\t")
+raw_JunDN_counts$gene_id <- stringr::str_replace(raw_JunDN_counts$gene_id, pattern = "\\..*", replacement = "") 
+row.names(raw_JunDN_counts) <- raw_JunDN_counts$gene_id
+raw_JunDN_counts <- raw_JunDN_counts %>% select(starts_with("JunDN"))
+
+coldata <- data.frame(
+  sample = c("JunDN_ctrl_2_RNA_S165182", 
+             "JunDN_ctrl_3_RNA_S165183", 
+             "JunDN_dox_1_RNA_S165180", 
+             "JunDN_dox_2_RNA_S165181", 
+             "JunDN_dox_3_RNA_S165186"),
+  replicate = c("2","3","1","2","3"),
+  group = c("ctrl", "ctrl", "dox", "dox", "dox")
+)
+row.names(coldata) <- coldata$sample
+JunDN_dds <- DESeqDataSetFromMatrix(as.matrix(raw_JunDN_counts),
+                                   colData = coldata,
+                                   design = as.formula(~group))
+
+JunDN_dds <- filterDatasets(JunDN_dds, 
+                      abs_filt = TRUE, 
+                      abs_filt_samples = param_list$abs_filt_samples)
+JunDN_dds <- DESeq2::estimateSizeFactors(JunDN_dds)
+JunDN_dds <- DESeq2::DESeq(JunDN_dds)
+
+#stabilize variance
+JunDN_vsd <- DESeq2::vst(JunDN_dds, blind = TRUE) # blind = TRUE for QC
+#generate PCA plots
+pca_deg <- generatePCA_repel(transf_object = JunDN_vsd, 
+                             cond_interest_varPart = c("group", "replicate"), 
+                             color_variable = "group", 
+                             shape_variable = "replicate",
+                             ntop_genes = 1000) +
+  ggtitle("Original dataset") 
+pdf(file = file.path(deg_dir, "pca_original_dataset.pdf"))
+pca_deg
+dev.off()
 
 
 
 
+######################################
+## DOX vs Control
+resultsNames(JunDN_dds)
+
+deg_results <- generateResults(
+  dds_object = JunDN_dds,
+  coeff_name = "group_dox_vs_ctrl",
+  cond_numerator = "dox",
+  cond_denominator = "ctrl",
+  cond_variable = "group",
+  ensemblAnnot = annotationData,
+  log2FC_cutoff = param_list$log2FC_cutoff
+)
+
+XLSX_OUT <- createWorkbook()
+addWorksheet(XLSX_OUT, "results_signif")
+addWorksheet(XLSX_OUT, "de_details")
+addWorksheet(XLSX_OUT, "results_all")
+
+writeData(XLSX_OUT, x = deg_results$results_signif, sheet = "results_signif")
+writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
+writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
+
+saveWorkbook(XLSX_OUT, 
+             file.path(deg_dir, "JunDN_dox_vs_ctrl.xlsx"),
+             overwrite = TRUE)
+
+# VOLCANO PLOT 
+genes_to_highlight <- c(
+  "VIM",
+  "YAP1",
+  "WWTR1",
+  "JUN",
+  "FOSL1",
+  "FOSL2",
+  "PHOX2B",
+  "HAND2",
+  "GATA3"
+)
+volcano_plot <- plotVolcano(
+  dds_results_obj = deg_results$results_all,
+  genes_of_interest = genes_to_highlight,
+  plot_title = "Jun DN dox vs control", 
+  log2FC_cutoff = 0.37, 
+  padj_cutoff = 0.05
+)
+ggsave(
+  filename = paste0(deg_dir, "JunDN_dox_vs_ctrl.png"),
+  plot = volcano_plot,
+  width = 20, height = 20, units = "cm"
+)
 
 
+# Prepare data for JunDN heatmap
+metadata_heatmap <- as.data.frame(colData(JunDN_dds))
+dds_signif <- deg_results$results_signif
+
+heatmap_counts <- SummarizedExperiment::assay(JunDN_vsd)
+#heatmap_counts <- SummarizedExperiment::assay(transf_batch_NObatch_experiment_count)
+heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% dds_signif$ensembl_id, ]
+
+annotation_col <- metadata_heatmap %>%
+  dplyr::select(group, sample) %>% 
+  dplyr::arrange(group)
+heatmap_counts <- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
+
+# Alternative color schemes
+# color.scheme <- c("#001219","#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012", "#9B2226")
+# color.scheme <- c("#001219","#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012")
+# color.scheme <- c("#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012")
+color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
+ann_colors = list(
+  cell_line = c(CM = "#005f73", SH = "#FF9F1C"),
+  timepoint = c(control = "#E9D8A6", `24h` = "#D9BE6D", `48h` = "#d6ac2f")
+)
+
+heatmap <- pheatmap::pheatmap(heatmap_counts,
+                              main = "JunDN dox vs ctrl",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              show_colnames = FALSE,
+                              show_rownames = FALSE,
+                              cluster_cols = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10)
+
+# Produce GSEA plots
+dwn_deg_results <- deg_results$results_signif %>% dplyr::filter(log2FoldChange < 0) %>% pull(gene_symbol)
+
+produce_GSEA_plots(gene_signature = dwn_deg_results,
+                   dds_object = JunDN_dds, 
+                   additional_title = "JunDN_GSEA_downregulated_", 
+                   path_to_pdf_report = deg_dir)
+
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = gene_set_list,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           figure_extention = ".pdf"
+)
 
 
 
