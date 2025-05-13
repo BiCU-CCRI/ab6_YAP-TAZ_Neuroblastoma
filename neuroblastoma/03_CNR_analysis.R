@@ -82,9 +82,10 @@ futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
 # gs_C5_GOBP     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP",       clean = TRUE)
 # gs_C5_GOCC     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC",       clean = TRUE)
 # gs_C5_GOMF     <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF",       clean = TRUE)
+system("unzip neuroblastoma/data/CnR/peaks.zip -d neuroblastoma/data/CnR/peaks/")
 
 system("zip -F neuroblastoma/data/CnR/consensus_peaks.zip --out neuroblastoma/data/CnR/consensus_peaks_u.zip")
-system("unzip neuroblastoma/data/CnR/consensus_peaks_u.zip")
+system("unzip neuroblastoma/data/CnR/consensus_peaks_u.zip -d neuroblastoma/data/CnR/")
 system("rm neuroblastoma/data/CnR/consensus_peaks_u.zip")
 
 data_folder <- "/home/rstudio/workspace/neuroblastoma/data/CnR"
@@ -225,7 +226,7 @@ write.table(
 )
 
 
-# Create a term from K975 experiment 24h
+# Create a term from K975 experiment 48h
 RNA_K975_SEQ_data_48h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx",
                                           name_for_negative_values = "K975_48h_down",
                                           name_for_positive_values = "K975_48h_up",
@@ -258,7 +259,19 @@ write.table(
   quote = F
 )
 
-
+# Create a term from JunDN experiment 
+RNA_JunDN_SEQ_data <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/Jun_DN/JunDN_dox_vs_ctrl.xlsx",
+                                          name_for_negative_values = "JunDN_down",
+                                          name_for_positive_values = "JunDN_up",
+                                          mart = mart
+)
+write.table(
+  x = RNA_JunDN_SEQ_data,
+  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_JunDN_SEQ_data.tsv",
+  sep = "\t",
+  row.names = F,
+  quote = F
+)
 
 locusdef <-  "5kb"
 
@@ -274,12 +287,14 @@ our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_G
 our_rna_seq_terms_k975_24h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv"
 our_rna_seq_terms_k975_48h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_48h.tsv"
 our_rna_seq_terms_k975_24h_48h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h_48h.tsv"
+our_rna_seq_terms_JunDN <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_JunDN_SEQ_data.tsv"
 
 rna_seq_terms_list <- list(
   rna_seq_terms = list(name = "Our_data_", path = our_rna_seq_terms),
   k975_24h = list(name = "Our_k975_24h_data_", path = our_rna_seq_terms_k975_24h),
   k975_48h = list(name = "Our_k975_48h_data_", path =our_rna_seq_terms_k975_48h),
-  k975_24h_48h = list(name = "Our_k975_24h_48h_data_", path = our_rna_seq_terms_k975_24h_48h)
+  k975_24h_48h = list(name = "Our_k975_24h_48h_data_", path = our_rna_seq_terms_k975_24h_48h),
+  JunDN = list(name = "Our_JunDN_data_", path = our_rna_seq_terms_JunDN)
 )
 
 
@@ -399,7 +414,7 @@ summary_table <- data.frame(Protein = NULL,
                             Odds_ratio = NULL)
 
 #pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP)_(Our_data|Groen).*(ADRN|MES).*"
-pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP|yap-taz|yap-taz-jun)_(Our_data|Our_k975_24h_data|Our_k975_48h_data|Our_k975_24h_48h_data).*(ADRN|MES).*"
+pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP|yap-taz|yap-taz-jun)_(Our_data|Our_k975_24h_data|Our_k975_48h_data|Our_k975_24h_48h_data|Our_JunDN_data).*(ADRN|MES).*"
 
 for (file_name in enrich_results_files){
   tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)
@@ -492,6 +507,23 @@ summary_table_ADRN <- summary_table %>% filter(Data_source == "Our_k975_24h_48h_
 plot <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
                               p.val_treshold = 0.05,
                               title = "Enrichment of peaks in ADRN samples in MES/ADR-specific \n regions determined from K-975 RNA-seq 24_48h"
+)
+plot
+
+# Visualization, but with genes that comes from JunDN inhibition assay
+# Make a plot for MES data
+summary_table_MES <- summary_table %>% filter(Data_source == "Our_JunDN_data", Selected_peaks == "MES")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
+                              p.val_treshold = 0.05,
+                              title = "Enrichment of peaks in MES samples in MES/ADR-specific \n regions determined from Our JunDN data"
+)
+plot
+
+# Make a plot for ADRN data
+summary_table_ADRN <- summary_table %>% filter(Data_source == "Our_JunDN_data", Selected_peaks == "ADRN")
+plot <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
+                              p.val_treshold = 0.05,
+                              title = "Enrichment of peaks in ADRN samples in MES/ADR-specific \n regions determined from Our JunDN data"
 )
 plot
 
