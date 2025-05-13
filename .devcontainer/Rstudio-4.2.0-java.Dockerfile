@@ -51,6 +51,21 @@ RUN R -e "BiocManager::install(c('BiocParallel', 'Biostrings'))"
 
 RUN chmod -R a+rw /usr/local/lib/R/site-library # so that everyone can dynamically install more libraries within container
 
+# Install HOMER
+
+# Set HOMER installation directory
+ENV HOMER_DIR=/home/rstudio/workspace/neuroblastoma/homer
+
+# Create directory and install HOMER
+RUN mkdir -p ${HOMER_DIR} && \
+    wget http://homer.ucsd.edu/homer/configureHomer.pl -O ${HOMER_DIR}/configureHomer.pl && \
+    perl ${HOMER_DIR}/configureHomer.pl -install && \
+    perl ${HOMER_DIR}/configureHomer.pl -install hg38
+
+# Add HOMER to PATH
+ENV PATH="${HOMER_DIR}/bin:$PATH"
+
+
 # # Clean up APT when done.
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
