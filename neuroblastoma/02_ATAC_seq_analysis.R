@@ -251,7 +251,7 @@ write.table(
   df_clustered_peaks %>% 
     dplyr::filter(cluster == 1) %>%
     dplyr::select(-cluster),
-  file = "~/workspace/neuroblastoma/tmp/tmp_bed_cluster_1.bed",
+  file = "~/workspace/neuroblastoma/temp_result/tmp_bed_cluster_1.bed",
   sep = "\t",
   quote = FALSE, 
   row.names = FALSE, 
@@ -261,7 +261,7 @@ write.table(
   df_clustered_peaks %>% 
     dplyr::filter(cluster == 2) %>%
     dplyr::select(-cluster),
-  file = "~/workspace/neuroblastoma/tmp/tmp_bed_cluster_2.bed",
+  file = "~/workspace/neuroblastoma/temp_result/tmp_bed_cluster_2.bed",
   sep = "\t",
   quote = FALSE, 
   row.names = FALSE, 
@@ -343,6 +343,9 @@ ATAC_dds_results$results_signif %>%
               col.names = FALSE)
 
 # run homer annotation
+# TODO
+# FIXIT homer not being possible to run
+
 system("bash ~/workspace/neuroblastoma/02_HOMER_diff_peaks_annotation.sh")
 
 ATAC_genome_ADR <- read.delim2("~/workspace/neuroblastoma/results/ATAC-seq/ATAC_genome_states_dataframe_ADR.csv", 
@@ -353,7 +356,6 @@ ATAC_genome_MES <- read.delim2("~/workspace/neuroblastoma/results/ATAC-seq/ATAC_
                                header=T)[-c(1:14),]
 
 # calculate the poisson probability
-
 ATAC_genome_ADR$p.val <- unlist(
   purrr::pmap(ATAC_genome_ADR %>% 
                 dplyr::select(Number.of.peaks, Log2.Ratio..obs.exp.),
@@ -982,7 +984,6 @@ fisher_summary_table$pval <- -log10(fisher_summary_table$pval)
 #                                                               names_to = "parameter", 
 #                                                               values_to = "value")
 
-
 custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
 custom_breaks <- c(seq(0, 1.3, length.out = 2), seq(1.3, 25, length.out = 256))
 plot <- fisher_summary_table %>%
@@ -1184,8 +1185,121 @@ for (file_name in enrich_results_files){
 
 # Make a plot for MES data
 summary_table_MES <- summary_table %>% filter(Data_source == "Our_data", Description == "MES")
+summary_table_ADR <- summary_table %>% filter(Data_source == "Our_data", Description == "ADRN")
+
 custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
 custom_breaks <- c(seq(0, 1.3, length.out = 2), seq(1.3, 3, length.out = 256))
+# DEVZONE
+plot <- summary_table_MES %>%
+  filter(Protein %in% c("MES_Total", "ADR_Total")) %>% 
+  ggplot() +
+  geom_bar(position = position_dodge(0.5), 
+           width = 0.05, 
+           aes(y = Protein, 
+               fill = Selected_peaks, 
+               weight = Odds_ratio)) +
+  scale_fill_manual(values =  c("navy", "firebrick3")) +
+  ggnewscale::new_scale_fill() +
+  geom_point(aes(y = Protein, 
+                 x = Odds_ratio, 
+                 color = Selected_peaks,
+                 size = Peaks_in_set/Gene_set_size*100,
+                 fill = -log10(FDR)
+  ), 
+  shape = "circle filled",
+  position = position_dodge2(0.5)
+  ) +
+  scale_color_manual(values =  c("navy", "firebrick3")) +
+  scale_fill_gradientn(colors = custom_colors, 
+                       values = scales::rescale(custom_breaks),
+                       limits = c(0, 3)) +
+  #  scale_fill_viridis(option="viridis")+
+  theme_minimal() +
+  labs(color = "Peaks from:", 
+       fill = "-log10(FDR)\n red - non significant (FDR < 0.05)",
+       size =  "Percentage of genes in set\n overlaping with gene-set collection ",
+       y = "Samples",
+       x = "Odds Ratio",
+       title = "Enrichment of MES-signature in MES and ADR samples")
+
+ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES_signatures_in_MES_ADR_samples.pdf")), 
+       plot = plot,
+       width = 18, height = 20, units = "cm")
+
+
+plot <- summary_table_ADR %>%
+  filter(Protein %in% c("MES_Total", "ADR_Total")) %>% 
+  ggplot() +
+  geom_bar(position = position_dodge(0.5), 
+           width = 0.05, 
+           aes(y = Protein, 
+               fill = Selected_peaks, 
+               weight = Odds_ratio)) +
+  scale_fill_manual(values =  c("navy", "firebrick3")) +
+  ggnewscale::new_scale_fill() +
+  geom_point(aes(y = Protein, 
+                 x = Odds_ratio, 
+                 color = Selected_peaks,
+                 size = Peaks_in_set/Gene_set_size*100,
+                 fill = -log10(FDR)
+  ), 
+  shape = "circle filled",
+  position = position_dodge2(0.5)
+  ) +
+  scale_color_manual(values =  c("navy", "firebrick3")) +
+  scale_fill_gradientn(colors = custom_colors, 
+                       values = scales::rescale(custom_breaks),
+                       limits = c(0, 3)) +
+  #  scale_fill_viridis(option="viridis")+
+  theme_minimal() +
+  labs(color = "Peaks from:", 
+       fill = "-log10(FDR)\n red - non significant (FDR < 0.05)",
+       size =  "Percentage of genes in set\n overlaping with gene-set collection ",
+       y = "Samples",
+       x = "Odds Ratio",
+       title = "Enrichment of ADR-signature in MES and ADR samples")
+
+ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_ADR_signatures_in_MES_ADR_samples.pdf")), 
+       plot = plot,
+       width = 18, height = 20, units = "cm")
+
+plot <- summary_table_MES %>%
+  filter(!(Protein %in% c("MES_Total", "ADR_Total"))) %>% 
+  ggplot() +
+  geom_bar(position = position_dodge(0.5), 
+           width = 0.05, 
+           aes(y = Protein, 
+               fill = Selected_peaks, 
+               weight = Odds_ratio)) +
+  scale_fill_manual(values =  c("navy", "firebrick3")) +
+  ggnewscale::new_scale_fill() +
+  geom_point(aes(y = Protein, 
+                 x = Odds_ratio, 
+                 color = Selected_peaks,
+                 size = Peaks_in_set/Gene_set_size*100,
+                 fill = -log10(FDR)
+  ), 
+  shape = "circle filled",
+  position = position_dodge2(0.5)
+  ) +
+  scale_color_manual(values =  c("navy", "firebrick3")) +
+  scale_fill_gradientn(colors = custom_colors, 
+                       values = scales::rescale(custom_breaks),
+                       limits = c(0, 3)) +
+  #  scale_fill_viridis(option="viridis")+
+  theme_minimal() +
+  labs(color = "TEAD & AP1 colocolized binding sites in:", 
+       fill = "-log10(FDR)\n red - non significant (FDR < 0.05)",
+       size =  "Percentage of genes in set\n overlaping with gene-set collection ",
+       y = "Samples",
+       x = "Odds Ratio",
+       title = "Enrichment of MES-signature in\n AP1, TEAD and collocalized TEAD & AP1 predicted BS \nin MES and ADR samples")
+ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES_signatures_in_MES_ADR_TEAD_AP1_colloc_samples.pdf")), 
+       plot = plot,
+       width = 18, height = 20, units = "cm")
+
+
+
 # making lolipop plot with enrichments
 plot <- summary_table_MES %>%
   ggplot() +
