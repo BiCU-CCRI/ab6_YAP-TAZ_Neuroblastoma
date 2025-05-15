@@ -408,7 +408,7 @@ for(gene_set_to_plot_name in names(gene_set_list)){
   plot(p)
   
 ggsave(
-  filename = paste0(deg_dir, "fgsea_",gene_set_to_plot_name, ".png"),
+  filename = paste0(deg_dir, "fgsea_",gene_set_to_plot_name, ".pdf"),
   plot = p,
   width = 20, height = 20, units = "cm"
 )

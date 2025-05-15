@@ -16,6 +16,7 @@ assignInNamespace("pv.countGreylist", pv.countGreylistEdited, ns = "DiffBind")
 
 # set up the environment
 res_dir <- "/home/rstudio/workspace/neuroblastoma/results/CnR/"
+if(!dir.exists("/home/rstudio/.cache/R/ExperimentHub")) {dir.create("/home/rstudio/.cache/R/ExperimentHub")}
 
 #### Loading libraries ####
 import::from(
@@ -842,15 +843,6 @@ blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions,
 
 
 
-# save for IGV
-rtracklayer::export.bed(object = random_Peaks,  "~/workspace/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV_randomized.bed")
-rtracklayer::export.bed(object = YAP_TAZ_JUN_peaks_list$Jun_Peaks, "~/workspace/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV.bed")
-rtracklayer::export.bed(object = promoter, "~/workspace/neuroblastoma/temp_results/BEDs/Promoters_for_IGV.bed")
-
-x = GenomicDistributions::calcChromBinsRef(makeGRangesFromDataFrame(as.data.frame(YAP_TAZ_JUN_peaks_list$Jun_Peaks) %>% mutate(seqnames = paste0("chr", seqnames))), "hg38")
-GenomicDistributions::plotChromBins(x)
-x = GenomicDistributions::calcChromBinsRef(makeGRangesFromDataFrame(as.data.frame(random_Peaks) %>% mutate(seqnames = paste0("chr", seqnames))), "hg38")
-GenomicDistributions::plotChromBins(x)
 
 
 # 
@@ -934,6 +926,16 @@ p <- ggplot(piechart_randomised) +
             position = position_stack(vjust = 0.5), size = 6
   )
 plot(p)
+
+# save for IGV
+rtracklayer::export.bed(object = random_Peaks,  "~/workspace/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV_randomized.bed")
+rtracklayer::export.bed(object = YAP_TAZ_JUN_peaks_list$Jun_Peaks, "~/workspace/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV.bed")
+rtracklayer::export.bed(object = promoter, "~/workspace/neuroblastoma/temp_results/BEDs/Promoters_for_IGV.bed")
+
+x = GenomicDistributions::calcChromBinsRef(makeGRangesFromDataFrame(as.data.frame(YAP_TAZ_JUN_peaks_list$Jun_Peaks) %>% mutate(seqnames = paste0("chr", seqnames))), "hg38")
+GenomicDistributions::plotChromBins(x)
+x = GenomicDistributions::calcChromBinsRef(makeGRangesFromDataFrame(as.data.frame(random_Peaks) %>% mutate(seqnames = paste0("chr", seqnames))), "hg38")
+GenomicDistributions::plotChromBins(x)
 
 
 # Check that namings are the same:
