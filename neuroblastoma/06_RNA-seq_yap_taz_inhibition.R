@@ -20,8 +20,10 @@ library(GSVA)
 library(pheatmap)
 library(xcore)
 library(ExperimentHub)
+#necessary for xcoredata
+if (!dir.exists("/home/rstudio/.cache/R/ExperimentHub")){
+  dir.create("/home/rstudio/.cache/R/ExperimentHub")}
 library(xcoredata)
-yes #this is necessary for the initial setup of the correct structure of folders
 library(stringr)
 library(org.Hs.eg.db)
 library(fgsea)
@@ -31,7 +33,7 @@ library(ggpubr)
 library(rlang)
 
 # Declare fGSEA function 
-plot_fGSEA <- function(deg_results, gene_set_list, title_prefix, save_dir, figure_extention = ".png"){
+plot_fGSEA <- function(deg_results, gene_set_list, title_prefix, save_dir, maxSize = 500, figure_extention = ".png"){
   de_genes_ranked <- deg_results
   de_genes_ranked <- de_genes_ranked %>%
     group_by(gene_symbol) %>%
@@ -44,7 +46,7 @@ plot_fGSEA <- function(deg_results, gene_set_list, title_prefix, save_dir, figur
     pathways = gene_set_list,
     stats = de_genes_ranked,
     minSize = 15,
-    maxSize = 500
+    maxSize = maxSize
   )
    
   for(gene_set_to_plot_name in names(gene_set_list)){
@@ -146,12 +148,23 @@ gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), 
 gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
 gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
                                          "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
+gs_c2_PID <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:PID", clean = TRUE)
+
+# RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+# RNA_SEQ_data <- RNA_SEQ_data %>%
+#   mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES")) %>%
+#   select(gene_symbol, Term)
+# ADRN_signature_list <- RNA_SEQ_data %>% filter(Term == "ADRN") %>% pull(gene_symbol) %>% as.vector()
+# MES_signature_list <- RNA_SEQ_data %>% filter(Term == "MES") %>% pull(gene_symbol) %>% as.vector()
+AP1_maaynlab <- read.csv("~/workspace/neuroblastoma/resources/ap1_gene_list", header = FALSE) %>% pull(V1) %>% as.vector()
 
 gene_set_list <- list(
   GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
   REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
   C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
-  Hippo_Wang = gs_wang_hippo$wang_hippo_set
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set,
+  C2_PID_pathway = gs_c2_PID[["genesets"]][["Ap1 Pathway"]],
+  AP1_maaynlab = AP1_maaynlab
 )
 
 RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
@@ -611,7 +624,7 @@ ggsave(
 )
 
 
-# Prepare data for JunDN heatmap
+# Prepare data for JunDN heatmap - show all DEGs
 metadata_heatmap <- as.data.frame(colData(JunDN_dds))
 dds_signif <- deg_results$results_signif
 
@@ -645,6 +658,62 @@ heatmap <- pheatmap::pheatmap(heatmap_counts,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10)
 
+
+# SHow only genes that belong to MES ADR signatures
+metadata_heatmap <- as.data.frame(colData(JunDN_dds))
+dds_signif <- deg_results$results_signif
+
+heatmap_counts <- SummarizedExperiment::assay(JunDN_vsd)
+#heatmap_counts <- SummarizedExperiment::assay(transf_batch_NObatch_experiment_count)
+heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% dds_signif$ensembl_id, ]
+heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% mes_adrn_gene_list$ensembl_id, ]
+annotation_row <- mes_adrn_gene_list %>% select(ensembl_id, Term) %>% filter(ensembl_id %in% rownames(heatmap_counts))
+row.names(annotation_row) <- annotation_row$ensembl_id
+annotation_row <- annotation_row %>% select(Term)
+
+annotation_col <- metadata_heatmap %>%
+  dplyr::select(group, sample) %>% 
+  dplyr::arrange(group)
+heatmap_counts <- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
+
+# Alternative color schemes
+# color.scheme <- c("#001219","#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012", "#9B2226")
+# color.scheme <- c("#001219","#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012")
+# color.scheme <- c("#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00", "#CA6702", "#BB3E03","#AE2012")
+color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
+ann_colors = list(
+  cell_line = c(CM = "#005f73", SH = "#FF9F1C"),
+  timepoint = c(control = "#E9D8A6", `24h` = "#D9BE6D", `48h` = "#d6ac2f")
+)
+
+heatmap <- pheatmap::pheatmap(heatmap_counts,
+                              main = "JunDN dox vs ctrl",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              annotation_row = annotation_row,
+                              show_colnames = FALSE,
+                              show_rownames = FALSE,
+                              cluster_cols = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10)
+
+# order counts by adr mes
+
+
+heatmap <- pheatmap::pheatmap(heatmap_counts[row.names(annotation_row %>% arrange(Term)), ],
+                              main = "JunDN dox vs ctrl",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              annotation_row = annotation_row,
+                              show_colnames = FALSE,
+                              show_rownames = FALSE,
+                              cluster_cols = FALSE,
+                              cluster_rows = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10)
+
 # Produce GSEA plots
 dwn_deg_results <- deg_results$results_signif %>% dplyr::filter(log2FoldChange < 0) %>% pull(gene_symbol)
 
@@ -657,8 +726,47 @@ plot_fGSEA(deg_results = deg_results$results_all,
            gene_set_list = gene_set_list,
            title_prefix = deg_results$de_details$test, 
            save_dir = deg_dir, 
+           maxSize = 5000,
            figure_extention = ".pdf"
 )
+
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_our_data,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 5000,
+           figure_extention = ".pdf"
+)
+
+debug(plot_fGSEA)
+
+vsd_counts_matrix <- assay(JunDN_vsd)
+row.names(vsd_counts_matrix) <- annotationData[, 'gene_symbol'][match(row.names(vsd_counts_matrix), annotationData[, 'ensembl_id'])]
+
+ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
+                                      sig_list_our_data,
+                                      method=c("ssgsea"),
+                                      min.sz=1, max.sz=Inf, 
+                                      ssgsea.norm=TRUE, verbose=TRUE, parallel.sz=10)
+
+annotation_col <- metadata_heatmap %>%
+  dplyr::select(replicate, group) %>% 
+  dplyr::arrange(group, replicate)
+
+ssgsea_mes_adr_cellines <- ssgsea_mes_adr_cellines[, match(rownames(annotation_col), colnames(ssgsea_mes_adr_cellines))]
+
+ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
+                                                        scale = "row",
+                                                        annotation_col = annotation_col,
+                                                        annotation_colors = ann_colors,
+                                                        cluster_rows = TRUE,
+                                                        cluster_cols = FALSE,
+                                                        color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                        show_colnames = TRUE)
+
+pdf(file = file.path(deg_dir, "ssgsea_JunDN_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"))
+ssgsea_mes_adr_ncc_noradr_heatmap
+dev.off()
 
 
 
