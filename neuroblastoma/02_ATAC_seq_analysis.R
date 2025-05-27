@@ -1189,7 +1189,8 @@ summary_table_ADR <- summary_table %>% filter(Data_source == "Our_data", Descrip
 
 custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
 custom_breaks <- c(seq(0, 1.3, length.out = 2), seq(1.3, 3, length.out = 256))
-# DEVZONE
+
+# Separate lolipop plots into 3 separate one 
 plot <- summary_table_MES %>%
   filter(Protein %in% c("MES_Total", "ADR_Total")) %>% 
   ggplot() +
