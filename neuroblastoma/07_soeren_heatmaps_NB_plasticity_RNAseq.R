@@ -132,9 +132,18 @@ data_to_plot_subset_bxplt <- data_to_plot_subset %>%
 data_to_plot_subset_bxplt$group <- factor(data_to_plot_subset_bxplt$group, levels = c("DTC", "MNC", "BMn"))
 
 data_to_plot_subset_bxplt %>% ggplot(aes(x = group, y = expression, fill = group)) +
-  geom_boxplot() +
+  geom_boxplot(outlier.shape = NA) +
   facet_wrap(~ gene, scales = "free_y") +
+  geom_jitter(width = 0.2, size = 1, alpha = 0.6) +
   theme_minimal()
+
+data_to_plot_subset_bxplt %>% ggplot(aes(x = group, y = expression, fill = group)) +
+  facet_wrap(~ gene, scales = "free_y") +
+  geom_jitter(width = 0.2, size = 1, alpha = 0.6) +
+  stat_summary(fun = median, geom = "crossbar", width = 0.5,
+               aes(ymin = ..y.., ymax = ..y..), color = "red", fatten = 0) +
+  theme_minimal()
+
 
 
 # now - the GSVA data
