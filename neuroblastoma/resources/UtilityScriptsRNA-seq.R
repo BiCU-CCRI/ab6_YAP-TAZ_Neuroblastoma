@@ -150,6 +150,7 @@ generatePCA <- function(transf_object=NULL, cond_interest_varPart=NULL, color_va
 
 
 generateResults <- function(dds_object=NULL, 
+                            coef_contrast=NULL,
                             coeff_name=NULL, 
                             cond_numerator=NULL,
                             cond_denominator=NULL, 
@@ -158,13 +159,31 @@ generateResults <- function(dds_object=NULL,
                             cond_variable=NULL,
                             ensemblAnnot=NULL){
   
-  res_table_unshrunken <- DESeq2::results(dds_object, 
-                                          name=coeff_name,
-                                          parallel = TRUE, alpha = padj_cutoff)
-  #renv::install("bioc::apeglm")
-  res_table <- DESeq2::lfcShrink(dds_object, 
-                                 coef=coeff_name,
-                                 res=res_table_unshrunken, type = "apeglm")
+  if(!is.null(coef_contrast) & !is.null(coeff_name)){
+    stop("Choose only coef_name or coef_contrast")
+  }
+  
+  if(!is.null(coeff_name)){
+    print("apeglm shrinkage is used")
+    res_table_unshrunken <- DESeq2::results(dds_object, 
+                                            name=coeff_name,
+                                            parallel = TRUE, alpha = padj_cutoff)
+    #renv::install("bioc::apeglm")
+    res_table <- DESeq2::lfcShrink(dds_object, 
+                                   coef=coeff_name,
+                                   res=res_table_unshrunken, type = "apeglm")
+  }
+  
+  if(!is.null(coef_contrast)){
+    print("ashr shrinkage is used")
+    res_table_unshrunken <- DESeq2::results(dds_object, 
+                                            contrast=coef_contrast,
+                                            parallel = TRUE, alpha = padj_cutoff)
+    #renv::install("bioc::apeglm")
+    res_table <- DESeq2::lfcShrink(dds_object, 
+                                   contrast=coef_contrast,
+                                   res=res_table_unshrunken, type = "ashr")
+  }
   
   normalized_counts_AddedMean <- meanExprsPerGroup(dds_object=dds_object,
                                                    cond_numerator=cond_numerator,
@@ -188,7 +207,7 @@ generateResults <- function(dds_object=NULL,
   results_data_annot_signif <- results_data_annot %>%
     dplyr::filter((!is.na(padj) & (padj < padj_cutoff)) & abs(log2FoldChange) > log2FC_cutoff)
   
-  temp_results_summary_df <- data.frame(test = coeff_name,
+  temp_results_summary_df <- data.frame(test = paste0(coeff_name, coef_contrast),
                                         design = paste(as.character(design(dds_object)), collapse=""),
                                         signif_genes = nrow(results_data_annot_signif),
                                         signif_genes_UP = sum(results_data_annot_signif$log2FoldChange > log2FC_cutoff),
