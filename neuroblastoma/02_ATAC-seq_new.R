@@ -68,14 +68,6 @@ rowRanges(ATAC_counts_data) <- GenomicRanges::GRanges(seqnames = paste0("chr", A
 mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), ATAC_annotation_data)
 
 
-# WRITE METADATA 
-# ATAC_metadata_df <- data.frame(matrix(nrow = dim(ATAC_counts_data)[2]))
-# ATAC_metadata_df <- dplyr::mutate(ATAC_metadata_df, 
-#                                   sample_names = colnames(ATAC_counts_data)
-# )
-### NOT DONE YET
-
-
 
 
 # Drug treatment subset
@@ -196,9 +188,147 @@ openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results_24h$de_details, sheet = "de_d
 openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results_24h$results_all, sheet = "results_all")
 openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir,  paste0("DAR_results_time_24h_vs_control.xlsx")), overwrite = T)
 
+###### Heatmaps of peaks-associated with promoters in MES and ADR genes
+## Now the same analysis, but for the promoter regions - ± 3000bp around TSSs ####
+ATAC_dds <- drg_trtm_ATAC
+#ATAC_dds <- ATAC_dds[mcols(ATAC_dds)$is_promoter_3kb,]
+ATAC_dds <- estimateSizeFactors(ATAC_dds)
+ATAC_dds <- DESeq(ATAC_dds)
+
+vsd <- vst(ATAC_dds, blind = F)
+
+pca_dar <- generatePCA(transf_object = vsd, 
+                       cond_interest_varPart = c("time", "cell_line"), 
+                       color_variable = "time", 
+                       shape_variable = "cell_line",
+                       ntop_genes = 1000) +
+  ggtitle("3kb Promoters")
+plot(pca_dar)
+#Ok, looks good - we can see that the main PCA/separation is happening because of the phenotype (ADRN or MES)
+
+# extracting results
+resultsNames(ATAC_dds)
+coeff_name <- "time_48h_vs_control"
+cond_numerator <-  "48h"
+cond_denominator <-  "control"
+cond_variable <- "time"
+padj_cutoff = 0.05
+log2FC_cutoff = 1
+
+ATAC_dds_results <- extract_results_nextflow_output(dds_object = ATAC_dds,
+                                        coeff_name = coeff_name,
+                                        cond_numerator = cond_numerator,
+                                        cond_denominator = cond_denominator,
+                                        cond_variable = cond_variable,
+                                        padj_cutoff = padj_cutoff,
+                                        log2FC_cutoff = log2FC_cutoff)
+# 
+# # write the result to the xlsx file
+# XLSX_OUT <- openxlsx::createWorkbook()
+# openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+# openxlsx::addWorksheet(XLSX_OUT, "de_details")
+# openxlsx::addWorksheet(XLSX_OUT, "results_all")
+# 
+# openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$results_signif, sheet = "results_signif")
+# openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$de_details, sheet = "de_details")
+# openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$results_all, sheet = "results_all")
+# 
+# openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "DAR_results_3kb_promoters_M_VS_A.xlsx"), overwrite = T)
+
+# Making Heatmap
+metadata_heatmap <- as.data.frame(colData(ATAC_dds))
+heatmap_counts <- SummarizedExperiment::assay(vsd)
+rownames(heatmap_counts) <- vsd@rowRanges$PeakId
 
 
-########
+all_ADR_peaks <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$gene_category_our_RNAseq == "g_ADRN"])
+all_MES_peaks <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$gene_category_our_RNAseq == "g_MES"])
+
+# removed experiment batch effects! ? use experimen+cell_line removed???
+ATAC_signif <- ATAC_dds_results$results_signif
+heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$PeakId,]
+heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_MES_peaks,]
+heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_ADR_peaks,]
+
+annotation_col <- metadata_heatmap %>%
+  dplyr::select(cell_line, time) %>% 
+  dplyr::arrange(time, cell_line)
+heatmap_counts<- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
+
+heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_MES_spec_genes))]
+rownames(heatmap_counts_MES_spec_genes) <- ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_MES_spec_genes), "Gene.Name"]
+
+heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN_spec_genes))]
+rownames(heatmap_counts_ADRN_spec_genes) <- ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_ADRN_spec_genes), "Gene.Name"]
+
+#heatmap_row_annot_MES_spec_genes <- data.frame(gene_name = ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_MES_spec_genes), "Gene.Name"],
+#                                               row.names =  row.names(heatmap_counts_MES_spec_genes))
+
+ensembl2symbol_annot <- ATAC_dds_results$results_all %>%
+  dplyr::select(PeakId, Gene.Name)
+
+color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
+ann_colors = list(
+  time = c( control = "#005f73", `24h` = "#0a9396", `48h` = "#94d2bd"),
+  cell_line = c(CM = "#E9D8A6", SH = "#D9BE6D")
+)
+
+heatmap <- pheatmap::pheatmap(heatmap_counts,
+                              main = "Heatmap of signif. All DARs 48h vs control.",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              show_colnames = FALSE,
+                              show_rownames = FALSE,
+                              cluster_cols = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10) 
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_ATAC.png"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_ATAC.pdf"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+
+heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
+                              main = "Heatmap of signif. DAR ADRN vs MES all DARs \n MES-specific genes only (defined by RNA-seq)",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              #annotation_row = heatmap_row_annot_MES_spec_genes,
+                              show_colnames = FALSE,
+                              show_rownames = TRUE,
+                              cluster_cols = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_MES-RNAseq-specific.png"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_MES-RNAseq-specific.pdf"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+
+heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
+                              main = "Heatmap of signif. DAR ADRN vs MES all DARs \n ADRN-specific genes only (defined by RNA-seq)",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              #annotation_row = row_annot_symbols,
+                              show_colnames = FALSE,
+                              show_rownames = TRUE,
+                              cluster_cols = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_ADRN-RNAseq-specific.png"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_ADRN-RNAseq-specific.pdf"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+
+
+
+######## Analysis of motifs
 opts <- list()
 opts[["tax_group"]] <- "vertebrates"
 opts[["species"]] <- "9606"
@@ -320,12 +450,12 @@ devTop <- devTop %>% mutate(long_name = paste0(jaspar_id, "_", name))
 
 devToPlot <- devTop %>%
   dplyr::select(long_name, 
-                CM_control_ATAC_S165169_REP1,  CM_control_ATAC_S165169_REP2,  
-                CM_24h_ATAC_S165170_REP1,  CM_24h_ATAC_S165170_REP2,
-                CM_48h_ATAC_S165167_REP1, CM_48h_ATAC_S165167_REP2,
-                SH_control_ATAC_S165166_REP1, SH_control_ATAC_S165166_REP2,
-                SH_24h_ATAC_S165164_REP1, SH_24h_ATAC_S165164_REP2,
-                SH_48h_ATAC_S165165_REP1, SH_48h_ATAC_S165165_REP2
+                CM_control_ATAC_S165169_REP1, #CM_control_ATAC_S165169_REP2,  
+                CM_24h_ATAC_S165170_REP1,  #CM_24h_ATAC_S165170_REP2,
+                CM_48h_ATAC_S165167_REP1, #CM_48h_ATAC_S165167_REP2,
+                SH_control_ATAC_S165166_REP1, #SH_control_ATAC_S165166_REP2,
+                SH_24h_ATAC_S165164_REP1, #SH_24h_ATAC_S165164_REP2,
+                SH_48h_ATAC_S165165_REP1, #SH_48h_ATAC_S165165_REP2
                 ) %>%
   tibble::column_to_rownames(var = "long_name")
 
@@ -356,16 +486,16 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot),
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_control_vs_24h_48h_Motifs", sbst, "- used", ".png")), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_control_vs_24h_48h_Motifs", sbst, "- used", ".eps")), 
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_control_vs_24h_48h_Motifs", sbst, "- used", ".pdf")), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 
 #separate CM and SH
 devToPlot_CM <- devTop %>%
   dplyr::select(long_name, 
-                CM_control_ATAC_S165169_REP1,  CM_control_ATAC_S165169_REP2,  
-                CM_24h_ATAC_S165170_REP1,  CM_24h_ATAC_S165170_REP2,
-                CM_48h_ATAC_S165167_REP1, CM_48h_ATAC_S165167_REP2
+                CM_control_ATAC_S165169_REP1, # CM_control_ATAC_S165169_REP2,  
+                CM_24h_ATAC_S165170_REP1, # CM_24h_ATAC_S165170_REP2,
+                CM_48h_ATAC_S165167_REP1, # CM_48h_ATAC_S165167_REP2
   ) %>%
   tibble::column_to_rownames(var = "long_name")
 
@@ -387,16 +517,16 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot_CM),
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_CM_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".png")), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_CM_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".eps")), 
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_CM_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".pdf")), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 
 # separate SH
 devToPlot_SH <- devTop %>%
   dplyr::select(long_name, 
-                SH_control_ATAC_S165166_REP1, SH_control_ATAC_S165166_REP2,
-                SH_24h_ATAC_S165164_REP1, SH_24h_ATAC_S165164_REP2,
-                SH_48h_ATAC_S165165_REP1, SH_48h_ATAC_S165165_REP2
+                SH_control_ATAC_S165166_REP1, # SH_control_ATAC_S165166_REP2,
+                SH_24h_ATAC_S165164_REP1, # SH_24h_ATAC_S165164_REP2,
+                SH_48h_ATAC_S165165_REP1, # SH_48h_ATAC_S165165_REP2
   ) %>%
   tibble::column_to_rownames(var = "long_name")
 
@@ -418,7 +548,7 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot_SH),
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_SH_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".png")), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
-ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_SH_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".eps")), 
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_SH_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".pdf")), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 
@@ -1270,3 +1400,10 @@ for (file_name in enrich_results_files){
                          summary_table_tmp)
 }
 # Only control is significant here
+
+
+
+
+
+
+
