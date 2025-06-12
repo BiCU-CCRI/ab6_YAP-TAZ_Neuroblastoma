@@ -361,12 +361,16 @@ Grange_CLB_Ma_M <- findOverlaps(Grange_CLB_Ma_M_merged, Grange_CLB_Ma_AM_reduced
 Grange_CLB_Ma_M <- Grange_CLB_Ma_M_merged[-Grange_CLB_Ma_M@from,]
 
 # export the coordinates 
-Export_my_BED(Grange_CLB_Ma_A, "~/workspace/temp_results/BEDs/")
-Export_my_BED(Grange_CLB_Ma_M, "~/workspace/temp_results/BEDs/")
-Export_my_BED(Grange_CLB_Ma_AM_reduced, "~/workspace/temp_results/BEDs/")
+Export_my_BED(Grange_CLB_Ma_A, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(Grange_CLB_Ma_M, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(Grange_CLB_Ma_AM_reduced, "~/workspace/neuroblastoma/temp_results/BEDs/")
 
 
 # Normalization to the length of a SE 
+# DBobj_list_const must be loaded separately
+
+
+
 tmp <- data.frame(
   Jun = c(countOverlaps(Grange_CLB_Ma_A,  DBobj_list_cons$Jun)/width(Grange_CLB_Ma_A)*10^3,
           countOverlaps(Grange_CLB_Ma_M,  DBobj_list_cons$Jun)/width(Grange_CLB_Ma_M)*10^3,
@@ -414,9 +418,9 @@ Grange_SK_N_SH_A <- Grange_SK_N_SH_A_merged[-Grange_SK_N_SH_A@from,]
 Grange_SK_N_SH_M <- findOverlaps(Grange_SK_N_SH_M_merged, Grange_SK_N_SH_AM_reduced)
 Grange_SK_N_SH_M <- Grange_SK_N_SH_M_merged[-Grange_SK_N_SH_M@from,]
 
-Export_my_BED(Grange_SK_N_SH_A, "~/workspace/temp_results/BEDs/")
-Export_my_BED(Grange_SK_N_SH_M, "~/workspace/temp_results/BEDs/")
-Export_my_BED(Grange_SK_N_SH_AM_reduced, "~/workspace/temp_results/BEDs/")
+Export_my_BED(Grange_SK_N_SH_A, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(Grange_SK_N_SH_M, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(Grange_SK_N_SH_AM_reduced, "~/workspace/neuroblastoma/temp_results/BEDs/")
 
 tmp <- data.frame(
   Jun = c(countOverlaps(Grange_SK_N_SH_A,  DBobj_list_cons$Jun)/width(Grange_SK_N_SH_A)*10^3,
@@ -492,9 +496,9 @@ CLB_SKN_A <- CLB_SKN_A_merged[-CLB_SKN_A@from,]
 CLB_SKN_M <- findOverlaps(CLB_SKN_M_merged, CLB_SKN_AM)
 CLB_SKN_M <- CLB_SKN_M_merged[-CLB_SKN_M@from,]
 
-Export_my_BED(CLB_SKN_A, "~/workspace/temp_results/BEDs/")
-Export_my_BED(CLB_SKN_M, "~/workspace/temp_results/BEDs/")
-Export_my_BED(CLB_SKN_AM, "~/workspace/temp_results/BEDs/")
+Export_my_BED(CLB_SKN_A, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(CLB_SKN_M, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(CLB_SKN_AM, "~/workspace/neuroblastoma/temp_results/BEDs/")
 
 tmp <- data.frame(
   Jun = c(countOverlaps(CLB_SKN_A,  DBobj_list_cons$Jun)/width(CLB_SKN_A)*10^3, 
@@ -718,3 +722,162 @@ SEs_GSEA_df %>%
   #scale_color_distiller(palette = "Reds", direction = 1)
   scale_color_gradient(low = "grey", high = "red")
 
+
+############# GSEA for k-975 24h
+# load genes from RNA-seq MES/ADR-specific genes
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_24h_vs_control.xlsx", sheet = 1)
+mes_adrn_gene_list <- RNA_SEQ_data %>%
+  mutate(Term = if_else(log2FoldChange < 0, "k975_24h_DWN", "k975_24h_UP"))
+mes_adrn_gene_list <- list(
+  k975_24h_DWN = mes_adrn_gene_list[mes_adrn_gene_list$Term == "k975_24h_DWN", "gene_symbol"],
+  k975_24h_UP = mes_adrn_gene_list[mes_adrn_gene_list$Term == "k975_24h_UP", "gene_symbol"]
+)
+
+# GSEA
+# REFACTOR!!!!!
+CLB_SKN_A_SEs_annot_raw <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
+CLB_SKN_M_SEs_annot_raw <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
+CLB_SKN_AM_SEs_annot_raw <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
+
+CLB_SKN_A_SEs_annot <- hypeR::hypeR(signature = CLB_SKN_A_SEs_annot_raw$Gene.Name, 
+                                    genesets = mes_adrn_gene_list, 
+                                    test="hypergeometric"
+)
+CLB_SKN_M_SEs_annot <- hypeR::hypeR(signature = CLB_SKN_M_SEs_annot_raw$Gene.Name, 
+                                    genesets = mes_adrn_gene_list, 
+                                    test="hypergeometric"
+)
+CLB_SKN_AM_SEs_annot <- hypeR::hypeR(signature = CLB_SKN_AM_SEs_annot_raw$Gene.Name, 
+                                     genesets = mes_adrn_gene_list, 
+                                     test="hypergeometric"
+)
+
+SEs_GSEA_df <- NULL
+SEs_GSEA_df <- dplyr::bind_rows(
+  c(sample = "CLB_SKN_A_SEs", 
+    type = "k975_24h_UP",
+    fdr = as.numeric(CLB_SKN_A_SEs_annot$data["k975_24h_UP", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_A_SEs_annot$data["k975_24h_UP", "overlap"])),
+  c(sample = "CLB_SKN_A_SEs",
+    type = "k975_24h_DWN",
+    fdr = as.numeric(CLB_SKN_A_SEs_annot$data["k975_24h_DWN", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_A_SEs_annot$data["k975_24h_DWN", "overlap"])),
+  c(sample = "CLB_SKN_AM_SEs", 
+    type = "k975_24h_UP",
+    fdr = as.numeric(CLB_SKN_AM_SEs_annot$data["k975_24h_UP", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_AM_SEs_annot$data["k975_24h_UP", "overlap"])), 
+  c(sample = "CLB_SKN_AM_SEs", 
+    type = "k975_24h_DWN",
+    fdr = as.numeric(CLB_SKN_AM_SEs_annot$data["k975_24h_DWN", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_AM_SEs_annot$data["k975_24h_DWN", "overlap"])),
+  c(sample = "CLB_SKN_M_SEs", 
+    type = "k975_24h_UP",
+    fdr = as.numeric(CLB_SKN_M_SEs_annot$data["k975_24h_UP", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_M_SEs_annot$data["k975_24h_UP", "overlap"])), 
+  c(sample = "CLB_SKN_M_SEs", 
+    type = "k975_24h_DWN",
+    fdr = as.numeric(CLB_SKN_M_SEs_annot$data["k975_24h_DWN", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_M_SEs_annot$data["k975_24h_DWN", "overlap"]))
+)
+
+SEs_GSEA_df$fdr %<>% as.numeric
+SEs_GSEA_df$overlap %<>% as.numeric
+SEs_GSEA_df$fdr <- -log10(SEs_GSEA_df$fdr + 0.0000000001)
+
+SEs_GSEA_Plot <- SEs_GSEA_df %>%
+  ggplot(aes(x=sample, y = type, color = fdr, size = overlap)) + 
+  geom_point() +
+  cowplot::theme_cowplot() + 
+  theme(axis.line  = element_blank()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ylab('') +
+  theme(axis.ticks = element_blank()) +
+  labs(color = "-log10(FDR)") +
+  #scale_color_distiller(palette = "Reds", direction = 1)
+  scale_color_gradient(low = "grey", high = "red")
+
+ggsave(
+  filename = paste0(res_dir, "k-975_24h_SEs_GSEA.pdf"),
+  plot = SEs_GSEA_Plot,
+  width = 15, height = 15, units = "cm"
+)
+
+
+############# GSEA for k-975 48h
+# load genes from RNA-seq MES/ADR-specific genes
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx", sheet = 1)
+mes_adrn_gene_list <- RNA_SEQ_data %>%
+  mutate(Term = if_else(log2FoldChange < 0, "k975_48h_DWN", "k975_48h_UP"))
+mes_adrn_gene_list <- list(
+  k975_48h_DWN = mes_adrn_gene_list[mes_adrn_gene_list$Term == "k975_48h_DWN", "gene_symbol"],
+  k975_48h_UP = mes_adrn_gene_list[mes_adrn_gene_list$Term == "k975_48h_UP", "gene_symbol"]
+)
+
+# GSEA
+# REFACTOR!!!!!
+CLB_SKN_A_SEs_annot_raw <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
+CLB_SKN_M_SEs_annot_raw <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
+CLB_SKN_AM_SEs_annot_raw <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
+
+CLB_SKN_A_SEs_annot <- hypeR::hypeR(signature = CLB_SKN_A_SEs_annot_raw$Gene.Name, 
+                                    genesets = mes_adrn_gene_list, 
+                                    test="hypergeometric"
+)
+CLB_SKN_M_SEs_annot <- hypeR::hypeR(signature = CLB_SKN_M_SEs_annot_raw$Gene.Name, 
+                                    genesets = mes_adrn_gene_list, 
+                                    test="hypergeometric"
+)
+CLB_SKN_AM_SEs_annot <- hypeR::hypeR(signature = CLB_SKN_AM_SEs_annot_raw$Gene.Name, 
+                                     genesets = mes_adrn_gene_list, 
+                                     test="hypergeometric"
+)
+
+SEs_GSEA_df <- NULL
+SEs_GSEA_df <- dplyr::bind_rows(
+  c(sample = "CLB_SKN_A_SEs", 
+    type = "k975_48h_UP",
+    fdr = as.numeric(CLB_SKN_A_SEs_annot$data["k975_48h_UP", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_A_SEs_annot$data["k975_48h_UP", "overlap"])),
+  c(sample = "CLB_SKN_A_SEs",
+    type = "k975_48h_DWN",
+    fdr = as.numeric(CLB_SKN_A_SEs_annot$data["k975_48h_DWN", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_A_SEs_annot$data["k975_48h_DWN", "overlap"])),
+  c(sample = "CLB_SKN_AM_SEs", 
+    type = "k975_48h_UP",
+    fdr = as.numeric(CLB_SKN_AM_SEs_annot$data["k975_48h_UP", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_AM_SEs_annot$data["k975_48h_UP", "overlap"])), 
+  c(sample = "CLB_SKN_AM_SEs", 
+    type = "k975_48h_DWN",
+    fdr = as.numeric(CLB_SKN_AM_SEs_annot$data["k975_48h_DWN", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_AM_SEs_annot$data["k975_48h_DWN", "overlap"])),
+  c(sample = "CLB_SKN_M_SEs", 
+    type = "k975_48h_UP",
+    fdr = as.numeric(CLB_SKN_M_SEs_annot$data["k975_48h_UP", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_M_SEs_annot$data["k975_48h_UP", "overlap"])), 
+  c(sample = "CLB_SKN_M_SEs", 
+    type = "k975_48h_DWN",
+    fdr = as.numeric(CLB_SKN_M_SEs_annot$data["k975_48h_DWN", "fdr"]), 
+    overlap = as.numeric(CLB_SKN_M_SEs_annot$data["k975_48h_DWN", "overlap"]))
+)
+
+SEs_GSEA_df$fdr %<>% as.numeric
+SEs_GSEA_df$overlap %<>% as.numeric
+SEs_GSEA_df$fdr <- -log10(SEs_GSEA_df$fdr + 0.0000000001)
+
+SEs_GSEA_Plot <- SEs_GSEA_df %>%
+  ggplot(aes(x=sample, y = type, color = fdr, size = overlap)) + 
+  geom_point() +
+  cowplot::theme_cowplot() + 
+  theme(axis.line  = element_blank()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ylab('') +
+  theme(axis.ticks = element_blank()) +
+  labs(color = "-log10(FDR)") +
+  #scale_color_distiller(palette = "Reds", direction = 1)
+  scale_color_gradient(low = "grey", high = "red")
+
+ggsave(
+  filename = paste0(res_dir, "k-975_48h_SEs_GSEA.pdf"),
+  plot = SEs_GSEA_Plot,
+  width = 15, height = 15, units = "cm"
+)
