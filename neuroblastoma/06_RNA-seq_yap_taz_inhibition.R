@@ -375,7 +375,13 @@ plot_fGSEA(deg_results = deg_results$results_all,
            figure_extention = ".pdf"
 )
 
-
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_our_data,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 3000,
+           figure_extention = ".pdf"
+)
 
 ######################################
 ## 48H vs control
@@ -477,6 +483,15 @@ plot_fGSEA(deg_results = deg_results$results_all,
            figure_extention = ".pdf"
            )
 
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_our_data,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 3000,
+           figure_extention = ".pdf"
+)
+
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 ### ffGSEA to show a shift from MES to ADR identity for all samples ####
 vsd_counts_matrix <- assay(vsd)
@@ -488,9 +503,14 @@ ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
                                       min.sz=1, max.sz=Inf, 
                                       ssgsea.norm=TRUE, verbose=TRUE, parallel.sz=10)
 
+metadata_heatmap <- as.data.frame(colData(dds))
 annotation_col <- metadata_heatmap %>%
   dplyr::select(cell_line, timepoint, sample) %>% 
   dplyr::arrange(timepoint, cell_line)
+ann_colors = list(
+  cell_line = c(CM = "#005f73", SH = "#FF9F1C"),
+  timepoint = c(control = "#E9D8A6", `24h` = "#D9BE6D", `48h` = "#d6ac2f")
+)
 
 ssgsea_mes_adr_cellines <- ssgsea_mes_adr_cellines[, match(rownames(annotation_col), colnames(ssgsea_mes_adr_cellines))]
 
@@ -502,17 +522,49 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         cluster_cols = FALSE,
                                                         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
                                                         show_colnames = TRUE)
-pdf(file = file.path(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"))
-ssgsea_mes_adr_ncc_noradr_heatmap
-dev.off()
+
+ggsave(
+  filename = paste0(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"),
+  plot = ssgsea_mes_adr_ncc_noradr_heatmap,
+  width = 20, height = 10, units = "cm"
+)
 
 
 
+# MES separately
+ssgsea_mes_adr_cellines_MES <- as.data.frame(ssgsea_mes_adr_cellines)
+ssgsea_mes_adr_cellines_MES <- ssgsea_mes_adr_cellines_MES["Mesenchymal",]
+ssgsea_mes_adr_ncc_noradr_heatmap_MES <- pheatmap::pheatmap(ssgsea_mes_adr_cellines_MES,
+                                                        scale = "row",
+                                                        annotation_col = annotation_col,
+                                                        annotation_colors = ann_colors,
+                                                        cluster_rows = FALSE,
+                                                        cluster_cols = FALSE,
+                                                        color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                        show_colnames = TRUE)
+ggsave(
+  filename = paste0(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ_MES.pdf"),
+  plot = ssgsea_mes_adr_ncc_noradr_heatmap_MES,
+  width = 20, height = 10, units = "cm"
+)
 
 
-
-
-
+# ADR separately
+ssgsea_mes_adr_cellines_ADR <- as.data.frame(ssgsea_mes_adr_cellines)
+ssgsea_mes_adr_cellines_ADR <- ssgsea_mes_adr_cellines_ADR["Aderenergic",]
+ssgsea_mes_adr_ncc_noradr_heatmap_ADR <- pheatmap::pheatmap(ssgsea_mes_adr_cellines_ADR,
+                                                            scale = "row",
+                                                            annotation_col = annotation_col,
+                                                            annotation_colors = ann_colors,
+                                                            cluster_rows = FALSE,
+                                                            cluster_cols = FALSE,
+                                                            color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                            show_colnames = TRUE)
+ggsave(
+  filename = paste0(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ_ADR.pdf"),
+  plot = ssgsea_mes_adr_ncc_noradr_heatmap_ADR,
+  width = 20, height = 10, units = "cm"
+)
 
 
 
