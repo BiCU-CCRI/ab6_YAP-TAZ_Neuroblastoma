@@ -10,7 +10,7 @@ download.file(url = url, destfile = file_path)
 Model_dataframe <- read.csv(file = file_path, header = TRUE, sep = ",")
 Model_dataframe <- Model_dataframe %>% dplyr::select(ModelID, StrippedCellLineName, OncotreeSubtype)
 Model_dataframe$MetaGroup <- ifelse(Model_dataframe$OncotreeSubtype == "Neuroblastoma", "Neuroblastoma", "Other")
-Model_dataframe$MetaGroup <- ifelse(Model_dataframe$StrippedCellLineName %in% c("GIMEN", "NB69"), 
+Model_dataframe$MetaGroup <- ifelse(Model_dataframe$StrippedCellLineName %in% c("GIMEN", "NB69", "KPNSI9S"), 
                                     Model_dataframe$StrippedCellLineName,
                                     Model_dataframe$MetaGroup)
 
@@ -28,7 +28,7 @@ expression_long <- Screen_Gene_Effect_compact %>%
   left_join(Model_dataframe, by = "ModelID") %>%
   mutate(order_flag = ifelse(MetaGroup != "Other", 1, 0)) %>%
   arrange(order_flag) %>% 
-  mutate(order_flag = ifelse(MetaGroup %in% c("GIMEN", "NB69"), 1, 0)) %>%
+  mutate(order_flag = ifelse(MetaGroup %in% c("GIMEN", "NB69", "KPNSI9S"), 1, 0)) %>%
   arrange(order_flag)
 
 ggplot(expression_long, aes(x = Gene, y = GeneEffect, color = MetaGroup)) +
@@ -37,6 +37,7 @@ ggplot(expression_long, aes(x = Gene, y = GeneEffect, color = MetaGroup)) +
     values = c(
       "GIMEN" = "firebrick",
       "NB69" = "green",
+      "KPNSI9S" = "yellow",
       "Neuroblastoma" = "navy",
       "Other" = "lightgrey"
     )
@@ -44,6 +45,7 @@ ggplot(expression_long, aes(x = Gene, y = GeneEffect, color = MetaGroup)) +
   scale_alpha_manual(values = c(
       "GIMEN" = 1,
       "NB69" = 1,
+      "KPNSI9S" = 1,
       "Neuroblastoma" = 1,
       "Other" = 0.2
   )) +
@@ -52,3 +54,5 @@ ggplot(expression_long, aes(x = Gene, y = GeneEffect, color = MetaGroup)) +
   labs(title = "Gene Effect per Sample",
        x = "Sample (X)", y = "Gene Effect")
 
+
+table((expression_long %>% filter(Gene == "FOS"))$MetaGroup)
