@@ -1407,3 +1407,179 @@ for (file_name in enrich_results_files){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# OE ATAC-seq analysis
+
+# Set up the environment ####
+deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
+
+## Loading libraries ####
+library(dplyr)
+library(tidyr)
+library(DESeq2)
+library(ggplot2)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(IRanges)
+library(patchwork)
+import::from(stringr, str_extract, str_detect)
+import::from(GenomicRanges,GRanges)
+import::from(rtracklayer, liftOver, import.chain)
+import::from(openxlsx, addWorksheet, writeData, saveWorkbook)
+import::from(openxlsx2, read_xlsx)
+import::from(.from = TFBSTools, getMatrixSet)
+import::from(chromVAR, addGCBias)
+import::from(.from = RColorBrewer, brewer.pal)
+import::from(.from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+             "generatePCA", 
+             "extract_results_nextflow_output",
+             "meanExprsPerGroup_nextflow",
+             "extract_results_DDS_HIC",
+             "plotVolcano",
+             "get_the_poissoon_p_val")
+import::from(
+  .from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+  "filterDatasets",
+  .character_only = TRUE
+)
+
+# BugFix - JASPAR2022 cannot be pulled from the web automatically, so it need to be loaded manually
+download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022.sqlite",
+              destfile = "/home/rstudio/.cache/R/JASPAR2022.sqlite")
+JASPAR2022 <-  "/home/rstudio/.cache/R/JASPAR2022.sqlite"
+
+# Analysis part ###########################################################################
+# Assembling the metadata to a DESeq2 object
+# We use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
+tmp_dir <- "~/workspace/neuroblastoma/data/ATACseq/new/"
+path_to_the_ATAC_counts_data <- file.path(tmp_dir, "consensus_peaks.mLb.clN.rds")
+path_annnotation_ATAC_data <- file.path(tmp_dir, "consensus_peaks.mLb.clN.annotatePeaks.txt")
+ATAC_counts_data <- readRDS(path_to_the_ATAC_counts_data)
+ATAC_annotation_data <- read.csv(path_annnotation_ATAC_data, sep = "\t")
+
+colnames(ATAC_annotation_data)[1] <- "PeakId"
+ATAC_annotation_data <- ATAC_annotation_data %>%
+  mutate(PeakId = factor(PeakId, levels = row.names(ATAC_counts_data))) %>%
+  arrange(PeakId)
+
+#remove Scaffolds chrs
+ATAC_annotation_data <- ATAC_annotation_data[ATAC_annotation_data$Chr %in% c(1:22, "X", "Y"), ]
+ATAC_counts_data <- ATAC_counts_data[rownames(ATAC_counts_data) %in% ATAC_annotation_data$PeakId, ]
+
+#add ranges
+rowRanges(ATAC_counts_data) <- GenomicRanges::GRanges(seqnames = paste0("chr", ATAC_annotation_data$Chr), 
+                                                      ranges = IRanges::IRanges(start = ATAC_annotation_data$Start, 
+                                                                                end = ATAC_annotation_data$End
+                                                      )
+                                                      
+)
+mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), ATAC_annotation_data)
+
+
+
+
+# Drug treatment subset
+samples_to_subset <- colData(ATAC_counts_data)$sample
+samples_to_subset <- samples_to_subset[grep(samples_to_subset, pattern = "^(OE_WWTR1_)|(SH_A_)|(SH_M_).*" )]
+
+OE_ATAC <- ATAC_counts_data[, colData(ATAC_counts_data)$sample %in% samples_to_subset]
+
+parsed <- as.data.frame(
+  str_match(
+    OE_ATAC$sample,
+    "^OE_([^_]+)_((?:[^_]+_)*[^_]+)_ATAC_.*_(REP\\d+)$"
+  )
+)
+parsed$experiment <- "new"
+parsed <- parsed %>% filter(!is.na(V1))
+parsed <- rbind(parsed, c("SH_M_ATAC_S131295_REP1", "SH_M", "NO", "REP1", "old"))
+parsed <- rbind(parsed, c("SH_A_ATAC_S131296_REP1", "SH_A", "NO", "REP1", "old"))
+
+
+# Create a tidy data frame
+parsed_df <- data.frame(
+  genotype  = parsed[, 2],
+  treatment = parsed[, 3],
+  replicate = parsed[, 4],
+  experiment = parsed[, 5],
+  stringsAsFactors = TRUE
+)
+
+colData(OE_ATAC) <- cbind(colData(OE_ATAC), parsed_df)
+colData(OE_ATAC)$genotype <- factor(colData(OE_ATAC)$genotype, levels = c("WWTR1", "SH_M", "SH_A"))
+colData(OE_ATAC)$treatment <- factor(colData(OE_ATAC)$treatment )
+design(OE_ATAC) <- as.formula("~ treatment")
+
+
+OE_ATAC@rowRanges@elementMetadata@listData[["PeakId"]]
+
+#
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+RNA_SEQ_data <- RNA_SEQ_data %>%
+  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES")) %>%
+  select(gene_symbol, Term)
+mcols(OE_ATAC)$gene_category_our_RNAseq <- "ND"
+mcols(OE_ATAC)$gene_category_our_RNAseq <- case_when(
+  mcols(OE_ATAC)$Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "ADRN", 1] ~ "g_ADRN",
+  mcols(OE_ATAC)$Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "MES", 1] ~ "g_MES",
+  TRUE ~ mcols(OE_ATAC)$gene_category_our_RNAseq
+)
+
+# Add metadata - marks peaks that are around 3kb from TSS
+mcols(OE_ATAC)$is_promoter_3kb <- FALSE
+mcols(OE_ATAC)$is_promoter_3kb[abs(mcols(OE_ATAC)$Distance.to.TSS) <= 3000] <- TRUE
+
+
+# plot full ATAC-seq PCA
+OE_ATAC <- filterDatasets(OE_ATAC,
+                                abs_filt = TRUE,
+                                abs_filt_samples = 2
+)
+
+OE_ATAC <- estimateSizeFactors(OE_ATAC)
+OE_ATAC <- DESeq(OE_ATAC)
+vsd <- vst(OE_ATAC, blind = F)
+
+# remove replicate 2
+pca_dar <- generatePCA(transf_object = vsd[ ,vsd$replicate == "REP1"], 
+                       cond_interest_varPart = c("treatment", "genotype"), 
+                       color_variable = "treatment", 
+                       shape_variable = "genotype",
+                       ntop_genes = 1000) +
+  ggtitle("OE data + old ADNR and MES samples") 
+pca_dar
+
+# Batch correction
+transf_batch_NObatch_experiment <- vsd[, vsd$replicate == "REP1"]
+transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(SummarizedExperiment::assay(transf_batch_NObatch_experiment),
+                                                                  transf_batch_NObatch_experiment$experiment)
+SummarizedExperiment::assay(transf_batch_NObatch_experiment) <- transf_batch_NObatch_experiment_count
+pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_experiment, 
+                                                cond_interest_varPart = c("treatment", "genotype"), 
+                                                color_variable = "treatment", 
+                                                shape_variable = "genotype",
+                                                ntop_genes = 1000) +
+  ggtitle("OE data + old ADNR and MES samples batch corrected") 
+pca_deg_NObatch_experiment
+
+
+
+
