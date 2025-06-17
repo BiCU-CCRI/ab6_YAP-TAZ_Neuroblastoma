@@ -174,6 +174,30 @@ sig_list_our_data <- list(
   Aderenergic = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "ADRN"],
   Mesenchymal = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "MES"]
 )
+# Adding strict filter
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 3)
+mes_adrn_gene_list_strict <- RNA_SEQ_data %>%
+  filter(padj < param_list$padj_cutoff) %>% 
+  mutate(Term = case_when(
+    FoldChange < -10 ~ "ADRN",
+    FoldChange >  10 ~ "MES",
+    TRUE ~ "no_term"
+))
+sig_list_our_data_strict <- list(
+  Strict_Aderenergic = mes_adrn_gene_list_strict$gene_symbol[mes_adrn_gene_list_strict$Term == "ADRN"],
+  Strict_Mesenchymal = mes_adrn_gene_list_strict$gene_symbol[mes_adrn_gene_list_strict$Term == "MES"]
+)
+
+# loading signatures from Groeningen paper
+signatures_raw <- readr::read_tsv(file = "/home/rstudio/workspace/neuroblastoma/resources/mes_adr_ncc_noradr_Groeningen_genesets.tsv",
+                                  skip_empty_rows = TRUE) # do not add na for empty
+sig_list_groeningen <- list(
+  #NCC_like = signatures_raw$`NCC-like`[!is.na(signatures_raw$`NCC-like`)],
+  #Noradrenergic = signatures_raw$Noradrenergic[!is.na(signatures_raw$Noradrenergic)],
+  Groen_Mesenchymal  = signatures_raw$Mesenchymal[!is.na(signatures_raw$Mesenchymal)],
+  Groen_Adrenergic = signatures_raw$Adrenergic[!is.na(signatures_raw$Adrenergic)]
+)
+lapply(sig_list_groeningen, length)
 
 # load annotation
 path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/RNAseq"
@@ -185,6 +209,10 @@ annotationData <- read.table(
 # This is necessary to rename columns so that extraction of the data works correctly
 colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
+
+
+
+
 deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/"
 if(!dir.exists(deg_dir)){
   dir.create(deg_dir)
@@ -195,6 +223,9 @@ load("~/workspace/neuroblastoma/data/RNAseq/taz_yap_inhibition/deseq2.dds.RData"
 dds$cell_line <- factor(dds$Group1, levels = c("CM", "SH"))
 dds$timepoint <- factor(dds$Group2, levels = c("control", "24h", "48h"))
 dds$replicate <- dds$Group3
+comparison_groups <- paste0(dds$cell_line, "_", dds$timepoint)
+dds$comparison_group <- factor(comparison_groups, levels = unique(comparison_groups))
+
 
 design(dds) <- as.formula("~ cell_line + timepoint")
 
@@ -368,10 +399,12 @@ produce_GSEA_plots(gene_signature = dwn_deg_results,
                    additional_title = "24h vs control downregulated", 
                    path_to_pdf_report = deg_dir)
 
+# Produce fGSEA
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = gene_set_list,
            title_prefix = deg_results$de_details$test, 
            save_dir = deg_dir, 
+           maxSize = 3000,
            figure_extention = ".pdf"
 )
 
@@ -383,6 +416,21 @@ plot_fGSEA(deg_results = deg_results$results_all,
            figure_extention = ".pdf"
 )
 
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_our_data_strict,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 3000,
+           figure_extention = ".pdf"
+)
+
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_groeningen,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 3000,
+           figure_extention = ".pdf"
+)
 ######################################
 ## 48H vs control
 resultsNames(dds)
@@ -480,6 +528,7 @@ plot_fGSEA(deg_results = deg_results$results_all,
            gene_set_list = gene_set_list,
            title_prefix = deg_results$de_details$test, 
            save_dir = deg_dir, 
+           maxSize = 3000,
            figure_extention = ".pdf"
            )
 
@@ -491,9 +540,24 @@ plot_fGSEA(deg_results = deg_results$results_all,
            figure_extention = ".pdf"
 )
 
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_our_data_strict,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 3000,
+           figure_extention = ".pdf"
+)
+
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_groeningen,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 3000,
+           figure_extention = ".pdf"
+)
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-### ffGSEA to show a shift from MES to ADR identity for all samples ####
+### GSVA to show a shift from MES to ADR identity for all samples ####
 vsd_counts_matrix <- assay(vsd)
 row.names(vsd_counts_matrix) <- annotationData[, 'gene_symbol'][match(row.names(vsd_counts_matrix), annotationData[, 'ensembl_id'])]
 
@@ -566,6 +630,119 @@ ggsave(
   width = 20, height = 10, units = "cm"
 )
 
+# # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # #
+# now do comparisons for CM and SH separately
+# also separating 24h vs control and 48h vs control
+load("~/workspace/neuroblastoma/data/RNAseq/taz_yap_inhibition/deseq2.dds.RData")
+dds$cell_line <- factor(dds$Group1, levels = c("CM", "SH"))
+dds$timepoint <- factor(dds$Group2, levels = c("control", "24h", "48h"))
+dds$replicate <- dds$Group3
+comparison_groups <- paste0(dds$cell_line, "_", dds$timepoint)
+dds$comparison_group <- factor(comparison_groups, 
+                               levels = c("CM_control", "CM_24h", "CM_48h", 
+                                          "SH_control", "SH_24h", "SH_48h" ))
+
+
+for (cell_line_name in c("CM", "SH")){
+  #cell_line_name <- "CM"
+  
+  print(paste0("Processing: ", cell_line_name))
+  cols_to_subset <- startsWith(colnames(dds), cell_line_name)
+  dds_cell_line_subset <- dds[, cols_to_subset]
+  dds_cell_line_subset$comparison_group <- droplevels(dds_cell_line_subset$comparison_group)
+  
+  design(dds_cell_line_subset) <- as.formula("~ comparison_group")
+  
+  dds_cell_line_subset <- filterDatasets(dds_cell_line_subset, 
+                                         abs_filt = TRUE, 
+                                         abs_filt_samples = param_list$abs_filt_samples)
+  dds_cell_line_subset <- DESeq2::estimateSizeFactors(dds_cell_line_subset)
+  dds_cell_line_subset <- DESeq2::DESeq(dds_cell_line_subset)
+  
+  for(comparison_name in resultsNames(dds_cell_line_subset)[2:3]){
+    #comparison_name <- resultsNames(dds_cell_line_subset)[2]
+    print(paste0("Processing: ", comparison_name))
+    group_parameters <- str_split(comparison_name, "_", simplify = TRUE)[c(3,4,7)]
+    cond_numerator <- paste0(group_parameters[1], "_", group_parameters[2])
+    cond_denominator <- paste0(group_parameters[1], "_", group_parameters[3])
+    
+    deg_results <- generateResults(
+      dds_object = dds_cell_line_subset,  
+      coeff_name = comparison_name,
+      cond_numerator = cond_numerator,
+      cond_denominator = cond_denominator,
+      cond_variable = "comparison_group",
+      ensemblAnnot = annotationData,
+      log2FC_cutoff = param_list$log2FC_cutoff
+    )
+    
+    XLSX_OUT <- createWorkbook()
+    addWorksheet(XLSX_OUT, "results_signif")
+    addWorksheet(XLSX_OUT, "de_details")
+    addWorksheet(XLSX_OUT, "results_all")
+    writeData(XLSX_OUT, x = deg_results$results_signif, sheet = "results_signif")
+    writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
+    writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
+    saveWorkbook(XLSX_OUT, 
+                 file.path(deg_dir, paste0(comparison_name, "_", ".xlsx")),
+                 overwrite = TRUE)
+    
+    # VOLCANO PLOT 
+    genes_to_highlight <- c(
+      "VIM",
+      "YAP1",
+      "WWTR1",
+      "JUN",
+      "FOSL1",
+      "FOSL2",
+      "PHOX2B",
+      "HAND2",
+      "GATA3",
+      "NOTCH1"
+    )
+    volcano_plot <- plotVolcano(
+      dds_results_obj = deg_results$results_all,
+      genes_of_interest = genes_to_highlight,
+      plot_title = comparison_name, 
+      log2FC_cutoff = 0.37, 
+      padj_cutoff = 0.05
+    ) + 
+      scale_x_continuous(limits = c(-5, 7.5)) +
+      scale_y_continuous(limits = c(-5, 320))
+    ggsave(
+      filename = paste0(deg_dir, paste0(comparison_name, "_more_highlited_genes.pdf")),
+      plot = volcano_plot,
+      width = 20, height = 20, units = "cm"
+    )
+    
+    # VOLCANO PLOT with less genes
+    genes_to_highlight <- c(
+      "FOSL1",
+      "NOTCH1"
+    )
+    volcano_plot <- plotVolcano(
+      dds_results_obj = deg_results$results_all,
+      genes_of_interest = genes_to_highlight,
+      plot_title = comparison_name, 
+      log2FC_cutoff = 0.37, 
+      padj_cutoff = 0.05
+    ) + 
+      scale_x_continuous(limits = c(-5, 7.5)) +
+      scale_y_continuous(limits = c(-5, 320))
+    ggsave(
+      filename = paste0(deg_dir, paste0(comparison_name, "_less_highlited_genes.pdf")),
+      plot = volcano_plot,
+      width = 20, height = 20, units = "cm"
+    )
+  }
+ 
+}
+
+
+
+
+
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -586,6 +763,9 @@ raw_JunDN_counts <- read.csv(file = "~/workspace/neuroblastoma/data/RNAseq/JunDN
 raw_JunDN_counts$gene_id <- stringr::str_replace(raw_JunDN_counts$gene_id, pattern = "\\..*", replacement = "") 
 row.names(raw_JunDN_counts) <- raw_JunDN_counts$gene_id
 raw_JunDN_counts <- raw_JunDN_counts %>% select(starts_with("JunDN"))
+
+# remove JUN from the count table as it's a DN experiment
+raw_JunDN_counts <- raw_JunDN_counts %>% filter(row.names(.) != "ENSG00000177606")
 
 coldata <- data.frame(
   sample = c("JunDN_ctrl_2_RNA_S165182", 
@@ -660,7 +840,8 @@ genes_to_highlight <- c(
   "FOSL2",
   "PHOX2B",
   "HAND2",
-  "GATA3"
+  "GATA3",
+  "NOTCH1"
 )
 volcano_plot <- plotVolcano(
   dds_results_obj = deg_results$results_all,
@@ -668,13 +849,35 @@ volcano_plot <- plotVolcano(
   plot_title = "Jun DN dox vs control", 
   log2FC_cutoff = 0.37, 
   padj_cutoff = 0.05
-)
+) + 
+  scale_x_continuous(limits = c(-5, 7.5)) +
+  scale_y_continuous(limits = c(-5, 320))
+
 ggsave(
-  filename = paste0(deg_dir, "JunDN_dox_vs_ctrl.png"),
+  filename = paste0(deg_dir, "JunDN_dox_vs_ctrl_more_highlited_genes.pdf"),
   plot = volcano_plot,
   width = 20, height = 20, units = "cm"
 )
 
+# VOLCANO PLOT with less genes
+genes_to_highlight <- c(
+  "FOSL1",
+  "NOTCH1"
+)
+volcano_plot <- plotVolcano(
+  dds_results_obj = deg_results$results_all,
+  genes_of_interest = genes_to_highlight,
+  plot_title = "Jun DN dox vs control", 
+  log2FC_cutoff = 0.37, 
+  padj_cutoff = 0.05
+) + 
+  scale_x_continuous(limits = c(-5, 7.5)) +
+  scale_y_continuous(limits = c(-5, 320))
+ggsave(
+  filename = paste0(deg_dir, "JunDN_dox_vs_ctrl_less_highlited_genes.pdf"),
+  plot = volcano_plot,
+  width = 20, height = 20, units = "cm"
+)
 
 # Prepare data for JunDN heatmap - show all DEGs
 metadata_heatmap <- as.data.frame(colData(JunDN_dds))
@@ -778,7 +981,7 @@ plot_fGSEA(deg_results = deg_results$results_all,
            gene_set_list = gene_set_list,
            title_prefix = deg_results$de_details$test, 
            save_dir = deg_dir, 
-           maxSize = 5000,
+           maxSize = 3000,
            figure_extention = ".pdf"
 )
 
@@ -786,11 +989,27 @@ plot_fGSEA(deg_results = deg_results$results_all,
            gene_set_list = sig_list_our_data,
            title_prefix = deg_results$de_details$test, 
            save_dir = deg_dir, 
-           maxSize = 5000,
+           maxSize = 3000,
            figure_extention = ".pdf"
 )
 
-debug(plot_fGSEA)
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_our_data_strict,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 3000,
+           figure_extention = ".pdf"
+)
+
+plot_fGSEA(deg_results = deg_results$results_all, 
+           gene_set_list = sig_list_groeningen,
+           title_prefix = deg_results$de_details$test, 
+           save_dir = deg_dir, 
+           maxSize = 3000,
+           figure_extention = ".pdf"
+)
+
+
 
 vsd_counts_matrix <- assay(JunDN_vsd)
 row.names(vsd_counts_matrix) <- annotationData[, 'gene_symbol'][match(row.names(vsd_counts_matrix), annotationData[, 'ensembl_id'])]
