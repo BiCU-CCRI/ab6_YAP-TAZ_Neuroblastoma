@@ -637,18 +637,11 @@ samples_to_select_full <- c("OE_WWTR1_DMSO_RNA_S165191_R1",
                             "OE_WWTR1_TDI_RNA_S165188_R1", 
                             "OE_WWTR1_dox_RNA_S165189_R1", 
                             "OE_WWTR1_dox_TDI_RNA_S165178_R1",
-                            "OE_mCherrry_TDI_RNA_S165184_R1", 
-                            "OE_mCherry_DMSO_RNA_S165187_R1", 
-                            "OE_mCherry_dox_RNA_S165185_R1", 
-                            "OE_mCherry_dox_TDI_RNA_S165190_R1",
                             "OE_WWTR1_DMSO_RNA_S165191_R2", 
                             "OE_WWTR1_TDI_RNA_S165188_R2", 
                             "OE_WWTR1_dox_RNA_S165189_R2", 
-                            "OE_WWTR1_dox_TDI_RNA_S165178_R2",
-                            "OE_mCherrry_TDI_RNA_S165184_R2", 
-                            "OE_mCherry_DMSO_RNA_S165187_R2", 
-                            "OE_mCherry_dox_RNA_S165185_R2", 
-                            "OE_mCherry_dox_TDI_RNA_S165190_R2")
+                            "OE_WWTR1_dox_TDI_RNA_S165178_R2"
+                            )
 
 TDI_dds <- dds[,colnames(dds) %in% samples_to_select_full]
 
@@ -658,7 +651,6 @@ parsed <- str_match(
   sample_names,
   "^OE_([^_]+)_((?:[^_]+_)*[^_]+)_RNA_.*_(R\\d+)$"
 )
-parsed[,2][parsed[, 2] == "mCherrry"] <- "mCherry"
 
 # Create a tidy data frame
 parsed_df <- data.frame(
@@ -671,7 +663,7 @@ parsed_df <- data.frame(
 colData(TDI_dds) <- cbind(colData(TDI_dds), parsed_df)
 TDI_dds$treatment <- factor(TDI_dds$treatment, levels = c("DMSO", "TDI", "dox", "dox_TDI"))
 
-design(TDI_dds) <- as.formula("~ genotype + treatment")
+design(TDI_dds) <- as.formula("~ treatment")
 
 # make PCA with ALL samples
 # Filtering lowly expressed genes
@@ -685,17 +677,6 @@ TDI_dds_filt <- DESeq2::estimateSizeFactors(TDI_dds_filt)
 TDI_dds_filt <- DESeq2::DESeq(TDI_dds_filt)
 resultsNames(TDI_dds_filt)
 
-results(TDI_dds_filt, contrast = c("treatment", "dox_TDI", "dox"))
-results(TDI_dds_filt, name = c("treatment dox_TDI vs dox"))
-
-res_table_unshrunken_TMP <- DESeq2::results(TDI_dds_filt, 
-                                        contrast=c("treatment", "dox_TDI", "dox"),
-                                        parallel = TRUE, alpha = 0.05)
-res_table <- DESeq2::lfcShrink(TDI_dds_filt, 
-                               contrast=c("treatment", "dox_TDI", "dox"),
-                               res=res_table_unshrunken_TMP, type = "ashr")
-
-
 deg_results_TDI_vs_DMSO <- generateResults(
   dds_object = TDI_dds_filt,
   coeff_name = "treatment_TDI_vs_DMSO",
@@ -706,7 +687,16 @@ deg_results_TDI_vs_DMSO <- generateResults(
   log2FC_cutoff = param_list$log2FC_cutoff
 )
 
-debug(generateResults)
+# Write the result to the xlsx file
+XLSX_OUT <- openxlsx::createWorkbook()
+openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+openxlsx::addWorksheet(XLSX_OUT, "de_details")
+openxlsx::addWorksheet(XLSX_OUT, "results_all")
+openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$results_signif, sheet = "results_signif")
+openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$de_details, sheet = "de_details")
+openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$results_all, sheet = "results_all")
+openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "treatment_TDI_vs_DMSO.xlsx"), overwrite = T)
+
 deg_results_doxTDI_vs_dox <- generateResults(
   dds_object = TDI_dds_filt,
   coef_contrast=c("treatment", "dox_TDI", "dox"),
@@ -717,18 +707,35 @@ deg_results_doxTDI_vs_dox <- generateResults(
   log2FC_cutoff = param_list$log2FC_cutoff
 )
 
+# Write the result to the xlsx file
+XLSX_OUT <- openxlsx::createWorkbook()
+openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+openxlsx::addWorksheet(XLSX_OUT, "de_details")
+openxlsx::addWorksheet(XLSX_OUT, "results_all")
+
+openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$results_signif, sheet = "results_signif")
+openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$de_details, sheet = "de_details")
+openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$results_all, sheet = "results_all")
+
+openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "treatment_doxTDI_vs_dox.xlsx.xlsx"), overwrite = T)
+
 # Stabilize variance
 TDI_dds_filt_vsd <- DESeq2::vst(TDI_dds_filt, blind = TRUE) # blind = TRUE for QC
 
+#remove R1 replicates
 # generate PCA plots
 tmp_pca_deg <- generatePCA(
-  transf_object = TDI_dds_filt_vsd,
+  transf_object = TDI_dds_filt_vsd[, c(1,3,5,7)],
   cond_interest_varPart = c("genotype", "treatment"),
   color_variable = "genotype",
   shape_variable = "treatment",
   ntop_genes = 1000
+) + ggtitle("PCA plot for dox doxTDI DMSO TDI WWTR1 only")
+ggsave(
+  filename = paste0(deg_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO.pdf"),
+  plot = tmp_pca_deg,
+  width = 20, height = 20, units = "cm"
 )
-tmp_pca_deg
 
 #####################################################
 gene_set_list <- list(
@@ -809,7 +816,7 @@ for(gene_set_to_plot_name in names(gene_set_list)){
 }
 
 ################################################################################
-# Add old ADR and MES samples 
+# Add old ADR and MES samples for PCA visualisation
 load("~/workspace/neuroblastoma/data/RNAseq/OE_WWTR1_mCherry_JunDN_experiment.dds.RData")
 samples_to_select_full <- c("OE_WWTR1_DMSO_RNA_S165191_R1", 
                             "OE_WWTR1_TDI_RNA_S165188_R1", 
@@ -906,12 +913,19 @@ transf_batch_NObatch_experiment <- TDI_plus_OG_filt_vsd
 transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(SummarizedExperiment::assay(transf_batch_NObatch_experiment),
                                                                   transf_batch_NObatch_experiment$is_outer_control)
 SummarizedExperiment::assay(transf_batch_NObatch_experiment) <- transf_batch_NObatch_experiment_count
-pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_experiment, 
+pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_experiment[,c(1,3,5,7,9,10)], 
                                                 cond_interest_varPart = c("genotype","treatment"), 
                                                 color_variable = "genotype", 
                                                 shape_variable = "treatment",
                                                 ntop_genes = 1000) +
   ggtitle("dox tdi dox/tdi dmso experiment + OG samples. batch corrected") 
+pca_deg_NObatch_experiment
+
+ggsave(
+  filename = paste0(deg_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs.pdf"),
+  plot = pca_deg_NObatch_experiment,
+  width = 20, height = 20, units = "cm"
+)
 
 ########## GSVA
 RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
