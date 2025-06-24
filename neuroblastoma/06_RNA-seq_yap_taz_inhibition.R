@@ -4,7 +4,7 @@
 ### 
 
 # importing only key functions that are actually used - not to polute namespace!
-import::from(.from = DESeq2, .all=TRUE)
+library(DESeq2)
 import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
 import::from(.from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"), 
              "filterDatasets",
@@ -229,8 +229,8 @@ dds$comparison_group <- factor(comparison_groups, levels = unique(comparison_gro
 
 design(dds) <- as.formula("~ cell_line + timepoint")
 
-dds <- filterDatasets(dds, 
-                      abs_filt = TRUE, 
+dds <- filterDatasets(dds,
+                      abs_filt = TRUE,
                       abs_filt_samples = param_list$abs_filt_samples)
 dds <- DESeq2::estimateSizeFactors(dds)
 dds <- DESeq2::DESeq(dds)
@@ -398,6 +398,9 @@ produce_GSEA_plots(gene_signature = dwn_deg_results,
                    dds_object = dds, 
                    additional_title = "24h vs control downregulated", 
                    path_to_pdf_report = deg_dir)
+
+# deg_results$results_all <- deg_results$results_all %>% filter(gene_biotype == "protein_coding")
+# deg_results$results_all <- deg_results$results_all %>% filter(is.finite(log2FoldChange))
 
 # Produce fGSEA
 plot_fGSEA(deg_results = deg_results$results_all, 
@@ -969,13 +972,18 @@ heatmap <- pheatmap::pheatmap(heatmap_counts[row.names(annotation_row %>% arrang
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10)
 
-# Produce GSEA plots
+# Produce fGSEA plots
 dwn_deg_results <- deg_results$results_signif %>% dplyr::filter(log2FoldChange < 0) %>% pull(gene_symbol)
+
 
 produce_GSEA_plots(gene_signature = dwn_deg_results,
                    dds_object = JunDN_dds, 
                    additional_title = "JunDN_GSEA_downregulated_", 
                    path_to_pdf_report = deg_dir)
+
+# deg_results$results_all <- deg_results$results_all %>% filter(gene_biotype == "protein_coding")
+# deg_results$results_all <- deg_results$results_all %>% filter(is.finite(log2FoldChange))
+
 
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = gene_set_list,
@@ -1040,6 +1048,39 @@ ssgsea_mes_adr_ncc_noradr_heatmap
 dev.off()
 
 
+# # # # # # # # # # # # # # 
+# implementing cluster profiler
+library(clusterProfiler)
+deg_results
+TERM2GENE <- mes_adrn_gene_list %>% select(Term, gene_symbol)
+TERM2GENE <- TERM2GENE %>% dplyr::arrange(Term) 
 
 
+Jun_DN_up <- deg_results$results_signif %>% filter(log2FoldChange > 0) %>% pull(gene_symbol)
+Jun_DN_down <- deg_results$results_signif %>% filter(log2FoldChange < 0) %>% pull(gene_symbol)
+
+kegg_ora_results <- enricher( maxGSSize = 3000,
+  gene = Jun_DN_up, # A vector of your genes of interest
+  pvalueCutoff = 1, # Can choose a FDR cutoff
+  pAdjustMethod = "BH", # Method to be used for multiple testing correction
+  universe = deg_results$results_all$gene_symbol, # A vector containing your background set genes
+  # The pathway information should be a data frame with a term name or
+  # identifier and the gene identifiers
+  TERM2GENE = TERM2GENE
+)
+
+ggplot(kegg_ora_results@result$ID)
+
+
+kegg_ora_results <- enricher( maxGSSize = 3000,
+                              gene = Jun_DN_down, # A vector of your genes of interest
+                              pvalueCutoff = 1, # Can choose a FDR cutoff
+                              pAdjustMethod = "BH", # Method to be used for multiple testing correction
+                              universe = deg_results$results_all$gene_symbol, # A vector containing your background set genes
+                              # The pathway information should be a data frame with a term name or
+                              # identifier and the gene identifiers
+                              TERM2GENE = TERM2GENE
+)
+
+dotplot(kegg_ora_results)
 
