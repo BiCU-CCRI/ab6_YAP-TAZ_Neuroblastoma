@@ -1428,10 +1428,6 @@ for (file_name in enrich_results_files){
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # OE ATAC-seq analysis
-
-# Set up the environment ####
-deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
-
 ## Loading libraries ####
 library(dplyr)
 library(tidyr)
@@ -1440,6 +1436,7 @@ library(ggplot2)
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(IRanges)
 library(patchwork)
+library(stringr)
 import::from(stringr, str_extract, str_detect)
 import::from(GenomicRanges,GRanges)
 import::from(rtracklayer, liftOver, import.chain)
@@ -1466,6 +1463,9 @@ download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022
               destfile = "/home/rstudio/.cache/R/JASPAR2022.sqlite")
 JASPAR2022 <-  "/home/rstudio/.cache/R/JASPAR2022.sqlite"
 
+# Set up the environment ####
+deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_OE/"
+
 # Analysis part ###########################################################################
 # Assembling the metadata to a DESeq2 object
 # We use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
@@ -1489,7 +1489,6 @@ rowRanges(ATAC_counts_data) <- GenomicRanges::GRanges(seqnames = paste0("chr", A
                                                       ranges = IRanges::IRanges(start = ATAC_annotation_data$Start, 
                                                                                 end = ATAC_annotation_data$End
                                                       )
-                                                      
 )
 mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), ATAC_annotation_data)
 
@@ -1547,8 +1546,6 @@ mcols(OE_ATAC)$gene_category_our_RNAseq <- case_when(
 mcols(OE_ATAC)$is_promoter_3kb <- FALSE
 mcols(OE_ATAC)$is_promoter_3kb[abs(mcols(OE_ATAC)$Distance.to.TSS) <= 3000] <- TRUE
 
-
-# plot full ATAC-seq PCA
 OE_ATAC <- filterDatasets(OE_ATAC,
                                 abs_filt = TRUE,
                                 abs_filt_samples = 2
@@ -1558,6 +1555,7 @@ OE_ATAC <- estimateSizeFactors(OE_ATAC)
 OE_ATAC <- DESeq(OE_ATAC)
 vsd <- vst(OE_ATAC, blind = F)
 
+# plot full ATAC-seq PCA
 # remove replicate 2
 pca_dar <- generatePCA(transf_object = vsd[ ,vsd$replicate == "REP1"], 
                        cond_interest_varPart = c("treatment", "genotype"), 
@@ -1582,4 +1580,199 @@ pca_deg_NObatch_experiment
 
 
 
+
+######## Analysis of motifs
+opts <- list()
+opts[["tax_group"]] <- "vertebrates"
+opts[["species"]] <- "9606"
+opts[["collection"]] <- "CORE"
+opts[["all_versions"]] <- FALSE
+motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
+
+# Using different subsets of peaks to check 
+subsets_to_run <- c("ALL")
+
+sbst <-  c("ALL")
+# here we check if there are any peaks that have less than 5 reads across all samples.
+dim(OE_ATAC)
+counts_consensus_filt <- OE_ATAC[rowSums(assay(OE_ATAC)) > 5, ]
+dim(counts_consensus_filt)
+
+print(paste("procesing: ", sbst ))
+
+# ChromVar package uses GC content to identify background peaks that are likely to be non-functional and exclude them from further analysis. 
+# This is because GC-rich regions tend to have higher nucleosome occupancy and lower DNase I hypersensitivity, 
+# which are indicators of closed chromatin and reduced accessibility to transcription factors.
+# By identifying and removing background peaks that are likely to be non-functional, 
+# ChromVar is able to focus on the regulatory regions that are most likely to be involved in transcriptional regulation. 
+# This increases the sensitivity and specificity of the analysis and helps to avoid false positive results.
+# Therefore, GC content is an important parameter to consider when working with the ChromVar package.
+counts_consensus_filt <- chromVAR::addGCBias(counts_consensus_filt, genome = BSgenome.Hsapiens.UCSC.hg38) 
+
+# Having corrected for bias, we can use the matchMotifs function to identify motifs under our ATACseq peaks.
+# Here we supply our RangedSummarizedExperiment of counts in peaks and the genome of interest to the matchMotifs function and use the default out of matches.
+
+motif_matches <- motifmatchr::matchMotifs(pwms = motifsToScan, 
+                                          subject = counts_consensus_filt, 
+                                          genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                          out = "matches")
+motif_matches
+
+BiocParallel::register(BiocParallel::MulticoreParam(8, progressbar = FALSE))
+set.seed(42069)
+
+# Run chromVar ----
+#Following the identification of motifs in our peaks, we can perform the summarization of ATACseq signal to motifs using the computeDeviations and the computeVariability functions.
+
+#The function computeDeviations will use a set of background peaks for normalizing the deviation scores. 
+#This computation is done internally by default and not returned – to have greater control over this step, 
+#a user can run the getBackgroundPeaks function themselves and pass the result to computeDeviations under the background_peaks parameter.
+#Background peaks are peaks that are similar to a peak in GC content and average accessibility
+#The result from getBackgroundPeaks is a matrix of indices, where each column represents the index of the peak that is a background peak.
+
+background_peaks <- chromVAR::getBackgroundPeaks(object = counts_consensus_filt) 
+access_expectation <- chromVAR::computeExpectations(object = counts_consensus_filt)
+chrom_access_deviations <- chromVAR::computeDeviations(object = counts_consensus_filt, 
+                                                       annotations = motif_matches,
+                                                       background_peaks = background_peaks,
+                                                       expectation = access_expectation)
+
+# we can check the correlation of samples
+sample_cor <- chromVAR::getSampleCorrelation(chrom_access_deviations)
+annotation_row_sampleCor <- as.data.frame(SummarizedExperiment::colData(chrom_access_deviations)) %>%
+  dplyr::select(sample)
+pheatmap::pheatmap(as.dist(sample_cor), 
+                   annotation_row = annotation_row_sampleCor, 
+                   clustering_distance_rows = as.dist(1-sample_cor), 
+                   clustering_distance_cols = as.dist(1-sample_cor),  annotation_names_row = TRUE, 
+) 
+
+#checkign the clusterrization using tSNE
+tsne_results <- chromVAR::deviationsTsne(chrom_access_deviations, threshold = 1.5, perplexity = 8, 
+                                         what = "samples", shiny = FALSE)
+
+tsne_plots <- chromVAR::plotDeviationsTsne(chrom_access_deviations, tsne_results,
+                                           sample_column = "sample", shiny = FALSE)
+tsne_plots
+
+diff_acc <- chromVAR::differentialDeviations(chrom_access_deviations, groups="treatment", parametric = FALSE)
+motif_annot <- as.data.frame(SummarizedExperiment::rowData(chrom_access_deviations)) %>%
+  tibble::rownames_to_column(var = "motif") %>%
+  dplyr::select(motif, name)
+diff_acc_annot <- diff_acc %>%
+  tibble::rownames_to_column(var = "motif") %>%
+  dplyr::left_join(., motif_annot, by = "motif")
+head(diff_acc_annot) 
+
+diff_var <- chromVAR::differentialVariability(chrom_access_deviations, "treatment", parametric = FALSE)
+diff_var_annot <- diff_var %>%
+  tibble::rownames_to_column(var = "motif") %>%
+  dplyr::left_join(., motif_annot, by = "motif")
+head(diff_var_annot)
+
+devZscores <- chromVAR::deviationScores(chrom_access_deviations)
+devZscores_df <- tibble::rownames_to_column(as.data.frame(devZscores), var="jaspar_id")
+
+#The function computeVariability returns a data.frame that contains the variability (standard deviation of the z scores computed above
+# across all cell/samples for a set of peaks), bootstrap confidence intervals for that variability (by resampling cells/samples), 
+# and a p-value for the variability being greater than the null hypothesis of 1.
+chrom_access_variability <- chromVAR::computeVariability(chrom_access_deviations)
+chrom_access_variability_plot <- chromVAR::plotVariability(chrom_access_variability, use_plotly = FALSE)
+chrom_access_variability_plot
+
+ggsave(chrom_access_variability_plot, 
+       filename = file.path(deg_dir, paste0("ChromVAR_chrom_access_variability_corr_plot_", sbst, ".pdf")))
+
+BiocParallel::register(BiocParallel::SerialParam())
+
+chrom_access_variability_ord <- chrom_access_variability[order(chrom_access_variability$p_value), ]  # ordering based on p-value
+
+#! to store
+chrom_access_variability_ord_results <- chrom_access_variability_ord %>%
+  tibble::rownames_to_column(var="jaspar_id") %>%
+  dplyr::left_join(., devZscores_df, by = "jaspar_id")
+
+message("Saving motif enrichment results")
+ntop <- 50
+topVariable <- chrom_access_variability_ord[1:ntop, ]
+topVariable <- tibble::rownames_to_column(topVariable, var="jaspar_id")
+
+devTop <- topVariable %>%
+  dplyr::left_join(., devZscores_df, by = "jaspar_id")
+
+devTop <- devTop %>% mutate(long_name = paste0(jaspar_id, "_", name))
+
+devToPlot <- devTop %>%
+  dplyr::select(long_name, 
+                OE_WWTR1_DMSO_ATAC_S165172_REP1,
+                OE_WWTR1_TDI_ATAC_S165176_REP1,
+                OE_WWTR1_dox_ATAC_S165177_REP1,
+                OE_WWTR1_dox_TDI_ATAC_S165175_REP1,
+                SH_M_ATAC_S131295_REP1,
+                SH_A_ATAC_S131296_REP1
+  ) %>%
+  tibble::column_to_rownames(var = "long_name")
+
+annotCol_forHeatmap <- as.data.frame(colData(OE_ATAC)) %>%
+  dplyr::select(treatment)
+# annotCol_forHeatmap_colors <- list(phenotype = c(A = "#525252", M = "#fc4e2a"))
+annotCol_forHeatmap_colors <- list(phenotype = c(dox = "#525252", TDI = "#fc4e2a", DMSO = "green", dox_TDI = "yellow", NO = "pink"))
+
+
+
+color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
+
+heatmap <- pheatmap::pheatmap(as.matrix(devToPlot),
+                              color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+                              border_color = NA,
+                              #color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(100),
+                              scale = "row",
+                              cluster_cols = FALSE,
+                              cluster_rows = TRUE,
+                              show_colnames = TRUE,
+                              show_rownames = TRUE,
+                              annotation_col = annotCol_forHeatmap,
+                              annotation_colors = annotCol_forHeatmap_colors,  
+                              fontsize_row = 9,
+                              fontsize = 9,
+                              main = paste0("Heatmap of signif. ATAC-seq OE DMSO TDI dox TDI_DOX ", sbst, "- used"))
+
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_OE_DMSO_TDI_dox_TDI_dox_Motifs", sbst, "- used", ".png")), 
+       plot=heatmap,
+       width = 18, height = 24, units = "cm")
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_OE_DMSO_TDI_dox_TDI_dox_Motifs", sbst, "- used", ".pdf")), 
+       plot=heatmap,
+       width = 18, height = 24, units = "cm")
+
+# REMOVE SH_M and SH_A old samples
+devToPlot <- devTop %>%
+  dplyr::select(long_name, 
+                OE_WWTR1_DMSO_ATAC_S165172_REP1,
+                OE_WWTR1_TDI_ATAC_S165176_REP1,
+                OE_WWTR1_dox_ATAC_S165177_REP1,
+                OE_WWTR1_dox_TDI_ATAC_S165175_REP1,
+  ) %>%
+  tibble::column_to_rownames(var = "long_name")
+
+heatmap <- pheatmap::pheatmap(as.matrix(devToPlot),
+                              color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+                              border_color = NA,
+                              #color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(100),
+                              scale = "row",
+                              cluster_cols = FALSE,
+                              cluster_rows = TRUE,
+                              show_colnames = TRUE,
+                              show_rownames = TRUE,
+                              annotation_col = annotCol_forHeatmap,
+                              annotation_colors = annotCol_forHeatmap_colors,  
+                              fontsize_row = 9,
+                              fontsize = 9,
+                              main = paste0(" Heatmap of signif. ATAC-seq OE DMSO TDI dox TDI_DOX \n no SH_A SH_M ", sbst, "- used"))
+
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_OE_DMSO_TDI_dox_TDI_dox_Motifs_no_SHA_SHM", sbst, "- used", ".png")), 
+       plot=heatmap,
+       width = 18, height = 24, units = "cm")
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_OE_DMSO_TDI_dox_TDI_dox_Motifs_no_SHA_SHM", sbst, "- used", ".pdf")), 
+       plot=heatmap,
+       width = 18, height = 24, units = "cm")
 

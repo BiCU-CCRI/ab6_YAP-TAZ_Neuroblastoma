@@ -549,6 +549,65 @@ ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ADRN-RNA
        width = 18, height = 20, units = "cm")
 
 
+## GSEA analysis #########
+# Loading MsigDB geneset collections 
+gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean=TRUE) 
+gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean=TRUE) 
+gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean=TRUE) 
+gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP", clean=TRUE) 
+gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean=TRUE) 
+gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean=TRUE) 
+
+# Produce GSEA plots
+MES_genes <- ATAC_dds_results$results_signif %>% dplyr::filter(log2FoldChange > 0) %>% pull(gencode_gene_name)
+ADR_genes <- ATAC_dds_results$results_signif %>% dplyr::filter(log2FoldChange < 0) %>% pull(gencode_gene_name)
+
+
+C5_GOBP_MES <- hypeR::hypeR(signature = MES_genes, 
+                            genesets = gs_C5_GOBP, 
+                            test = "hypergeometric", 
+                            background = nrow(ATAC_dds))
+C5_GOBP_ADR <- hypeR::hypeR(signature = ADR_genes, 
+                            genesets = gs_C5_GOBP, 
+                            test = "hypergeometric", 
+                            background = nrow(ATAC_dds))
+C5_GOBP_plot_MES <- hypeR::hyp_dots(C5_GOBP_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="GOBP: MES") +theme_bw()
+C5_GOBP_plot_ADR <- hypeR::hyp_dots(C5_GOBP_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="GOBP: ADR") +theme_bw()
+C5_GOBP_plot_MES
+C5_GOBP_plot_ADR
+
+C2_kegg_MES <- hypeR::hypeR(signature = MES_genes, 
+                            genesets = gs_C2_kegg, 
+                            test="hypergeometric", 
+                            background=nrow(ATAC_dds))
+C2_kegg_ADR <- hypeR::hypeR(signature = ADR_genes, 
+                            genesets = gs_C2_kegg, 
+                            test="hypergeometric", 
+                            background=nrow(ATAC_dds))
+C2_kegg_plot_MES <- hypeR::hyp_dots(C2_kegg_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Kegg: MES") +theme_bw()
+C2_kegg_plot_ADR <- hypeR::hyp_dots(C2_kegg_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Kegg: ADR") +theme_bw()
+C2_kegg_plot_MES
+C2_kegg_plot_ADR
+
+C2_reactome_MES <- hypeR::hypeR(signature = MES_genes, 
+                                genesets = gs_C2_reactome, 
+                                test="hypergeometric", 
+                                background=nrow(ATAC_dds))
+C2_reactome_ADR <- hypeR::hypeR(signature = ADR_genes, 
+                                genesets = gs_C2_reactome, 
+                                test="hypergeometric", 
+                                background=nrow(ATAC_dds))
+C2_reactome_plot_MES <- hypeR::hyp_dots(C2_reactome_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: MES") +theme_bw()
+C2_reactome_plot_ADR <- hypeR::hyp_dots(C2_reactome_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: ADR") +theme_bw()
+C2_reactome_plot_MES
+
+pdf(file = file.path(deg_dir, "MES_and_ADR_GSEA.pdf"), width = 20, height = 10)
+C5_GOBP_plot_MES + C5_GOBP_plot_ADR
+C2_kegg_plot_MES + C2_kegg_plot_ADR
+C2_reactome_plot_MES + C2_reactome_plot_ADR
+dev.off()
+
+
 
 
 # This part - we can identify binding sites of TFs and see if there they are differentially enriched between ADRN and MES lines
@@ -710,63 +769,7 @@ ggsave(filename = file.path(deg_dir, paste0("heatmap_ADRN_vs_MES_Motifs", sbst, 
 
 
 
-## GSEA analysis #########
-# Loading MsigDB geneset collections 
-gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean=TRUE) 
-gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean=TRUE) 
-gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean=TRUE) 
-gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP", clean=TRUE) 
-gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean=TRUE) 
-gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean=TRUE) 
 
-# Produce GSEA plots
-MES_genes <- ATAC_dds_results$results_signif %>% dplyr::filter(log2FoldChange > 0) %>% pull(gencode_gene_name)
-ADR_genes <- ATAC_dds_results$results_signif %>% dplyr::filter(log2FoldChange < 0) %>% pull(gencode_gene_name)
-
-
-C5_GOBP_MES <- hypeR::hypeR(signature = MES_genes, 
-                            genesets = gs_C5_GOBP, 
-                            test = "hypergeometric", 
-                            background = nrow(ATAC_dds))
-C5_GOBP_ADR <- hypeR::hypeR(signature = ADR_genes, 
-                            genesets = gs_C5_GOBP, 
-                            test = "hypergeometric", 
-                            background = nrow(ATAC_dds))
-C5_GOBP_plot_MES <- hypeR::hyp_dots(C5_GOBP_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="GOBP: MES") +theme_bw()
-C5_GOBP_plot_ADR <- hypeR::hyp_dots(C5_GOBP_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="GOBP: ADR") +theme_bw()
-C5_GOBP_plot_MES
-C5_GOBP_plot_ADR
-
-C2_kegg_MES <- hypeR::hypeR(signature = MES_genes, 
-                            genesets = gs_C2_kegg, 
-                            test="hypergeometric", 
-                            background=nrow(ATAC_dds))
-C2_kegg_ADR <- hypeR::hypeR(signature = ADR_genes, 
-                            genesets = gs_C2_kegg, 
-                            test="hypergeometric", 
-                            background=nrow(ATAC_dds))
-C2_kegg_plot_MES <- hypeR::hyp_dots(C2_kegg_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Kegg: MES") +theme_bw()
-C2_kegg_plot_ADR <- hypeR::hyp_dots(C2_kegg_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Kegg: ADR") +theme_bw()
-C2_kegg_plot_MES
-C2_kegg_plot_ADR
-
-C2_reactome_MES <- hypeR::hypeR(signature = MES_genes, 
-                                genesets = gs_C2_reactome, 
-                                test="hypergeometric", 
-                                background=nrow(ATAC_dds))
-C2_reactome_ADR <- hypeR::hypeR(signature = ADR_genes, 
-                                genesets = gs_C2_reactome, 
-                                test="hypergeometric", 
-                                background=nrow(ATAC_dds))
-C2_reactome_plot_MES <- hypeR::hyp_dots(C2_reactome_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: MES") +theme_bw()
-C2_reactome_plot_ADR <- hypeR::hyp_dots(C2_reactome_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: ADR") +theme_bw()
-C2_reactome_plot_MES
-
-pdf(file = file.path(deg_dir, "MES_and_ADR_GSEA.pdf"), width = 20, height = 10)
-C5_GOBP_plot_MES + C5_GOBP_plot_ADR
-C2_kegg_plot_MES + C2_kegg_plot_ADR
-C2_reactome_plot_MES + C2_reactome_plot_ADR
-dev.off()
 
 
 #optional saving to excel tables
