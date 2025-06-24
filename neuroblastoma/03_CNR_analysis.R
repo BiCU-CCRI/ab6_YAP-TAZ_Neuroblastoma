@@ -55,7 +55,7 @@ download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022
               destfile = "/home/rstudio/.cache/R/BiocFileCache/JASPAR2022.sqlite")
 JASPAR2022 <-  "/home/rstudio/.cache/R/BiocFileCache/JASPAR2022.sqlite"
 
-# TODO fix the timeout
+options(timeout = 30000)
 mart <- biomaRt::useMart(
   biomart = "ENSEMBL_MART_ENSEMBL",
   dataset = "hsapiens_gene_ensembl",
