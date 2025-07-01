@@ -1,0 +1,394 @@
+```{r load libraries, include=FALSE}
+###########################################################################################################################
+## new analysis whith not united replicates TDI, dox, dox_TDI, DMSO
+import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
+import::from(
+  .from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+  "filterDatasets",
+  "generatePCA",
+  "generateEnsemblAnnotation",
+  "generateResults",
+  "meanExprsPerGroup",
+  "plotVolcano",
+  .character_only = TRUE
+) # used for filtering
+
+library(stringr)
+library(org.Hs.eg.db)
+library(fgsea)
+library(ggplot2)
+library(DESeq2)
+library(dplyr)
+```
+
+```{r load gene sets, include=FALSE}
+# load gene sets
+gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean = TRUE)
+gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean = TRUE)
+gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
+gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP", clean = TRUE)
+gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean = TRUE)
+gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean = TRUE)
+gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
+gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
+                                         "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
+```
+
+```{r set up parameters and variables, include=FALSE}
+# Set up the parameters
+param_list <- list(
+  abs_filt_samples = 2,
+  padj_cutoff = 0.05,
+  log2FC_cutoff = 1,
+  var_expl_needed = 0.6
+)
+deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_TDI/"
+```
+
+```{r Load data, include=FALSE}
+annotationData <- read.table(
+  file = file.path("~/workspace/neuroblastoma/data/RNAseq/rnaseq_deseq_global_annotation_gene.tsv"),
+  sep = "\t",
+  header = TRUE
+)
+colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
+
+dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/OE_WWTR1_experiment.dds.RDS")
+
+samples_to_select_full <- c("OE_WWTR1_DMSO_RNA_S165191_R1", 
+                            "OE_WWTR1_TDI_RNA_S165188_R1", 
+                            "OE_WWTR1_dox_RNA_S165189_R1", 
+                            "OE_WWTR1_dox_TDI_RNA_S165178_R1",
+                            "OE_WWTR1_DMSO_RNA_S165191_R2", 
+                            "OE_WWTR1_TDI_RNA_S165188_R2", 
+                            "OE_WWTR1_dox_RNA_S165189_R2", 
+                            "OE_WWTR1_dox_TDI_RNA_S165178_R2"
+                            )
+
+TDI_dds <- dds[,colnames(dds) %in% samples_to_select_full]
+
+sample_names <- colData(TDI_dds)$sample
+
+parsed <- str_match(
+  sample_names,
+  "^OE_([^_]+)_((?:[^_]+_)*[^_]+)_RNA_.*_(R\\d+)$"
+)
+
+# Create a tidy data frame
+parsed_df <- data.frame(
+  genotype  = parsed[, 2],
+  treatment = parsed[, 3],
+  replicate = parsed[, 4],
+  stringsAsFactors = TRUE
+)
+
+colData(TDI_dds) <- cbind(colData(TDI_dds), parsed_df)
+TDI_dds$treatment <- factor(TDI_dds$treatment, levels = c("DMSO", "TDI", "dox", "dox_TDI"))
+
+design(TDI_dds) <- as.formula("~ treatment")
+
+```
+
+```{r Process the data, include=FALSE}
+# make PCA with ALL samples
+# Filtering lowly expressed genes
+TDI_dds_filt <- filterDatasets(TDI_dds,
+                               abs_filt = TRUE,
+                               abs_filt_samples = param_list$abs_filt_samples
+)
+
+# Estimate size factors and running DESEQ2
+TDI_dds_filt <- DESeq2::estimateSizeFactors(TDI_dds_filt)
+TDI_dds_filt <- DESeq2::DESeq(TDI_dds_filt)
+resultsNames(TDI_dds_filt)
+```
+
+```{r Get DEGs, include=FALSE}
+deg_results_TDI_vs_DMSO <- generateResults(
+  dds_object = TDI_dds_filt,
+  coeff_name = "treatment_TDI_vs_DMSO",
+  cond_numerator = "TDI",
+  cond_denominator = "DMSO",
+  cond_variable = "treatment",
+  ensemblAnnot = annotationData,
+  log2FC_cutoff = param_list$log2FC_cutoff
+)
+
+# Write the result to the xlsx file
+XLSX_OUT <- openxlsx::createWorkbook()
+openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+openxlsx::addWorksheet(XLSX_OUT, "de_details")
+openxlsx::addWorksheet(XLSX_OUT, "results_all")
+openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$results_signif, sheet = "results_signif")
+openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$de_details, sheet = "de_details")
+openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$results_all, sheet = "results_all")
+openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "treatment_TDI_vs_DMSO.xlsx"), overwrite = T)
+
+deg_results_doxTDI_vs_dox <- generateResults(
+  dds_object = TDI_dds_filt,
+  coef_contrast=c("treatment", "dox_TDI", "dox"),
+  cond_numerator = "dox_TDI",
+  cond_denominator = "dox",
+  cond_variable = "treatment",
+  ensemblAnnot = annotationData,
+  log2FC_cutoff = param_list$log2FC_cutoff
+)
+
+# Write the result to the xlsx file
+XLSX_OUT <- openxlsx::createWorkbook()
+openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+openxlsx::addWorksheet(XLSX_OUT, "de_details")
+openxlsx::addWorksheet(XLSX_OUT, "results_all")
+openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$results_signif, sheet = "results_signif")
+openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$de_details, sheet = "de_details")
+openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$results_all, sheet = "results_all")
+openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "treatment_doxTDI_vs_dox.xlsx"), overwrite = T)
+```
+
+```{r PCA visualisation, include=FALSE}
+# Stabilize variance
+TDI_dds_filt_vsd <- DESeq2::vst(TDI_dds_filt, blind = TRUE) # blind = TRUE for QC
+
+#remove R1 replicates
+# generate PCA plots
+tmp_pca_deg <- generatePCA(
+  transf_object = TDI_dds_filt_vsd[, c(1,3,5,7)],
+  cond_interest_varPart = c("genotype", "treatment"),
+  color_variable = "genotype",
+  shape_variable = "treatment",
+  ntop_genes = 1000
+) + ggtitle("PCA plot for dox doxTDI DMSO TDI WWTR1 only")
+ggsave(
+  filename = paste0(deg_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO.pdf"),
+  plot = tmp_pca_deg,
+  width = 20, height = 20, units = "cm"
+)
+
+```
+
+```{r plot PCA}
+plot(tmp_pca_deg)
+```
+
+```{r perform fgsea analysis for TDI_vs_DMSO }
+gene_set_list <- list(
+  GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set
+)
+
+# TDI_vs_DMSO
+deg_results_TDI_vs_DMSO_ranked <- deg_results_TDI_vs_DMSO$results_all
+deg_results_TDI_vs_DMSO_ranked <- deg_results_TDI_vs_DMSO_ranked %>%
+  group_by(gene_symbol) %>%
+  slice_max(baseMean, n = 1, with_ties = FALSE) %>%
+  ungroup()
+deg_results_TDI_vs_DMSO_ranked <- deg_results_TDI_vs_DMSO_ranked %>% arrange(desc(log2FoldChange))
+deg_results_TDI_vs_DMSO_ranked <- setNames(c(deg_results_TDI_vs_DMSO_ranked$log2FoldChange),
+                                           c(deg_results_TDI_vs_DMSO_ranked$gene_symbol))
+
+
+fgseaRes_TDI_vs_DMSO <- fgsea(
+  pathways = gene_set_list,
+  stats = deg_results_TDI_vs_DMSO_ranked,
+  minSize = 15,
+  maxSize = 500
+)
+
+for(gene_set_to_plot_name in names(gene_set_list)){
+  # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
+  gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
+  
+  title_values <- fgseaRes_TDI_vs_DMSO %>% filter(pathway == gene_set_to_plot_name) %>% select(pathway, NES, padj)
+  p <- plotEnrichment(pathway = gene_set_to_plot, stats = deg_results_TDI_vs_DMSO_ranked) + 
+    labs(title = paste(title_values$pathway, "\n",
+                       "NES =", title_values$NES, "\n",
+                       "padj = ", title_values$padj))
+  
+ plot(p)
+  
+  ggsave(
+    filename = paste0(deg_dir, "TDI_vs_DMSO_fgsea_", gene_set_to_plot_name, ".pdf"),
+    plot = p,
+    width = 20, height = 20, units = "cm"
+  )
+}
+```
+
+```{r perform fgsea analysis for TDIdox_vs_dox }
+deg_results_doxTDI_vs_dox_ranked <- deg_results_doxTDI_vs_dox$results_all
+deg_results_doxTDI_vs_dox_ranked <- deg_results_doxTDI_vs_dox_ranked %>%
+  group_by(gene_symbol) %>%
+  slice_max(baseMean, n = 1, with_ties = FALSE) %>%
+  ungroup()
+deg_results_doxTDI_vs_dox_ranked <- deg_results_doxTDI_vs_dox_ranked %>% arrange(desc(log2FoldChange))
+deg_results_doxTDI_vs_dox_ranked <- setNames(c(deg_results_doxTDI_vs_dox_ranked$log2FoldChange), c(deg_results_doxTDI_vs_dox_ranked$gene_symbol))
+
+
+fgseaRes_doxTDI_vs_dox <- fgsea(
+  pathways = gene_set_list,
+  stats = deg_results_doxTDI_vs_dox_ranked,
+  minSize = 15,
+  maxSize = 500
+)
+
+for(gene_set_to_plot_name in names(gene_set_list)){
+  # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
+  gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
+  
+  title_values <- fgseaRes_doxTDI_vs_dox %>% filter(pathway == gene_set_to_plot_name) %>% select(pathway, NES, padj)
+  p <- plotEnrichment(pathway = gene_set_to_plot, stats = deg_results_doxTDI_vs_dox_ranked) + 
+    labs(title = paste(title_values$pathway, "\n",
+                       "NES =", title_values$NES, "\n",
+                       "padj = ", title_values$padj))
+  plot(p)
+  
+  ggsave(
+    filename = paste0(deg_dir, "doxTDI_vs_dox_fgsea_", gene_set_to_plot_name, ".pdf"),
+    plot = p,
+    width = 20, height = 20, units = "cm"
+  )
+}
+
+```
+
+Additional PCA with old samples
+```{r Add old samples to current dataset, echo = TRUE}
+# Add old ADR and MES samples for PCA visualisation
+samples_to_select_OG <- c("SH_A_RNA_S130494","SH_M_RNA_S130497")
+rnaseq_OG <- readRDS("~/workspace/neuroblastoma/data/RNAseq/rnaseq_deseq_global_deseq_data_set.rds")
+rnaseq_OG <- rnaseq_OG[ ,colnames(rnaseq_OG) %in% samples_to_select_OG]
+
+TDI_dds_counts <- as.data.frame(TDI_dds@assays@data@listData$counts)
+rnaseq_OG_counts <- as.data.frame(rnaseq_OG@assays@data@listData$counts)
+
+TDI_dds_counts_colnames <- colnames(TDI_dds_counts)
+
+TDI_dds_counts$gene_id <- rownames(TDI_dds)
+rnaseq_OG_counts$gene_id <- rownames(rnaseq_OG)
+
+TDI_plus_OG_counts <- merge.data.frame(TDI_dds_counts, rnaseq_OG_counts, by = "gene_id")
+row.names(TDI_plus_OG_counts) <- TDI_plus_OG_counts$gene_id
+TDI_plus_OG_counts <- select(TDI_plus_OG_counts, !gene_id)
+
+parsed <- str_match(
+  TDI_dds_counts_colnames,
+  "^OE_([^_]+)_((?:[^_]+_)*[^_]+)_RNA_.*_(R\\d+)$"
+)
+
+#manual additon of two control samples
+OG_samples_matrix <-  matrix(
+  c(colnames(TDI_plus_OG_counts)[c(9,10)],
+    c("outside_control_ADR", "outside_control_MES"),
+    c("ADR", "MES"),
+    c("R1", "R1")), 
+  byrow = FALSE,
+  nrow = 2)
+parsed <- rbind(parsed, OG_samples_matrix)
+
+# Create a tidy data frame with metadata
+parsed_df <- data.frame(
+  genotype  = as.factor(parsed[, 2]),
+  treatment = as.factor(parsed[, 3]),
+  replicate = as.factor(parsed[, 4]),
+  stringsAsFactors = TRUE
+)
+parsed_df$is_outer_control <- as.factor(c(rep("not_control", 8), rep("control", 2)))
+
+TDI_plus_OG <- DESeqDataSetFromMatrix(countData = TDI_plus_OG_counts,
+                                  colData = parsed_df,
+                                  design = as.formula("~ 1"))
+
+# Filtering lowly expressed genes
+TDI_plus_OG_filt <- filterDatasets(TDI_plus_OG,
+                               abs_filt = TRUE,
+                               abs_filt_samples = param_list$abs_filt_samples
+)
+
+# Estimate size factors and running DESEQ2
+TDI_plus_OG_filt <- DESeq2::estimateSizeFactors(TDI_plus_OG_filt)
+TDI_plus_OG_filt <- DESeq2::DESeq(TDI_plus_OG_filt)
+# Stabilize variance
+TDI_plus_OG_filt_vsd <- DESeq2::vst(TDI_plus_OG_filt, blind = TRUE) # blind = TRUE for QC
+```
+
+```{r make PCA plots with new + old samples, include = FALSE}
+# generate PCA plots
+tmp_pca_deg <- generatePCA(
+  transf_object = TDI_plus_OG_filt_vsd,
+  cond_interest_varPart = c("genotype", "treatment"),
+  color_variable = "genotype",
+  shape_variable = "treatment",
+  ntop_genes = 1000
+) +
+ggtitle("dox tdi dox/tdi dmso experiment + OG samples. NOT batch corrected") 
+
+ggsave(
+  filename = paste0(deg_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs.pdf"),
+  plot = tmp_pca_deg,
+  width = 20, height = 20, units = "cm"
+)
+
+# Batch correction
+transf_batch_NObatch_experiment <- TDI_plus_OG_filt_vsd
+transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(SummarizedExperiment::assay(transf_batch_NObatch_experiment),
+                                                                  transf_batch_NObatch_experiment$is_outer_control)
+SummarizedExperiment::assay(transf_batch_NObatch_experiment) <- transf_batch_NObatch_experiment_count
+pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_experiment[,c(1,3,5,7,9,10)], 
+                                                cond_interest_varPart = c("genotype","treatment"), 
+                                                color_variable = "genotype", 
+                                                shape_variable = "treatment",
+                                                ntop_genes = 1000) +
+  ggtitle("dox tdi dox/tdi dmso experiment + OG samples. batch corrected") 
+
+ggsave(
+  filename = paste0(deg_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs_batch_corrected.pdf"),
+  plot = pca_deg_NObatch_experiment,
+  width = 20, height = 20, units = "cm"
+)
+
+```
+
+```{r plotting PCAs with old samples}
+tmp_pca_deg
+pca_deg_NObatch_experiment
+```
+
+```{r GSVA with new and old samples, include=FALSE}
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+mes_adrn_gene_list <- RNA_SEQ_data %>%
+  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
+sig_list_our_data <- list(
+  Aderenergic = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "ADRN"],
+  Mesenchymal = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "MES"]
+)
+
+# prepare vsd
+vsd_counts_matrix <- assay(TDI_plus_OG_filt_vsd)
+row.names(vsd_counts_matrix) <- annotationData[, 'gene_symbol'][match(row.names(vsd_counts_matrix), 
+                                                                      annotationData[, 'ensembl_id'])]
+
+# Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
+ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
+                                      sig_list_our_data,
+                                      method=c("ssgsea"),
+                                      min.sz=1, 
+                                      max.sz=Inf, 
+                                      ssgsea.norm=TRUE, 
+                                      verbose=TRUE, 
+                                      parallel.sz=10)
+ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines[,c(1,3,5,7,9,10)],
+                                                        scale = "row",
+                                                        #annotation_col = heatmap_col_annot_DTC,
+                                                        cluster_rows = TRUE,
+                                                        cluster_cols = FALSE,
+                                                        color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                        show_colnames = TRUE)
+
+```
+
+```{r plot GSVA old + new samples}
+ssgsea_mes_adr_ncc_noradr_heatmap
+
+```

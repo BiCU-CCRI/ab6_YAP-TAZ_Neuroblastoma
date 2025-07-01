@@ -1,8 +1,13 @@
-###
-# Title: RNA-seq analysis for Sören (Kaan's group)
-# Author: Aleksandr Bykov
-### 
+---
+title: "RNA-seq analysis"
+author: "Aleksandr Bykov"
+date: '2025-01-30'
+output:
+  html_document: default
+---
 
+```{r Load libraries, include=FALSE}
+dir.create("/home/rstudio/.cache/R/ExperimentHub")
 # importing only key functions that are actually used - not to polute namespace!
 import::from(.from = DESeq2, .all=TRUE)
 import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
@@ -25,32 +30,43 @@ library(stringr)
 library(org.Hs.eg.db)
 library(fgsea)
 library(dplyr)
+```
 
+```{r Load essentials assets, echo=FALSE, include=FALSE}
 # load annotation table. Could use Biomart, alternatively, but had this 
-annotationData <- read.table(file = "~/workspace/neuroblastoma/data_soren/ATAC_BSA_0729_KB_NB_plasticity/hg38/rnaseq_deseq_global/rnaseq_deseq_global_annotation_gene.tsv",
-                             sep = "\t",
-                             header = TRUE)
+path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/RNAseq"
+annotationData <- read.table(
+  file = file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_annotation_gene.tsv"),
+  sep = "\t",
+  header = TRUE
+)
+# This is necessary to rename columns so that extraction of the data works correctly
+colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
 param_list <- list(
   abs_filt_samples=2,
   padj_cutoff = 0.05,
-  log2FC_cutoff = 0.37, #MAybe need to be changed later 
+  log2FC_cutoff = 0.37, #Maybe need to be changed later 
   var_expl_needed = 0.6,
   biomart_host="http://www.ensembl.org", 
   biomart_dataset="hsapiens_gene_ensembl", 
   biomart_Ens_version="Ensembl Genes 109"
 )
 
-deg_dir <- "~/workspace/neuroblastoma/results/20240229/"
-
+deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_OE/"
+if(!dir.exists(deg_dir)) dir.create(deg_dir)
+```
+```{r Load the counts data, echo = FALSE}
 #loading the new DESeq2 file
-load("~/workspace/neuroblastoma/data_soren/YAP_TAZ_OverExpression/nf_out/star_salmon/deseq2_qc/deseq2.dds.RData")
+load("~/workspace/neuroblastoma/data/RNAseq/rnaseq_yap_taz_OE.RData")
 new_dds_assay <- as.data.frame(counts(dds))
 new_dds_assay$names_of_rows <- row.names(new_dds_assay)
+rm(dds)
 
-wt_dds <- readRDS("~/workspace/neuroblastoma/data_soren/ATAC_BSA_0729_KB_NB_plasticity/hg38/rnaseq_deseq_global/rnaseq_deseq_global_deseq_data_set.rds")
+wt_dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/rnaseq_deseq_global_deseq_data_set.rds")
 wt_dds_assay <- as.data.frame(counts(wt_dds))
 wt_dds_assay$names_of_rows <- row.names(wt_dds_assay)
+rm(wt_dds)
 
 combined_counts <- merge.data.frame(new_dds_assay, 
                                     wt_dds_assay, 
@@ -90,6 +106,9 @@ dds <- DESeqDataSetFromMatrix(countData = combined_counts,
 dds <- filterDatasets(dds, 
                       abs_filt = TRUE, 
                       abs_filt_samples = param_list$abs_filt_samples)
+```
+
+```{r Make PCA plot and do Batch correction}
 dds <- DESeq2::estimateSizeFactors(dds)
 dds <- DESeq2::DESeq(dds)
 #stabilize variance
@@ -101,13 +120,15 @@ pca_deg <- generatePCA_repel(transf_object = vsd,
                              shape_variable = "cell_line",
                              ntop_genes = 1000) +
   ggtitle("Original dataset") 
+plot(pca_deg)
 
 resultsNames(dds)
 
 
 # Batch correction
 transf_batch_NObatch_experiment <- vsd
-transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(SummarizedExperiment::assay(transf_batch_NObatch_experiment), transf_batch_NObatch_experiment$experiment)
+transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(SummarizedExperiment::assay(transf_batch_NObatch_experiment),
+                         transf_batch_NObatch_experiment$experiment)
 SummarizedExperiment::assay(transf_batch_NObatch_experiment) <- transf_batch_NObatch_experiment_count
 pca_deg_NObatch_experiment <- generatePCA_repel(transf_object = transf_batch_NObatch_experiment, 
                                                 cond_interest_varPart = c("cell_type","cell_line"), 
@@ -116,14 +137,18 @@ pca_deg_NObatch_experiment <- generatePCA_repel(transf_object = transf_batch_NOb
                                                 ntop_genes = 1000) +
   ggtitle("Original dataset + YAP1/WWTR1 OE") 
 
-pdf(file = file.path(deg_dir, "pca_wit_corrected_batch_effect.pdf"))
-pca_deg_nobatch_experiment
-dev.off()
+#pdf(file = file.path(deg_dir, "pca_wit_corrected_batch_effect.pdf"))
+plot(pca_deg_NObatch_experiment)
+#dev.off()
+
+```
 
 
+```{r Perform ssGSEA analysis}
 #### ssGSEA analysis
 # loading signatures from Groeningen paper
-SIGNATURES_RAW <- READR::READ_TSV(FILE = "/HOME/RSTUDIO/WORKSPACE/NEUROBLASTOMA/MES_ADR_NCC_NORADR_GENESETS.TSV", SKIP_EMPTY_ROWS=TRUE) # DO NOT ADD NA FOR EMPTY
+signatures_raw <- readr::read_tsv(file = "/home/rstudio/workspace/neuroblastoma/resources/mes_adr_ncc_noradr_Groeningen_genesets.tsv",
+                                  skip_empty_rows = TRUE) # do not add na for empty
 sig_list_groeningen <- list(
   #NCC_like = signatures_raw$`NCC-like`[!is.na(signatures_raw$`NCC-like`)],
   #Noradrenergic = signatures_raw$Noradrenergic[!is.na(signatures_raw$Noradrenergic)],
@@ -133,8 +158,7 @@ sig_list_groeningen <- list(
 lapply(sig_list_groeningen, length)
 
 # load the DE gene list from a previous run and assing genes to ADRN or MES identity 
-# TODO ?????? check that the signatures are correct
-RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/20230703/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
 mes_adrn_gene_list <- RNA_SEQ_data %>%
   mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
 sig_list_our_data <- list(
@@ -144,14 +168,15 @@ sig_list_our_data <- list(
 
 # prepare vsd
 vsd_counts_matrix <- assay(vsd)
-row.names(vsd_counts_matrix) <- annotationData[, 'gene_name'][match(row.names(vsd_counts_matrix), annotationData[, 'gene_id'])]
+row.names(vsd_counts_matrix) <- annotationData[, 'gene_symbol'][match(row.names(vsd_counts_matrix), annotationData[, 'ensembl_id'])]
 
 # Plot the Groeningen terms
 ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
                                       sig_list_groeningen,
-                                      method=c("ssgsea"),
-                                      min.sz=1, max.sz=Inf, 
-                                      ssgsea.norm=TRUE, verbose=TRUE, parallel.sz=10)
+                                      method = c("ssgsea"),
+                                      min.sz = 1, max.sz = Inf, 
+                                      ssgsea.norm = TRUE, verbose=TRUE, parallel.sz=10)
+
 ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         scale = "row",
                                                         #annotation_col = heatmap_col_annot_DTC,
@@ -160,9 +185,9 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
                                                         show_colnames = TRUE, 
                                                         main = "SSGSEA Groeningen terms")
-pdf(file = file.path(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_GROEN.pdf"))
+#pdf(file = file.path(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_GROEN.pdf"))
 ssgsea_mes_adr_ncc_noradr_heatmap
-dev.off()
+#dev.off()
 
 # Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
 ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
@@ -177,13 +202,9 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                                  cluster_cols = TRUE,
                                                                  color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
                                                                  show_colnames = TRUE)
-pdf(file = file.path(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"))
+#pdf(file = file.path(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"))
 ssgsea_mes_adr_ncc_noradr_heatmap
-dev.off()
+#dev.off()
+```
 
 
-
-
-
-##################### 
-# JunDN analysis

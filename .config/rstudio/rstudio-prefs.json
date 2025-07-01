@@ -6,5 +6,6 @@
     "initial_working_directory": "~",
     "editor_keybindings": "vim",
     "posix_terminal_shell": "bash",
-    "editor_theme": "catppuccin-frappe"
+    "editor_theme": "catppuccin-frappe",
+    "show_hidden_files": true
 }

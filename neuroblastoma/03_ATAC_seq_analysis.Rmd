@@ -1,11 +1,4 @@
-###
-# Title: ATAC-seq analysis for Sören (Kaan's group)
-# Author: Aleksandr Bykov
-# 
-
-# Set up the environment ####
-deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq/"
-
+```{r Load libraries}
 ## Loading libraries ####
 library(dplyr)
 library(tidyr)
@@ -29,12 +22,19 @@ import::from(.from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
              "extract_results_DDS_HIC",
              "plotVolcano",
              "get_the_poissoon_p_val")
+```
 
+```{r load missing files and define variables}
 # BugFix - JASPAR2022 cannot be pulled from the web automatically, so it need to be loaded manually
 download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022.sqlite",
               destfile = "/home/rstudio/.cache/R/JASPAR2022.sqlite")
 JASPAR2022 <-  "/home/rstudio/.cache/R/JASPAR2022.sqlite"
 
+# Set up the environment ####
+deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq/"
+```
+
+```{r assembling ATAC-seq data object}
 # Analysis part ###########################################################################
 # Assembling the metadata to a DESeq2 object
 # We use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
@@ -131,12 +131,13 @@ mcols(ATAC_dds)$gene_category_our_RNAseq <- case_when(
 mcols(ATAC_dds)$is_promoter_3kb <- FALSE
 mcols(ATAC_dds)$is_promoter_3kb[abs(mcols(ATAC_dds)$homer_Distance.to.TSS) <= 3000] <- TRUE
 
+```
 
 
+```{r Analysis fo the full ATAC-seq dataset}
 ## Analysis fo the full ATAC-seq dataset ####
 # Metadata is added, now we can process the ATAC-seq data set and do the DE +
 # variance stabilization
-#ATAC_dds <- ATAC_dds_full
 ATAC_dds <- estimateSizeFactors(ATAC_dds)
 ATAC_dds <- DESeq(ATAC_dds)
 vsd <- vst(ATAC_dds, blind = F)
@@ -154,8 +155,13 @@ ggsave(
   plot = pca_dar,
   width = 20, height = 20, units = "cm"
 )
-# Looks good - we can see that the main PCA/separation is happening because of the phenotype (ADRN or MES)
+```
 
+```{r plot PCA 2}
+pca_dar
+```
+
+```{r Extract results}
 # Extracting results
 resultsNames(ATAC_dds)
 coeff_name <- "phenotype_M_vs_A"
@@ -185,6 +191,9 @@ openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$results_all, sheet = "results
 
 openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "DAR_results_M_VS_A.xlsx"), overwrite = T)
 
+```
+
+```{r plotting volcanoplot}
 # Making volcanoplot
 genes_up <- c("VIM", "FOSL2", "FOSL1", "YAP1", "JUN", "WWTR1")
 genes_down <- c("PHOX2B", "HAND2", "GATA3")
@@ -192,7 +201,9 @@ ATAC_dds_results$results_all$gene_symbol <- ATAC_dds_results$results_all$gencode
 p1 <- plotVolcano(dds_results_obj = ATAC_dds_results$results_all,
                   genes_of_interest = c("VIM", "FOSL2", "FOSL1", "YAP1", "JUN", "WWTR1", "PHOX2B", "HAND2", "GATA3"))
 p1
+```
 
+```{r Preparing the heatmap}
 # Making Heatmap
 metadata_heatmap <- as.data.frame(colData(ATAC_dds))
 heatmap_counts <- SummarizedExperiment::assay(vsd)
@@ -228,48 +239,7 @@ ann_colors = list(
   cell_line_id = c(A = "#E9D8A6", M = "#D9BE6D")
 )
 
-### exporting clustered peaks to a separate files
-# This is for heatmap-denstify plots 
-hclust_matrix <- heatmap_counts %>% 
-  # transpose the matrix so genes are as columns
-  t() %>% 
-  # apply scalling to each column of the matrix (genes)
-  scale() %>% 
-  # transpose back so genes are as rows again
-  t()
-gene_dist <- dist(hclust_matrix)
-gene_hclust <- hclust(gene_dist, method = "complete")
-plot(gene_hclust, labels = FALSE)
-clustered_peaks <- cutree(gene_hclust, k = 2)
-df_clustered_peaks <- data_frame(names(clustered_peaks), clustered_peaks)
-colnames(df_clustered_peaks) <- c("peak_id", "cluster")
-df_clustered_peaks <- merge(x = ATAC_dds_results$results_signif, 
-                            y = df_clustered_peaks,
-                            by = "peak_id")
-df_clustered_peaks <- df_clustered_peaks %>% dplyr::select(gencode_chr, gencode_start, gencode_end, peak_id, cluster)
-write.table(
-  df_clustered_peaks %>% 
-    dplyr::filter(cluster == 1) %>%
-    dplyr::select(-cluster),
-  file = "~/workspace/neuroblastoma/temp_result/tmp_bed_cluster_1.bed",
-  sep = "\t",
-  quote = FALSE, 
-  row.names = FALSE, 
-  col.names = FALSE
-)
-write.table(
-  df_clustered_peaks %>% 
-    dplyr::filter(cluster == 2) %>%
-    dplyr::select(-cluster),
-  file = "~/workspace/neuroblastoma/temp_result/tmp_bed_cluster_2.bed",
-  sep = "\t",
-  quote = FALSE, 
-  row.names = FALSE, 
-  col.names = FALSE
-)
-###########
-
-heatmap <- pheatmap::pheatmap(heatmap_counts,
+heatmap1 <- pheatmap::pheatmap(heatmap_counts,
                               main = "Heatmap of signif. DAR ADRN vs MES.",
                               scale = "row",
                               annotation_col = annotation_col,
@@ -280,13 +250,13 @@ heatmap <- pheatmap::pheatmap(heatmap_counts,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10)
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_full_ATAC.png"), 
-       plot = heatmap,
+       plot = heatmap1,
        width = 18, height = 20, units = "cm")
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_full_ATAC.eps"), 
-       plot = heatmap,
+       plot = heatmap1,
        width = 18, height = 20, units = "cm")
 
-heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
+heatmap2 <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
                               main = "Heatmap of signif. DAR ADRN vs MES. MES-specific genes only (defined by RNA-seq)",
                               scale = "row",
                               annotation_col = annotation_col,
@@ -297,13 +267,13 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) 
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES-RNAseq-specific.png"), 
-       plot=heatmap,
+       plot=heatmap2,
        width = 18, height = 20, units = "cm")
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_MES-RNAseq-specific.eps"), 
-       plot=heatmap,
+       plot=heatmap2,
        width = 18, height = 20, units = "cm")
 
-heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
+heatmap3 <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
                               main = "Heatmap of signif. DAR ADRN vs MES. ADRN-specific genes only (defined by RNA-seq)",
                               scale = "row",
                               annotation_col = annotation_col,
@@ -314,13 +284,22 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10)
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_ADRN-RNAseq-specific.png"), 
-       plot=heatmap,
+       plot=heatmap3,
        width = 18, height = 20, units = "cm")
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_ADRN-RNAseq-specific.eps"), 
-       plot=heatmap,
+       plot=heatmap3,
        width = 18, height = 20, units = "cm")
 
+```
 
+```{r plot heatmaps}
+heatmap1
+heatmap2
+heatmap3
+```
+
+Results are exported to pdf file
+```{r Genomic features enrichment}
 ## Genomic features enrichment lolipop plot ######
 # use HOMER's output
 # Separate positive - M; negative - A
@@ -345,8 +324,7 @@ ATAC_dds_results$results_signif %>%
 # run homer annotation
 # TODO
 # FIXIT homer not being possible to run
-
-system("bash ~/workspace/neuroblastoma/02_HOMER_diff_peaks_annotation.sh")
+#system("bash ~/workspace/neuroblastoma/02_HOMER_diff_peaks_annotation.sh")
 
 ATAC_genome_ADR <- read.delim2("~/workspace/neuroblastoma/results/ATAC-seq/ATAC_genome_states_dataframe_ADR.csv", 
                                sep="\t", 
@@ -416,16 +394,20 @@ df_long %>%
        title = "Enrichment of genomic features in ATAC-seq peaks for ADRN and MES")
 
 dev.off()
+```
 
-# make a small back up 
+
+```{r, include=FALSE}
 ATAC_dds_full <- ATAC_dds
+```
 
+```{r analysis of the peaks around 3kb from TSS}
 ## Now the same analysis, but for the promoter regions - ± 3000bp around TSSs ####
 ATAC_dds <- ATAC_dds[mcols(ATAC_dds)$is_promoter_3kb,]
 ATAC_dds <- estimateSizeFactors(ATAC_dds)
 ATAC_dds <- DESeq(ATAC_dds)
-
 vsd <- vst(ATAC_dds, blind = F)
+
 
 pca_dar <- generatePCA(transf_object = vsd, 
                        cond_interest_varPart = c("phenotype", "cell_line"), 
@@ -434,9 +416,14 @@ pca_dar <- generatePCA(transf_object = vsd,
                        ntop_genes = 1000) +
   ggtitle("3kb Promoters") +
   scale_color_manual(values = c("#DD3344",  "#FF9F1C"))
-plot(pca_dar)
-#Ok, looks good - we can see that the main PCA/separation is happening because of the phenotype (ADRN or MES)
+```
 
+Ok, looks good - we can see that the main PCA/separation is happening because of the phenotype (ADRN or MES)
+```{r plot PCA 1}
+plot(pca_dar)
+```
+
+```{r results extraction}
 # extracting results
 resultsNames(ATAC_dds)
 coeff_name <- 'phenotype_M_vs_A'
@@ -465,7 +452,10 @@ openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$de_details, sheet = "de_detai
 openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results$results_all, sheet = "results_all")
 
 openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "DAR_results_3kb_promoters_M_VS_A.xlsx"), overwrite = T)
+```
 
+
+```{r prepare heatmap}
 # Making Heatmap
 metadata_heatmap <- as.data.frame(colData(ATAC_dds))
 heatmap_counts <- SummarizedExperiment::assay(vsd)
@@ -495,7 +485,7 @@ ann_colors = list(
   cell_line_id = c(A = "#E9D8A6", M = "#D9BE6D")
 )
 
-heatmap <- pheatmap::pheatmap(heatmap_counts,
+heatmap1 <- pheatmap::pheatmap(heatmap_counts,
                               main = "Heatmap of signif. DAR promoters 3kb ADRN vs MES.",
                               scale = "row",
                               annotation_col = annotation_col,
@@ -506,13 +496,13 @@ heatmap <- pheatmap::pheatmap(heatmap_counts,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) 
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ATAC.png"), 
-       plot=heatmap,
+       plot=heatmap1,
        width = 18, height = 20, units = "cm")
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ATAC.eps"), 
-       plot=heatmap,
+       plot=heatmap1,
        width = 18, height = 20, units = "cm")
 
-heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
+heatmap2 <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
                               main = "Heatmap of signif. DAR ADRN vs MES in promoters 3kb . MES-specific genes only (defined by RNA-seq)",
                               scale = "row",
                               annotation_col = annotation_col,
@@ -524,13 +514,13 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_MES-RNAseq-specific.png"), 
-       plot=heatmap,
+       plot=heatmap2,
        width = 18, height = 20, units = "cm")
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_MES-RNAseq-specific.eps"), 
-       plot=heatmap,
+       plot=heatmap2,
        width = 18, height = 20, units = "cm")
 
-heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
+heatmap3 <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
                               main = "Heatmap of signif. DAR ADRN vs MES in promoters 3kb. ADRN-specific genes only (defined by RNA-seq)",
                               scale = "row",
                               annotation_col = annotation_col,
@@ -542,14 +532,21 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ADRN-RNAseq-specific.png"), 
-       plot=heatmap,
+       plot=heatmap3,
        width = 18, height = 20, units = "cm")
 ggsave(filename = file.path(deg_dir, "heatmap_ADRN_vs_MES_promoters_3kb_ADRN-RNAseq-specific.eps"), 
-       plot=heatmap,
+       plot=heatmap3,
        width = 18, height = 20, units = "cm")
 
+```
 
-## GSEA analysis #########
+```{r}
+heatmap1
+heatmap2
+heatmap3
+```
+
+```{r GSEA analysis}
 # Loading MsigDB geneset collections 
 gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean=TRUE) 
 gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean=TRUE) 
@@ -573,8 +570,6 @@ C5_GOBP_ADR <- hypeR::hypeR(signature = ADR_genes,
                             background = nrow(ATAC_dds))
 C5_GOBP_plot_MES <- hypeR::hyp_dots(C5_GOBP_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="GOBP: MES") +theme_bw()
 C5_GOBP_plot_ADR <- hypeR::hyp_dots(C5_GOBP_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="GOBP: ADR") +theme_bw()
-C5_GOBP_plot_MES
-C5_GOBP_plot_ADR
 
 C2_kegg_MES <- hypeR::hypeR(signature = MES_genes, 
                             genesets = gs_C2_kegg, 
@@ -586,8 +581,6 @@ C2_kegg_ADR <- hypeR::hypeR(signature = ADR_genes,
                             background=nrow(ATAC_dds))
 C2_kegg_plot_MES <- hypeR::hyp_dots(C2_kegg_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Kegg: MES") +theme_bw()
 C2_kegg_plot_ADR <- hypeR::hyp_dots(C2_kegg_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Kegg: ADR") +theme_bw()
-C2_kegg_plot_MES
-C2_kegg_plot_ADR
 
 C2_reactome_MES <- hypeR::hypeR(signature = MES_genes, 
                                 genesets = gs_C2_reactome, 
@@ -599,17 +592,24 @@ C2_reactome_ADR <- hypeR::hypeR(signature = ADR_genes,
                                 background=nrow(ATAC_dds))
 C2_reactome_plot_MES <- hypeR::hyp_dots(C2_reactome_MES, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: MES") +theme_bw()
 C2_reactome_plot_ADR <- hypeR::hyp_dots(C2_reactome_ADR, merge=TRUE, fdr=0.05, top = 20, abrv=70, val="fdr", title="Reactome: ADR") +theme_bw()
-C2_reactome_plot_MES
 
 pdf(file = file.path(deg_dir, "MES_and_ADR_GSEA.pdf"), width = 20, height = 10)
 C5_GOBP_plot_MES + C5_GOBP_plot_ADR
 C2_kegg_plot_MES + C2_kegg_plot_ADR
 C2_reactome_plot_MES + C2_reactome_plot_ADR
 dev.off()
+```
 
+```{r GSEA plots}
+C5_GOBP_plot_MES
+C5_GOBP_plot_ADR
+C2_kegg_plot_MES
+C2_kegg_plot_ADR
+C2_reactome_plot_MES  
+C2_reactome_plot_ADR
+```
 
-
-
+```{r differential TFBS analysis}
 # This part - we can identify binding sites of TFs and see if there they are differentially enriched between ADRN and MES lines
 # Identifying TFBSs
 # First, we load the PWM sets from JASPAR2022 DB.
@@ -738,9 +738,7 @@ annotCol_forHeatmap <- as.data.frame(colData(ATAC_dds_full)) %>%
   dplyr::select(phenotype)
 annotCol_forHeatmap_colors <- list(phenotype = c(A = "#525252", M = "#fc4e2a"))
 
-
 color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
-
 
 heatmap <- pheatmap::pheatmap(as.matrix(devToPlot),
                               color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
@@ -763,27 +761,20 @@ ggsave(filename = file.path(deg_dir, paste0("heatmap_ADRN_vs_MES_Motifs", sbst, 
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ADRN_vs_MES_Motifs", sbst, "- used", ".eps")), 
        plot=heatmap,
        width = 18, height = 20, units = "cm")
+```
+
+```{r plot the heatmap}
+heatmap
+```
 
 
 
-
-
-
-
-
-
-#optional saving to excel tables
-#hypeR::hyp_to_excel(C5_GOBP, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOBP.xlsx"))
-#hypeR::hyp_to_excel(C5_GOCC, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOCC.xlsx"))
-#hypeR::hyp_to_excel(C5_GOMF, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOMF.xlsx"))
-
-
-
+```{r analysis for review}
 # analysis for review 
 # Checking if adjacent TEAD and AP1 binding motifs enriched in MES ATAC peaks
 # take ATAC MES and ADR -specific peaks and check for TEAD and AP1 enrichments in both
 ATAC_dds <- ATAC_dds_full
-ATAC_signif
+#ATAC_signif
 MES_specific_peaks <- ATAC_signif %>% dplyr::filter(log2FoldChange > 0) %>% dplyr::pull(peak_id)
 ADR_specific_peaks <- ATAC_signif %>% dplyr::filter(log2FoldChange < 0) %>% dplyr::pull(peak_id)
 
@@ -939,13 +930,18 @@ plot <- ggplot(summary_table_peaks, aes(fill=Peaks, y=Number_of_peaks, x=peak_ty
                                "TEAD_AP1_coloc_sites" = "yellow", 
                                "TEAD_sites" = "firebrick3")) +
   theme_minimal()
-ggsave(filename = file.path(deg_dir, paste0("Distribution_of_TEAD_AP1_BS_in_ATAC-seq_peaks.eps")), 
+ggsave(filename = file.path(deg_dir, paste0("Distribution_of_TEAD_AP1_BS_in_ATAC-seq_peaks.pdf")), 
        plot = plot,
        width = 18, height = 20, units = "cm")
+```
+
+```{r}
+summary_table_peaks
+plot
+```
 
 
-
-
+```{r create contingency tables to do Ftest}
 # Create contingency tables to do Ftest on overlap MES vs ADR
 contingency_table <- matrix(c(length(MES_AP1_TEAD_overlaps), length(MES_TEAD) + length(MES_AP1) - length(MES_AP1_TEAD_overlaps), 
                               length(ADR_AP1_TEAD_overlaps), length(ADR_TEAD) + length(ADR_AP1) - length(ADR_AP1_TEAD_overlaps)
@@ -1026,9 +1022,13 @@ plot <- fisher_summary_table %>%
 ggsave(filename = file.path(deg_dir, paste0("Fisher_exact_test_results_MESADR_MESsim_ADRsim.eps")), 
        plot = plot,
        width = 18, height = 20, units = "cm")
+```
 
+```{r plot}
+plot
+```
 
-
+```{r Fisher tests}
 # Fisher test for TEAD peaks
 contingency_table_TEAD <- matrix(c(length(MES_TEAD), length(counts_consensus_filt_MES) - length(MES_TEAD),
                                    length(ADR_TEAD), length(counts_consensus_filt_ADR) - length(ADR_TEAD)
@@ -1037,7 +1037,6 @@ row.names(contingency_table_TEAD) <- c("MES_peaks", "ADR_peaks")
 colnames(contingency_table_TEAD) <- c("TEAD_site_present", "TEAD_site_absent")
 contingency_table_TEAD
 fisher.test(contingency_table_TEAD, alternative="two.sided")
-chisq.test(contingency_table_TEAD)
 
 # Fisher test for AP1 peaks
 contingency_table_AP1 <- matrix(c(length(MES_AP1), length(counts_consensus_filt_MES) - length(MES_AP1),
@@ -1047,9 +1046,11 @@ row.names(contingency_table_AP1) <- c("MES_peaks", "ADR_peaks")
 colnames(contingency_table_AP1) <- c("AP1_site_present", "AP1_site_absent")
 contingency_table_AP1
 fisher.test(contingency_table_AP1, alternative="two.sided")
-chisq.test(contingency_table_AP1)
+
+```
 
 
+```{r  Enrichment of MES, ADR signatures in AP1/TEAD/AP1_TEAD_overlaped peaks}
 # Enrichment of MES, ADR signatures in AP1/TEAD/AP1_TEAD_overlaped peaks
 import::from(
   .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
@@ -1158,7 +1159,6 @@ summary_table <- data.frame(Protein = NULL,
                             Peaks_in_set = NULL,
                             Odds_ratio = NULL)
 
-#pattern <-  ".*(H3K27ac|H3K4me1|Jun|TAZ|YAP)_(Our_data|Groen).*(ADRN|MES).*"
 pattern <-  ".*(ADR_Total|ADR_AP1|ADR_TEAD|ADR_AP1_TEAD|MES_Total|MES_AP1|MES_TEAD|MES_AP1_TEAD)_(Our_data|Groen).*(ADR|MES).*"
 
 for (file_name in enrich_results_files){
@@ -1194,7 +1194,7 @@ custom_colors <- c("red", colorRampPalette(brewer.pal(7, "Greys"))(100))
 custom_breaks <- c(seq(0, 1.3, length.out = 2), seq(1.3, 3, length.out = 256))
 
 # Separate lolipop plots into 3 separate one 
-plot <- summary_table_MES %>%
+plot1 <- summary_table_MES %>%
   filter(Protein %in% c("MES_Total", "ADR_Total")) %>% 
   ggplot() +
   geom_bar(position = position_dodge(0.5), 
@@ -1231,7 +1231,7 @@ ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES_signatures_in_MES
        width = 18, height = 20, units = "cm")
 
 
-plot <- summary_table_ADR %>%
+plot2 <- summary_table_ADR %>%
   filter(Protein %in% c("MES_Total", "ADR_Total")) %>% 
   ggplot() +
   geom_bar(position = position_dodge(0.5), 
@@ -1267,7 +1267,7 @@ ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_ADR_signatures_in_MES
        plot = plot,
        width = 18, height = 20, units = "cm")
 
-plot <- summary_table_MES %>%
+plot3 <- summary_table_MES %>%
   filter(!(Protein %in% c("MES_Total", "ADR_Total"))) %>% 
   ggplot() +
   geom_bar(position = position_dodge(0.5), 
@@ -1305,7 +1305,7 @@ ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES_signatures_in_MES
 
 
 # making lolipop plot with enrichments
-plot <- summary_table_MES %>%
+plot4 <- summary_table_MES %>%
   ggplot() +
   geom_bar(position = position_dodge(0.5), 
            width = 0.05, 
@@ -1339,3 +1339,11 @@ plot <- summary_table_MES %>%
 ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES-sig_in_coloc_TEAD_AP1_BS", ".eps")), 
        plot=plot,
        width = 18, height = 20, units = "cm")
+```
+
+```{r}
+plot1
+plot2
+plot3
+plot4
+```

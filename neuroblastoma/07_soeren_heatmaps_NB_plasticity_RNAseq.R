@@ -3,10 +3,11 @@ library("ggpubr")
 library("GSVA")
 library("pheatmap")
 library("dplyr")
+library("tidyr")
 library(stringr)
 library(org.Hs.eg.db)
 # loading data ----
-# system("unzip ~/workspace/neuroblastoma/data/other/decon_eda_louis.RData.zip")
+system("unzip ~/workspace/neuroblastoma/data/other/decon_eda_louis.RData.zip -d ~/workspace/neuroblastoma/data/other/")
 load("~/workspace/neuroblastoma/data/other/decon_eda_louis.RData")
 
 # row_annotation_table <- data.frame(Symbol = genes_to_plot$SYMBOL, row.names = genes_to_plot$ENSEMBL)
@@ -112,6 +113,37 @@ pheatmap(data_to_plot_subset,
          annotation_colors = ann_colors,
          show_colnames = TRUE
 )
+
+
+### Visualize this as boxplot
+data_to_plot_subset_bxplt <- data_to_plot_subset %>%
+  mutate(gene = row.names(.)) %>% 
+  pivot_longer(cols = -gene,
+    names_to = "sample",
+    values_to = "expression"
+  ) %>%
+  mutate(
+    group = case_when(
+      str_starts(sample, "DTC_") ~ "DTC",
+      str_starts(sample, "MNC_") ~ "MNC",
+      str_starts(sample, "BMn_") ~ "BMn",
+      TRUE ~ "Other")
+  )
+data_to_plot_subset_bxplt$group <- factor(data_to_plot_subset_bxplt$group, levels = c("DTC", "MNC", "BMn"))
+
+data_to_plot_subset_bxplt %>% ggplot(aes(x = group, y = expression, fill = group)) +
+  geom_boxplot(outlier.shape = NA) +
+  facet_wrap(~ gene, scales = "free_y") +
+  geom_jitter(width = 0.2, size = 1, alpha = 0.6) +
+  theme_minimal()
+
+data_to_plot_subset_bxplt %>% ggplot(aes(x = group, y = expression, fill = group)) +
+  facet_wrap(~ gene, scales = "free_y") +
+  geom_jitter(width = 0.2, size = 1, alpha = 0.6) +
+  stat_summary(fun = median, geom = "crossbar", width = 0.5,
+               aes(ymin = ..y.., ymax = ..y..), color = "red", fatten = 0) +
+  theme_minimal()
+
 
 
 # now - the GSVA data
