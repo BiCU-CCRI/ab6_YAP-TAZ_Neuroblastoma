@@ -53,7 +53,7 @@ annotationData <- read.table(
 )
 colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
-dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/OE_WWTR1_JunDN_experiment.dds.RDS")
+dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/OE_WWTR1_experiment.dds.RDS")
 
 samples_to_select_full <- c("OE_WWTR1_DMSO_RNA_S165191_R1", 
                             "OE_WWTR1_TDI_RNA_S165188_R1", 
