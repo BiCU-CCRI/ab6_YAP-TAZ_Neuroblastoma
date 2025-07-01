@@ -1048,39 +1048,3 @@ ssgsea_mes_adr_ncc_noradr_heatmap
 dev.off()
 
 
-# # # # # # # # # # # # # # 
-# implementing cluster profiler
-library(clusterProfiler)
-deg_results
-TERM2GENE <- mes_adrn_gene_list %>% select(Term, gene_symbol)
-TERM2GENE <- TERM2GENE %>% dplyr::arrange(Term) 
-
-
-Jun_DN_up <- deg_results$results_signif %>% filter(log2FoldChange > 0) %>% pull(gene_symbol)
-Jun_DN_down <- deg_results$results_signif %>% filter(log2FoldChange < 0) %>% pull(gene_symbol)
-
-kegg_ora_results <- enricher( maxGSSize = 3000,
-  gene = Jun_DN_up, # A vector of your genes of interest
-  pvalueCutoff = 1, # Can choose a FDR cutoff
-  pAdjustMethod = "BH", # Method to be used for multiple testing correction
-  universe = deg_results$results_all$gene_symbol, # A vector containing your background set genes
-  # The pathway information should be a data frame with a term name or
-  # identifier and the gene identifiers
-  TERM2GENE = TERM2GENE
-)
-
-ggplot(kegg_ora_results@result$ID)
-
-
-kegg_ora_results <- enricher( maxGSSize = 3000,
-                              gene = Jun_DN_down, # A vector of your genes of interest
-                              pvalueCutoff = 1, # Can choose a FDR cutoff
-                              pAdjustMethod = "BH", # Method to be used for multiple testing correction
-                              universe = deg_results$results_all$gene_symbol, # A vector containing your background set genes
-                              # The pathway information should be a data frame with a term name or
-                              # identifier and the gene identifiers
-                              TERM2GENE = TERM2GENE
-)
-
-dotplot(kegg_ora_results)
-

@@ -14,7 +14,6 @@ Model_dataframe$MetaGroup <- ifelse(Model_dataframe$StrippedCellLineName %in% c(
                                     Model_dataframe$StrippedCellLineName,
                                     Model_dataframe$MetaGroup)
 
-
 url <- "https://plus.figshare.com/ndownloader/files/51064667"
 file_path <- "~/workspace/neuroblastoma/data/temp_data/ScreenGeneEffect.csv"
 download.file(url = url, destfile = file_path)
