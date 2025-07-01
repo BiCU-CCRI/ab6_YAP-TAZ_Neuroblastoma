@@ -86,7 +86,7 @@ mart <- biomaRt::useMart(
 ```
 
 
-```{r, echo = FALSE}
+```{r, include = FALSE}
 # unzip datafiles and load them
 system("unzip --qo ~/workspace/neuroblastoma/data/CnR/peaks.zip -d ~/workspace/neuroblastoma/data/CnR/peaks/")
 
@@ -256,34 +256,19 @@ write.table(
   quote = F
 )
 
-# Maybe delete
-# Create a term from JunDN experiment 
-RNA_JunDN_SEQ_data <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/Jun_DN/JunDN_dox_vs_ctrl.xlsx",
-                                          name_for_negative_values = "JunDN_down",
-                                          name_for_positive_values = "JunDN_up",
-                                          mart = mart
-)
-write.table(
-  x = RNA_JunDN_SEQ_data,
-  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_JunDN_SEQ_data.tsv",
-  sep = "\t",
-  row.names = F,
-  quote = F
-)
+
 
 
 our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
 our_rna_seq_terms_k975_24h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv"
 our_rna_seq_terms_k975_48h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_48h.tsv"
 our_rna_seq_terms_k975_24h_48h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h_48h.tsv"
-our_rna_seq_terms_JunDN <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_JunDN_SEQ_data.tsv"
 
 rna_seq_terms_list <- list(
   rna_seq_terms = list(name = "Our_data_", path = our_rna_seq_terms),
   k975_24h = list(name = "Our_k975_24h_data_", path = our_rna_seq_terms_k975_24h),
   k975_48h = list(name = "Our_k975_48h_data_", path =our_rna_seq_terms_k975_48h),
-  k975_24h_48h = list(name = "Our_k975_24h_48h_data_", path = our_rna_seq_terms_k975_24h_48h),
-  JunDN = list(name = "Our_JunDN_data_", path = our_rna_seq_terms_JunDN)
+  k975_24h_48h = list(name = "Our_k975_24h_48h_data_", path = our_rna_seq_terms_k975_24h_48h)
 )
 
 
@@ -514,22 +499,6 @@ plot_8 <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
 )
 plot_8
 
-# Visualization, but with genes that comes from JunDN inhibition assay
-# Make a plot for MES data
-summary_table_MES <- summary_table %>% filter(Data_source == "Our_JunDN_data", Selected_peaks == "MES")
-plot_9 <- LolipopEnrichmentPlot(summary_table = summary_table_MES,
-                              p.val_treshold = 0.05,
-                              title = "Enrichment of peaks in MES samples in MES/ADR-specific \n regions determined from Our JunDN data"
-)
-plot_9
-
-# Make a plot for ADRN data
-summary_table_ADRN <- summary_table %>% filter(Data_source == "Our_JunDN_data", Selected_peaks == "ADRN")
-plot_10 <- LolipopEnrichmentPlot(summary_table = summary_table_ADRN,
-                              p.val_treshold = 0.05,
-                              title = "Enrichment of peaks in ADRN samples in MES/ADR-specific \n regions determined from Our JunDN data"
-)
-plot_10
 
 dev.off()
 
@@ -541,8 +510,6 @@ plot_5
 plot_6
 plot_7
 plot_8
-plot_9
-plot_10
 
 ```
 
@@ -759,7 +726,7 @@ GenomicDistributions::plotChromBins(x)
 
 Perform a statistical analysis to check if the enrichment of peaks in active/incative enhancers and promoters in real data differs with simulated data
 
-```{r F-test for }
+```{r F-test between real and simulated data}
 # Check that namings are the same:
 piechart_randomised$Peaks != piechart$Peaks
 
@@ -817,7 +784,7 @@ fisher_result_df
 ```
 
 
-```{r, analyze the diff binding for every protein}
+```{r analyze the diff binding for every protein}
 # now, analyze the diff binding for every protein
 for (target_prot in names(DBobj_list)) {
   
