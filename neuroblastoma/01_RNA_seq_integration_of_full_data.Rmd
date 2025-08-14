@@ -56,8 +56,7 @@ config <- list(
 PATHS <- list(
   data_dir = here::here("neuroblastoma", "data", "RNAseq"),
   results_dir = here::here("neuroblastoma", "results", "RNA-seq_TDI"),
-  resources_dir = here::here("neuroblastoma", "resources"),
-  cache_dir = here::here("neuroblastoma", "cache")
+  resources_dir = here::here("neuroblastoma", "resources")
 )
 
 GENES_OF_INTEREST <- list(

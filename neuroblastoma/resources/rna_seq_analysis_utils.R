@@ -32,16 +32,10 @@ validate_inputs <- function(dds, annotation_data) {
   invisible(TRUE)
 }
 
-#' Load and cache gene sets for analysis
-#' @param cache_file Path to cache file for gene sets
+#' Load gene sets for analysis (no caching to avoid repository bloat)
 #' @return List of gene sets
-load_gene_sets <- function(cache_file = "gene_sets.rds") {
-  if (file.exists(cache_file)) {
-    message("Loading cached gene sets from: ", cache_file)
-    return(readRDS(cache_file))
-  }
-  
-  message("Downloading gene sets from MSigDB...")
+load_gene_sets_direct <- function() {
+  message("Loading gene sets from MSigDB...")
   gene_sets <- list(
     hallmark = hypeR::msigdb_gsets("Homo sapiens", "H", clean = TRUE),
     kegg = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:KEGG", clean = TRUE),
@@ -53,8 +47,6 @@ load_gene_sets <- function(cache_file = "gene_sets.rds") {
     wang_hippo = list(genesets = list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A","TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80")))
   )
   
-  message("Caching gene sets to: ", cache_file)
-  saveRDS(gene_sets, cache_file)
   return(gene_sets)
 }
 

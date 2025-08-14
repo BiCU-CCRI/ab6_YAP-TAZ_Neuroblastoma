@@ -61,8 +61,7 @@ config <- list(
 PATHS <- list(
   data_dir = here::here("neuroblastoma", "data", "RNAseq"),
   results_dir = here::here("neuroblastoma", "results", "RNA-seq"),
-  resources_dir = here::here("neuroblastoma", "resources"),
-  cache_dir = here::here("neuroblastoma", "cache")
+  resources_dir = here::here("neuroblastoma", "resources")
 )
 
 # Genes of interest for highlighting
@@ -139,8 +138,18 @@ tryCatch({
   mart <- NULL
 })
 
-# Load gene sets with caching
-gene_sets <- load_gene_sets(file.path(PATHS$cache_dir, "gene_sets.rds"))
+# Load gene sets directly (no caching to avoid repository bloat)
+message("Loading gene sets from MSigDB...")
+gene_sets <- list(
+  hallmark = hypeR::msigdb_gsets("Homo sapiens", "H", clean = TRUE),
+  kegg = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:KEGG", clean = TRUE),
+  reactome = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:REACTOME", clean = TRUE),
+  gobp = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:BP", clean = TRUE),
+  gocc = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:CC", clean = TRUE),
+  gomf = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:MF", clean = TRUE),
+  oncogenic = hypeR::msigdb_gsets("Homo sapiens", "C6", clean = TRUE),
+  wang_hippo = list(genesets = list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A","TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80")))
+)
 
 print("Environment setup completed")
 ```
