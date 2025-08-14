@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 
+# Set HOMER directory
 homer_dir=/home/rstudio/workspace/neuroblastoma/homer
 
 perl ${homer_dir}/bin/annotatePeaks.pl \

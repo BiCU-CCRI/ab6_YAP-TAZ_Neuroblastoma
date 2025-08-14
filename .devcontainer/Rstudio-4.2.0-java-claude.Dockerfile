@@ -9,7 +9,7 @@ FROM rocker/tidyverse:4.2.0
 
 # who maintains this image
 LABEL maintainer="Aleksandr Bykov"
-LABEL version="4.2-java"
+LABEL version="4.2-java-claude"
 
 RUN apt-get update && \
       DEBIAN_FRONTEND=noninteractive \
@@ -36,7 +36,7 @@ RUN apt-get update && \
 
 RUN apt-get install -y openjdk-11-jdk
 
-RUN export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 RUN apt-get install -y r-cran-rjava
 RUN R CMD javareconf
 # commonly used R packages 
@@ -62,9 +62,19 @@ RUN mkdir -p ${HOMER_DIR} && \
     perl ${HOMER_DIR}/configureHomer.pl -install && \
     perl ${HOMER_DIR}/configureHomer.pl -install hg38
 
-# Add HOMER to PATH
-ENV PATH="${HOMER_DIR}/bin:$PATH"
+# Fix HOMER configuration paths to use the correct installation directory
+RUN sed -i 's|use lib "/gpfs/data01/cbenner/software/homer/./bin";|use lib "'${HOMER_DIR}'/bin";|g' ${HOMER_DIR}/bin/HomerConfig.pm && \
+    sed -i 's|my $homeDir = "/gpfs/data01/cbenner/software/homer/./";|my $homeDir = "'${HOMER_DIR}'/";|g' ${HOMER_DIR}/bin/HomerConfig.pm
 
+# Add HOMER to PATH and set PERL5LIB for HOMER scripts
+ENV PATH="${HOMER_DIR}/bin:$PATH"
+ENV PERL5LIB="${HOMER_DIR}/bin:$PERL5LIB"
+
+# Installation of node.js and claude
+# Install Node.js and npm globally (system-wide) for all users
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g @anthropic-ai/claude-code
 
 # # Clean up APT when done.
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

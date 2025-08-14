@@ -42,6 +42,6 @@ docker run --rm \
 	--volume=$(pwd):"/home/rstudio/workspace" \
 	--workdir="/home/rstudio/workspace" \
 	--volume ${dotconfig}:"/home/rstudio/.config/rstudio" \
-	core_bioinf/dockrstudio:4.2.0-TEST_ab6
+	core_bioinf/dockrstudio:4.2-java-claude 
 
 #--volume ${raw_bams}:"/home/rstudio/workspace/neuroblastoma/data/CnR/BAMs/" \
