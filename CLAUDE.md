@@ -81,8 +81,14 @@ The analysis should be run in this specific order:
 
 ## Key Utility Scripts
 - `neuroblastoma/resources/utilityScripts.R` - General utility functions
-- `neuroblastoma/resources/UtilityScriptsRNA-seq.R` - RNA-seq specific utilities  
+- `neuroblastoma/resources/UtilityScriptsRNA-seq.R` - Consolidated RNA-seq utilities with enhanced analysis functions
 - `neuroblastoma/00_load_data_and_modules.sh` - Data loading automation
+
+## RNA-seq Analysis Utilities
+The `UtilityScriptsRNA-seq.R` contains both original and enhanced utility functions:
+- **Core functions**: `filterDatasets()`, `generatePCA()`, `generateResults()`, `plotVolcano()`
+- **Enhanced functions**: `create_enhanced_volcano()`, `theme_publication()`, `safe_save_plot()`
+- **Analysis helpers**: `validate_inputs()`, `generate_analysis_summary()`, `run_gsea_analysis()`
 
 ## Build Commands for Submodules
 ```bash

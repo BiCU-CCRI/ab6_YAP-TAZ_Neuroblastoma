@@ -8,6 +8,7 @@ This document summarizes the comprehensive code refactoring performed on all RNA
 - **Code Improvements**: 2500+ lines refactored
 - **New Functions Added**: 15+ utility functions
 - **Enhanced Features**: Error handling, validation, visualization
+- **Repository Cleanup**: Removed caching to prevent bloat
 
 ## Key Refactoring Areas
 
@@ -272,4 +273,41 @@ writeData(xlsx_out, "Significant_DEGs", deg_results$results_signif)
 **Reliability**: Excellent - comprehensive error handling and validation  
 **Performance**: Optimized - cached loading and efficient processing  
 
-**Total Impact**: Transformed 6 analysis files into a professional, maintainable, and robust RNA-seq analysis pipeline following best practices in scientific computing.
+## Repository Cleanliness
+
+### Cache Management ✅
+**Issue Identified**: The `load_gene_sets()` function was creating cache files (`gene_sets.rds`) that would bloat the repository.
+
+**Solution Implemented**:
+- ✅ Removed all caching functionality from gene set loading
+- ✅ Updated all RMD files to load gene sets directly from MSigDB
+- ✅ Removed `cache_dir` from PATHS configuration
+- ✅ Added cache exclusions to `.gitignore`
+- ✅ Cleaned up existing cache directory
+
+**Before**:
+```r
+gene_sets <- load_gene_sets(file.path(PATHS$cache_dir, "gene_sets.rds"))
+```
+
+**After**:
+```r
+# Load gene sets directly (no caching to avoid repository bloat)
+gene_sets <- list(
+  hallmark = hypeR::msigdb_gsets("Homo sapiens", "H", clean = TRUE),
+  kegg = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:KEGG", clean = TRUE),
+  ...
+)
+```
+
+### .gitignore Updates ✅
+Added comprehensive cache exclusions:
+```
+# Prevent cache files from being committed
+cache/
+neuroblastoma/cache/
+*.rds
+*cache*
+```
+
+**Total Impact**: Transformed 6 analysis files into a professional, maintainable, and robust RNA-seq analysis pipeline following best practices in scientific computing, while ensuring repository cleanliness and preventing unnecessary file bloat.

@@ -104,17 +104,11 @@ suppressPackageStartupMessages({
   library(openxlsx)
   library(here)
   
-  # Utility functions from existing scripts
-  import::from(
-    .from = here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
-    "filterDatasets", "generatePCA", "generateEnsemblAnnotation", 
-    "generateResults", "meanExprsPerGroup", "plotVolcano",
-    .character_only = TRUE
-  )
+  # Load all utility functions from consolidated script
+  source(here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"))
 })
 
-# Load custom utility functions
-source(here::here("neuroblastoma/resources/rna_seq_analysis_utils.R"))
+# All enhanced utility functions are now loaded
 
 print("Libraries loaded successfully")
 ```
