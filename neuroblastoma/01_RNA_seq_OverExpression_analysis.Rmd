@@ -1,60 +1,125 @@
 ---
-title: "RNA-seq analysis"
-author: "Aleksandr Bykov"
-date: '2025-01-30'
+title: "RNA-seq Overexpression Analysis - Improved Version"
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
 output:
-  html_document: default
+  html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
 ---
 
-```{r Load libraries, include=FALSE}
-dir.create("/home/rstudio/.cache/R/ExperimentHub")
-# importing only key functions that are actually used - not to polute namespace!
-import::from(.from = DESeq2, .all=TRUE)
-import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
-import::from(.from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"), 
-             "filterDatasets",
-             "generatePCA", 
-             "generateEnsemblAnnotation", 
-             "generateResults",
-             "meanExprsPerGroup",
-             "plotVolcano",
-             "generatePCA_repel",
-             .character_only=TRUE) # used for filtering
-library(ggplot2)
-library(GSVA)
-library(pheatmap)
-library(xcore)
-library(ExperimentHub)
-library(xcoredata)
-library(stringr)
-library(org.Hs.eg.db)
-library(fgsea)
-library(dplyr)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
+
+set.seed(42)
+analysis_start_time <- Sys.time()
+message("Starting RNA-seq overexpression analysis at: ", analysis_start_time)
 ```
 
-```{r Load essentials assets, echo=FALSE, include=FALSE}
-# load annotation table. Could use Biomart, alternatively, but had this 
-path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/RNAseq"
-annotationData <- read.table(
-  file = file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_annotation_gene.tsv"),
+## Configuration and Setup
+
+```{r configuration}
+config <- list(
+  filtering = list(
+    abs_filt_samples = 2,
+    min_count_threshold = 10
+  ),
+  statistical = list(
+    padj_cutoff = 0.05,
+    log2FC_cutoff = 0.37,
+    var_expl_needed = 0.6
+  ),
+  visualization = list(
+    ntop_genes_pca = 1000,
+    plot_width = 20,
+    plot_height = 20,
+    plot_units = "cm",
+    top_pathways_show = 20
+  ),
+  biomart = list(
+    host = "http://www.ensembl.org",
+    dataset = "hsapiens_gene_ensembl",
+    version = "Ensembl Genes 109"
+  )
+)
+
+PATHS <- list(
+  data_dir = here::here("neuroblastoma", "data", "RNAseq"),
+  results_dir = here::here("neuroblastoma", "results", "RNA-seq_OE"),
+  resources_dir = here::here("neuroblastoma", "resources"),
+  cache_dir = here::here("neuroblastoma", "cache")
+)
+
+print("Configuration loaded successfully")
+```
+
+```{r load_libraries}
+# Create cache directory if needed
+if (!dir.exists("/home/rstudio/.cache/R/ExperimentHub")) {
+  dir.create("/home/rstudio/.cache/R/ExperimentHub", recursive = TRUE)
+}
+
+suppressPackageStartupMessages({
+  # Core analysis packages
+  library(DESeq2)
+  library(stringr)
+  library(org.Hs.eg.db)
+  
+  # Enrichment analysis
+  library(fgsea)
+  library(GSVA)
+  library(xcore)
+  library(ExperimentHub)
+  library(xcoredata)
+  
+  # Visualization
+  library(ggplot2)
+  library(pheatmap)
+  
+  # Data manipulation
+  library(dplyr)
+  library(tidyr)
+  library(readr)
+  
+  # File operations
+  library(openxlsx)
+  library(here)
+  
+  # Utility functions from existing scripts
+  import::from(
+    .from = here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+    "filterDatasets", "generatePCA", "generateEnsemblAnnotation", 
+    "generateResults", "meanExprsPerGroup", "plotVolcano", "generatePCA_repel",
+    .character_only = TRUE
+  )
+})
+
+print("Libraries loaded successfully")
+```
+
+```{r setup_environment}
+if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
+if(!dir.exists(PATHS$cache_dir)) dir.create(PATHS$cache_dir, recursive = TRUE)
+
+# Load annotation data
+annotation_data <- read.table(
+  file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),
   sep = "\t",
   header = TRUE
 )
-# This is necessary to rename columns so that extraction of the data works correctly
-colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
+# Standardize column names
+colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
-param_list <- list(
-  abs_filt_samples=2,
-  padj_cutoff = 0.05,
-  log2FC_cutoff = 0.37, #Maybe need to be changed later 
-  var_expl_needed = 0.6,
-  biomart_host="http://www.ensembl.org", 
-  biomart_dataset="hsapiens_gene_ensembl", 
-  biomart_Ens_version="Ensembl Genes 109"
-)
-
-deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_OE/"
-if(!dir.exists(deg_dir)) dir.create(deg_dir)
+print("Environment setup completed")
 ```
 ```{r Load the counts data, echo = FALSE}
 #loading the new DESeq2 file

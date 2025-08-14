@@ -1,36 +1,119 @@
 ---
-title: "RNA-seq analysis"
-author: "Aleksandr Bykov"
-date: '2025-01-30'
+title: "RNA-seq Analysis - Improved Version"
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
 output:
-  html_document: default
+  html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
 ---
 
-```{r Load libraries, include=FALSE}
-# Set up the environment ####
-# Importing only key functions that are actually used - not to polute namespace!
-import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
-import::from(
-  .from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
-  "filterDatasets",
-  "generatePCA",
-  "generateEnsemblAnnotation",
-  "generateResults",
-  "meanExprsPerGroup",
-  "plotVolcano",
-  .character_only = TRUE
-) # used for filtering
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
 
-library(stringr)
-library(org.Hs.eg.db)
-library(fgsea)
-library(ggplot2)
-library(DESeq2)
-
+set.seed(42)
+analysis_start_time <- Sys.time()
+message("Starting RNA-seq analysis at: ", analysis_start_time)
 ```
 
-```{r Load essentials assets, echo=FALSE}
-# load gene sets
+## Configuration and Setup
+
+```{r configuration}
+config <- list(
+  filtering = list(
+    abs_filt_samples = 2,
+    min_count_threshold = 10
+  ),
+  statistical = list(
+    padj_cutoff = 0.05,
+    log2FC_cutoff = 1,
+    var_expl_needed = 0.6
+  ),
+  visualization = list(
+    ntop_genes_pca = 1000,
+    plot_width = 20,
+    plot_height = 20,
+    plot_units = "cm",
+    top_pathways_show = 20
+  ),
+  fgsea = list(
+    min_size = 15,
+    max_size = 500,
+    top_pathways_up = 10,
+    top_pathways_down = 10
+  )
+)
+
+PATHS <- list(
+  data_dir = here::here("neuroblastoma", "data", "RNAseq"),
+  results_dir = here::here("neuroblastoma", "results", "RNA-seq"),
+  resources_dir = here::here("neuroblastoma", "resources"),
+  cache_dir = here::here("neuroblastoma", "cache")
+)
+
+GENES_OF_INTEREST <- list(
+  all = c("VIM", "YAP1", "WWTR1", "JUN", "FOSL1", "FOSL2", "PHOX2B", "HAND2", "GATA3"),
+  mesenchymal_markers = c("VIM", "CDH2", "FN1"),
+  yap_taz_pathway = c("YAP1", "WWTR1", "TEAD1", "TEAD2", "TEAD3", "TEAD4"),
+  ap1_factors = c("JUN", "JUNB", "JUND", "FOS", "FOSB", "FOSL1", "FOSL2"),
+  adrenergic_markers = c("PHOX2B", "HAND2", "GATA3", "DBH", "TH")
+)
+
+print("Configuration loaded successfully")
+```
+
+```{r load_libraries}
+suppressPackageStartupMessages({
+  # Core analysis packages
+  library(DESeq2)
+  library(stringr)
+  library(org.Hs.eg.db)
+  
+  # Enrichment analysis
+  library(fgsea)
+  library(hypeR)
+  
+  # Visualization
+  library(ggplot2)
+  library(ggrepel)
+  library(RColorBrewer)
+  library(pheatmap)
+  
+  # Data manipulation
+  library(dplyr)
+  library(tidyr)
+  library(readr)
+  
+  # File operations
+  library(openxlsx)
+  library(here)
+  
+  # Utility functions from existing scripts
+  import::from(
+    .from = here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+    "filterDatasets", "generatePCA", "generateEnsemblAnnotation", 
+    "generateResults", "meanExprsPerGroup", "plotVolcano",
+    .character_only = TRUE
+  )
+})
+
+print("Libraries loaded successfully")
+```
+
+```{r setup_environment}
+if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
+if(!dir.exists(PATHS$cache_dir)) dir.create(PATHS$cache_dir, recursive = TRUE)
+
+# Load gene sets with caching
 gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean = TRUE)
 gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean = TRUE)
 gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
@@ -40,74 +123,97 @@ gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), 
 gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
 gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A","TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
 
-# loading BioMart
-options(timeout = 30000)
-mart <- biomaRt::useMart(
-  biomart = "ENSEMBL_MART_ENSEMBL", 
-  dataset = "hsapiens_gene_ensembl",
-  host = "https://www.ensembl.org")
-  
-# Set up the parameters
-param_list <- list(
-  abs_filt_samples = 2,
-  padj_cutoff = 0.05,
-  log2FC_cutoff = 1,
-  var_expl_needed = 0.6
-)
-deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq/"
+# Setup BioMart with error handling
+tryCatch({
+  options(timeout = 30000)
+  mart <- biomaRt::useMart(
+    biomart = "ENSEMBL_MART_ENSEMBL", 
+    dataset = "hsapiens_gene_ensembl",
+    host = "https://www.ensembl.org"
+  )
+  message("BioMart connection established")
+}, error = function(e) {
+  warning("Failed to connect to BioMart: ", e$message)
+  mart <- NULL
+})
+
+print("Environment setup completed")
 ```
 
-This module loads RNA-seq count table and produces PCA plot, including all samples, including the STA_NB_6 (that is removed later on).
+## Data Loading and Validation
 
-```{r Load RNA-seq data and produce PCA plot with ALL samples included}
-# Analysis of the RNA-seq data ####
-# Loading the DESeq2 file and annotation file that was used during the pre-processing of the data
-path_folder_rna_seq_data <- "~/workspace/neuroblastoma/data/RNAseq"
-rnaseq_dds <- readRDS(file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_deseq_data_set.rds"))
+```{r load_data}
+message("Loading RNA-seq data...")
+
+rnaseq_dds <- readRDS(file.path(PATHS$data_dir, "rnaseq_deseq_global_deseq_data_set.rds"))
 design(rnaseq_dds) <- as.formula("~ cell_line + cell_type")
-annotationData <- read.table(
-  file = file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_annotation_gene.tsv"),
+annotation_data <- read.table(
+  file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),
   sep = "\t",
   header = TRUE
 )
-# This is necessary to rename columns so that extraction of the data works correctly
-colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
+# Standardize column names
+colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
-# make PCA with ALL samples
-# Filtering lowly expressed genes
-tmp_rnaseq_dds_filt <- filterDatasets(rnaseq_dds,
+# Display data summary
+message("Data summary:")
+message("- Samples: ", ncol(rnaseq_dds))
+message("- Genes: ", nrow(rnaseq_dds))
+message("- Cell types: ", paste(unique(rnaseq_dds$cell_type), collapse = ", "))
+message("- Cell lines: ", paste(unique(rnaseq_dds$cell_line), collapse = ", "))
+
+```
+
+## Quality Control Analysis
+
+### Initial PCA with All Samples
+
+```{r initial_pca}
+message("Performing initial quality control analysis...")
+
+# Filter lowly expressed genes
+tmp_rnaseq_dds_filt <- filterDatasets(
+  rnaseq_dds,
   abs_filt = TRUE,
-  abs_filt_samples = param_list$abs_filt_samples
+  abs_filt_samples = config$filtering$abs_filt_samples
 )
-# Estimate size factors and running DESEQ2
+# Run DESeq2 pipeline
 tmp_rnaseq_dds_filt <- DESeq2::estimateSizeFactors(tmp_rnaseq_dds_filt)
 tmp_rnaseq_dds_filt <- DESeq2::DESeq(tmp_rnaseq_dds_filt)
-# Stabilize variance
-tmp_vsd <- DESeq2::vst(tmp_rnaseq_dds_filt, blind = TRUE) # blind = TRUE for QC
+vsd_initial <- DESeq2::vst(tmp_rnaseq_dds_filt, blind = TRUE)
 
-# generate PCA plots
-tmp_pca_deg <- generatePCA(
-  transf_object = tmp_vsd,
+# Generate initial PCA
+pca_initial <- generatePCA(
+  transf_object = vsd_initial,
   cond_interest_varPart = c("cell_type", "cell_line"),
   color_variable = "cell_type",
   shape_variable = "cell_line",
-  ntop_genes = 1000
+  ntop_genes = config$visualization$ntop_genes_pca
 ) +
   scale_color_manual(values = c("navy", "firebrick3")) +
   scale_shape_manual(values = c(16, 7, 17, 15, 3)) +
-  ggtitle("RNA-seq Original dataset")
+  labs(title = "PCA: All Samples (Before QC)")
+
+# Save plot
 ggsave(
-  filename = paste0(deg_dir, "PCA_full_dataset.png"),
-  plot = tmp_pca_deg,
-  width = 20, height = 20, units = "cm"
+  filename = file.path(PATHS$results_dir, "PCA_full_dataset.png"),
+  plot = pca_initial,
+  width = config$visualization$plot_width,
+  height = config$visualization$plot_height,
+  units = config$visualization$plot_units
 )
-plot(tmp_pca_deg)
+
+pca_initial
 ```
 
-Remove STA_NB_6 sample and produce PCA plot
+```
 
-```{r Filtering RNA-seq data and performing }
-# Removing NB6 sample - this is intermixed sample
+### Sample Quality Control and Filtering
+
+```{r sample_filtering}
+message("Removing problematic samples...")
+
+# Remove STA_NB_6 sample (intermixed characteristics)
 rnaseq_dds <- rnaseq_dds[, rnaseq_dds$cell_line != "STA_NB_6"]
 rnaseq_dds$cell_line <- droplevels(rnaseq_dds$cell_line)
 # Filtering lowly expressed genes

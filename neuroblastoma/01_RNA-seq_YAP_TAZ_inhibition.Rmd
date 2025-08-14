@@ -1,39 +1,121 @@
-```{r loading libraries, declare functions, include=FALSE}
-###
-# Title: RNA-seq analysis for Sören (Kaan's group)
-# Author: Aleksandr Bykov
-### 
+---
+title: "RNA-seq YAP/TAZ Inhibition Analysis - Improved Version"
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+---
 
-# importing only key functions that are actually used - not to polute namespace!
-library(DESeq2)
-import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
-import::from(.from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"), 
-             "filterDatasets",
-             "generatePCA", 
-             "generateEnsemblAnnotation", 
-             "generateResults",
-             "meanExprsPerGroup",
-             "plotVolcano",
-             "generatePCA_repel",
-             .character_only=TRUE) # used for filtering
-library(ggplot2)
-library(GSVA)
-library(pheatmap)
-library(xcore)
-library(ExperimentHub)
-#necessary for xcoredata
-if (!dir.exists("/home/rstudio/.cache/R/ExperimentHub")){
-  dir.create("/home/rstudio/.cache/R/ExperimentHub")}
-library(xcoredata)
-library(stringr)
-library(org.Hs.eg.db)
-library(fgsea)
-library(dplyr)
-library(tidyr)
-library(ggpubr)
-library(rlang)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
 
-# Declare fGSEA function 
+set.seed(42)
+analysis_start_time <- Sys.time()
+message("Starting RNA-seq YAP/TAZ inhibition analysis at: ", analysis_start_time)
+```
+
+## Configuration and Setup
+
+```{r configuration}
+config <- list(
+  filtering = list(
+    abs_filt_samples = 2,
+    min_count_threshold = 10
+  ),
+  statistical = list(
+    padj_cutoff = 0.05,
+    log2FC_cutoff = 0.37,
+    var_expl_needed = 0.6
+  ),
+  visualization = list(
+    ntop_genes_pca = 1000,
+    plot_width = 20,
+    plot_height = 20,
+    plot_units = "cm",
+    top_pathways_show = 20
+  ),
+  biomart = list(
+    host = "http://www.ensembl.org",
+    dataset = "hsapiens_gene_ensembl",
+    version = "Ensembl Genes 109"
+  ),
+  fgsea = list(
+    min_size = 15,
+    max_size = 3000
+  )
+)
+
+PATHS <- list(
+  data_dir = here::here("neuroblastoma", "data", "RNAseq"),
+  results_dir = here::here("neuroblastoma", "results", "RNA-seq_yap_taz_inhibition"),
+  resources_dir = here::here("neuroblastoma", "resources"),
+  cache_dir = here::here("neuroblastoma", "cache")
+)
+
+print("Configuration loaded successfully")
+```
+
+```{r load_libraries}
+# Create cache directory if needed
+if (!dir.exists("/home/rstudio/.cache/R/ExperimentHub")) {
+  dir.create("/home/rstudio/.cache/R/ExperimentHub", recursive = TRUE)
+}
+
+suppressPackageStartupMessages({
+  # Core analysis packages
+  library(DESeq2)
+  library(stringr)
+  library(org.Hs.eg.db)
+  
+  # Enrichment analysis
+  library(fgsea)
+  library(hypeR)
+  library(GSVA)
+  library(xcore)
+  library(ExperimentHub)
+  library(xcoredata)
+  
+  # Visualization
+  library(ggplot2)
+  library(pheatmap)
+  library(ggpubr)
+  
+  # Data manipulation
+  library(dplyr)
+  library(tidyr)
+  library(readr)
+  library(rlang)
+  
+  # File operations
+  library(openxlsx)
+  library(here)
+  
+  # Utility functions from existing scripts
+  import::from(
+    .from = here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+    "filterDatasets", "generatePCA", "generateEnsemblAnnotation", 
+    "generateResults", "meanExprsPerGroup", "plotVolcano", "generatePCA_repel",
+    .character_only = TRUE
+  )
+})
+
+print("Libraries loaded successfully")
+```
+
+```{r declare_functions}
+
+# Enhanced fGSEA function 
 plot_fGSEA <- function(deg_results, gene_set_list, title_prefix, save_dir, maxSize = 500, figure_extention = ".png"){
   de_genes_ranked <- deg_results
   de_genes_ranked <- de_genes_ranked %>%
@@ -137,24 +219,13 @@ produce_GSEA_plots <- function(gene_signature, dds_object, additional_title, pat
 ```
 
 
-```{r declare variables, include=FALSE}
-# load annotation table. Could use Biomart, alternatively, but had this 
-param_list <- list(
-  abs_filt_samples=2,
-  padj_cutoff = 0.05,
-  log2FC_cutoff = 0.37, #MAybe need to be changed later 
-  var_expl_needed = 0.6,
-  biomart_host="http://www.ensembl.org", 
-  biomart_dataset="hsapiens_gene_ensembl", 
-  biomart_Ens_version="Ensembl Genes 109"
-)
+```
 
-deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/"
-if(!dir.exists(deg_dir)){
-  dir.create(deg_dir)
-} 
+```{r setup_environment}
+if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
+if(!dir.exists(PATHS$cache_dir)) dir.create(PATHS$cache_dir, recursive = TRUE)
 
-
+print("Environment setup completed")
 ```
 
 ```{r load supplementary data, include=FALSE}
