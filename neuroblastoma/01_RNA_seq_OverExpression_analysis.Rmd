@@ -55,7 +55,8 @@ config <- list(
 PATHS <- list(
   data_dir = here::here("neuroblastoma", "data", "RNAseq"),
   results_dir = here::here("neuroblastoma", "results", "RNA-seq_OE"),
-  resources_dir = here::here("neuroblastoma", "resources")
+  resources_dir = here::here("neuroblastoma", "resources"),
+  cache_dir = here::here("neuroblastoma", "cache")
 )
 
 print("Configuration loaded successfully")
@@ -107,6 +108,7 @@ print("Libraries loaded successfully")
 
 ```{r setup_environment}
 if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
+if(!dir.exists(PATHS$cache_dir)) dir.create(PATHS$cache_dir, recursive = TRUE)
 
 # Load annotation data
 annotation_data <- read.table(
@@ -119,46 +121,32 @@ colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
 print("Environment setup completed")
 ```
-## Data Loading and Integration
-
-```{r load_data}
-message("Loading overexpression and control datasets...")
-
-# Load the new DESeq2 file
-load(file.path(PATHS$data_dir, "rnaseq_yap_taz_OE.RData"))
+```{r Load the counts data, echo = FALSE}
+#loading the new DESeq2 file
+load("~/workspace/neuroblastoma/data/RNAseq/rnaseq_yap_taz_OE.RData")
 new_dds_assay <- as.data.frame(counts(dds))
 new_dds_assay$names_of_rows <- row.names(new_dds_assay)
 rm(dds)
 
-# Load wildtype control data
-wt_dds <- readRDS(file.path(PATHS$data_dir, "rnaseq_deseq_global_deseq_data_set.rds"))
+wt_dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/rnaseq_deseq_global_deseq_data_set.rds")
 wt_dds_assay <- as.data.frame(counts(wt_dds))
 wt_dds_assay$names_of_rows <- row.names(wt_dds_assay)
 rm(wt_dds)
 
-# Combine datasets with data cleaning
-combined_counts <- merge.data.frame(
-  new_dds_assay, 
-  wt_dds_assay, 
-  by = "names_of_rows"
-) %>%
+combined_counts <- merge.data.frame(new_dds_assay, 
+                                    wt_dds_assay, 
+                                    by = "names_of_rows") %>%
   select(-str_subset(colnames(.), "^NB*")) %>%
   rename_with(~ gsub("CLBM", "CM", .x), matches("CLBM"))
-
 row.names(combined_counts) <- combined_counts$names_of_rows
 combined_counts <- select(combined_counts, -names_of_rows)
 
-message("Combined dataset dimensions: ", nrow(combined_counts), " genes x ", ncol(combined_counts), " samples")
-
-# Create comprehensive sample metadata
-combined_counts_col_data <- tibble(sample_name = colnames(combined_counts)) %>%
-  mutate(
-    cell_line = case_when(
-      str_detect(sample_name, "CM") ~ "CM",
-      str_detect(sample_name, "SH") ~ "SH",
-      TRUE ~ "Unknown"
-    ),
-    exp_type = case_when(
+combined_counts_col_data <- data_frame(sample_name = colnames(combined_counts))
+combined_counts_col_data$cell_line <- case_when(
+  str_detect(combined_counts_col_data$sample_name, "CM") ~ "CM",
+  str_detect(combined_counts_col_data$sample_name, "SH") ~ "SH"
+)
+combined_counts_col_data$exp_type <- case_when(
   str_detect(combined_counts_col_data$sample_name, "(WWTR1)|(YAP1)") ~ "OE",
   TRUE ~ "EV"
 )
@@ -182,7 +170,7 @@ dds <- DESeqDataSetFromMatrix(countData = combined_counts,
                               design = ~cell_line + exp_type + cell_line:exp_type)
 dds <- filterDatasets(dds, 
                       abs_filt = TRUE, 
-                      abs_filt_samples = param_list$abs_filt_samples)
+                      abs_filt_samples = config$filtering$abs_filt_samples)
 ```
 
 ```{r Make PCA plot and do Batch correction}
@@ -245,7 +233,7 @@ sig_list_our_data <- list(
 
 # prepare vsd
 vsd_counts_matrix <- assay(vsd)
-row.names(vsd_counts_matrix) <- annotationData[, 'gene_symbol'][match(row.names(vsd_counts_matrix), annotationData[, 'ensembl_id'])]
+row.names(vsd_counts_matrix) <- annotation_data[, 'gene_symbol'][match(row.names(vsd_counts_matrix), annotation_data[, 'ensembl_id'])]
 
 # Plot the Groeningen terms
 ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
@@ -283,5 +271,3 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
 ssgsea_mes_adr_ncc_noradr_heatmap
 #dev.off()
 ```
-
-
