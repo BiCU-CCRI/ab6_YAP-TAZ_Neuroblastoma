@@ -254,7 +254,7 @@ tmp_pca_deg <- generatePCA(
   ntop_genes = 1000
 ) + ggtitle("PCA plot for dox doxTDI DMSO TDI WWTR1 only")
 ggsave(
-  filename = paste0(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO.pdf"),
+  filename = file.path(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO.pdf"),
   plot = tmp_pca_deg,
   width = 20, height = 20, units = "cm"
 )
@@ -304,7 +304,7 @@ for(gene_set_to_plot_name in names(gene_set_list)){
  plot(p)
   
   ggsave(
-    filename = paste0(PATHS$results_dir, "TDI_vs_DMSO_fgsea_", gene_set_to_plot_name, ".pdf"),
+    filename = file.path(PATHS$results_dir, paste0("TDI_vs_DMSO_fgsea_", gene_set_to_plot_name, ".pdf")),
     plot = p,
     width = 20, height = 20, units = "cm"
   )
@@ -340,7 +340,7 @@ for(gene_set_to_plot_name in names(gene_set_list)){
   plot(p)
   
   ggsave(
-    filename = paste0(PATHS$results_dir, "doxTDI_vs_dox_fgsea_", gene_set_to_plot_name, ".pdf"),
+    filename = file.path(PATHS$results_dir, paste0("doxTDI_vs_dox_fgsea_", gene_set_to_plot_name, ".pdf")),
     plot = p,
     width = 20, height = 20, units = "cm"
   )
@@ -420,7 +420,7 @@ tmp_pca_deg <- generatePCA(
 ggtitle("dox tdi dox/tdi dmso experiment + OG samples. NOT batch corrected") 
 
 ggsave(
-  filename = paste0(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs.pdf"),
+  filename = file.path(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs.pdf"),
   plot = tmp_pca_deg,
   width = 20, height = 20, units = "cm"
 )
@@ -438,7 +438,7 @@ pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_e
   ggtitle("dox tdi dox/tdi dmso experiment + OG samples. batch corrected") 
 
 ggsave(
-  filename = paste0(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs_batch_corrected.pdf"),
+  filename = file.path(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs_batch_corrected.pdf"),
   plot = pca_deg_NObatch_experiment,
   width = 20, height = 20, units = "cm"
 )
