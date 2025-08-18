@@ -59,7 +59,8 @@ config <- list(
 PATHS <- list(
   data_dir = here::here("neuroblastoma", "data", "RNAseq"),
   results_dir = here::here("neuroblastoma", "results", "RNA-seq_yap_taz_inhibition"),
-  resources_dir = here::here("neuroblastoma", "resources")
+  resources_dir = here::here("neuroblastoma", "resources"),
+  cache_dir = here::here("neuroblastoma", "cache")
 )
 
 print("Configuration loaded successfully")
@@ -217,11 +218,9 @@ produce_GSEA_plots <- function(gene_signature, dds_object, additional_title, pat
 }
 ```
 
-
-```
-
 ```{r setup_environment}
 if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
+if(!dir.exists(PATHS$cache_dir)) dir.create(PATHS$cache_dir, recursive = TRUE)
 
 print("Environment setup completed")
 ```
@@ -269,7 +268,7 @@ sig_list_our_data <- list(
 # Adding strict filter
 RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 3)
 mes_adrn_gene_list_strict <- RNA_SEQ_data %>%
-  filter(padj < param_list$padj_cutoff) %>% 
+  filter(padj < config$statistical$padj_cutoff) %>% 
   mutate(Term = case_when(
     FoldChange < -10 ~ "ADRN",
     FoldChange >  10 ~ "MES",
@@ -317,7 +316,7 @@ design(dds) <- as.formula("~ cell_line + timepoint")
 
 dds <- filterDatasets(dds,
                       abs_filt = TRUE,
-                      abs_filt_samples = param_list$abs_filt_samples)
+                      abs_filt_samples = config$filtering$abs_filt_samples)
 dds <- DESeq2::estimateSizeFactors(dds)
 dds <- DESeq2::DESeq(dds)
 
@@ -356,85 +355,59 @@ pca_deg_NObatch_experiment
 ```
 
 
-## 24h vs Control Analysis
-
-```{r analysis_24h_vs_control}
-message("Running 24h vs control analysis...")
-
-# Check available contrasts
-message("Available contrasts: ", paste(resultsNames(dds), collapse = ", "))
-
-# Generate differential expression results
-deg_results_24h <- generateResults(
+```{r 24H vs control, include=FALSE}
+resultsNames(dds)
+deg_results <- generateResults(
   dds_object = dds,
   coeff_name = "timepoint_24h_vs_control",
   cond_numerator = "24h",
   cond_denominator = "control",
   cond_variable = "timepoint",
-  ensemblAnnot = annotation_data,
+  ensemblAnnot = annotationData,
   log2FC_cutoff = config$statistical$log2FC_cutoff
 )
 
-# Validate results
-stat_validation_24h <- validate_statistical_results(
-  deg_results_24h$results_all, 
-  config$statistical$padj_cutoff
+XLSX_OUT <- createWorkbook()
+addWorksheet(XLSX_OUT, "results_signif")
+addWorksheet(XLSX_OUT, "de_details")
+addWorksheet(XLSX_OUT, "results_all")
+
+writeData(XLSX_OUT, x = deg_results$results_signif, sheet = "results_signif")
+writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
+writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
+
+saveWorkbook(XLSX_OUT, 
+             file.path(PATHS$results_dir, "cell_type_24h_vs_control.xlsx"),
+             overwrite = TRUE)
+
+# VOLCANO PLOT 24h
+genes_to_highlight <- c(
+  "VIM",
+  "YAP1",
+  "WWTR1",
+  "JUN",
+  "FOSL1",
+  "FOSL2",
+  "PHOX2B",
+  "HAND2",
+  "GATA3"
 )
-
-# Export results
-xlsx_out <- createWorkbook()
-addWorksheet(xlsx_out, "Summary")
-addWorksheet(xlsx_out, "Significant_DEGs")
-addWorksheet(xlsx_out, "DE_Details")
-addWorksheet(xlsx_out, "All_Results")
-
-# Create summary
-summary_24h <- generate_analysis_summary(deg_results_24h)
-summary_df <- data.frame(
-  Metric = names(summary_24h),
-  Value = unlist(summary_24h),
-  stringsAsFactors = FALSE
-)
-
-writeData(xlsx_out, "Summary", summary_df)
-writeData(xlsx_out, "Significant_DEGs", deg_results_24h$results_signif)
-writeData(xlsx_out, "DE_Details", deg_results_24h$de_details)
-writeData(xlsx_out, "All_Results", deg_results_24h$results_all)
-
-saveWorkbook(
-  xlsx_out, 
-  file.path(PATHS$results_dir, "cell_type_24h_vs_control.xlsx"),
-  overwrite = TRUE
-)
-
-# Create enhanced volcano plot
-volcano_plot_24h <- create_enhanced_volcano(
-  results = deg_results_24h$results_all,
-  genes_highlight = c("VIM", "YAP1", "WWTR1", "JUN", "FOSL1", "FOSL2", "PHOX2B", "HAND2", "GATA3"),
-  title = "24h vs Control: YAP/TAZ Inhibition",
+volcano_plot <- plotVolcano(
+  dds_results_obj = deg_results$results_all, 
+  log2FC_cutoff = config$statistical$log2FC_cutoff,
   padj_cutoff = config$statistical$padj_cutoff,
-  lfc_cutoff = config$statistical$log2FC_cutoff
+  genes_of_interest = genes_to_highlight,
+  plot_title = "24H vs control"
 )
-# Save volcano plot
-safe_save_plot(
-  volcano_plot_24h,
-  file.path(PATHS$results_dir, "plots", "volcano_24h_vs_control.png"),
-  width = config$visualization$plot_width,
-  height = config$visualization$plot_height,
-  units = config$visualization$plot_units
+ggsave(
+  filename = paste0(PATHS$results_dir, "24H_vs_control_volcano_plot.png"),
+  plot = volcano_plot,
+  width = 20, height = 20, units = "cm"
 )
 
-```
-
-### Visualization and Heatmaps
-
-```{r visualization_24h}
-# Display volcano plot
-print(volcano_plot_24h)
-
-# Prepare data for heatmaps
+# Prepare data for heatmaps 24H
 metadata_heatmap <- as.data.frame(colData(dds))
-dds_signif <- deg_results_24h$results_signif
+dds_signif <- deg_results$results_signif
 
 heatmap_counts <- SummarizedExperiment::assay(vsd)
 heatmap_counts <- SummarizedExperiment::assay(transf_batch_NObatch_experiment_count)
@@ -478,13 +451,13 @@ dwn_deg_results <- deg_results$results_signif %>% dplyr::filter(log2FoldChange <
 produce_GSEA_plots(gene_signature = dwn_deg_results, 
                    dds_object = dds, 
                    additional_title = "24h vs control downregulated", 
-                   path_to_pdf_report = deg_dir)
+                   path_to_pdf_report = PATHS$results_dir)
 
 # Produce fGSEA
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = gene_set_list,
            title_prefix = deg_results$de_details$test, 
-           save_dir = deg_dir, 
+           save_dir = PATHS$results_dir, 
            maxSize = 3000,
            figure_extention = ".pdf"
 )
@@ -492,7 +465,7 @@ plot_fGSEA(deg_results = deg_results$results_all,
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = sig_list_our_data,
            title_prefix = deg_results$de_details$test, 
-           save_dir = deg_dir, 
+           save_dir = PATHS$results_dir, 
            maxSize = 3000,
            figure_extention = ".pdf"
 )
@@ -500,7 +473,7 @@ plot_fGSEA(deg_results = deg_results$results_all,
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = sig_list_our_data_strict,
            title_prefix = deg_results$de_details$test, 
-           save_dir = deg_dir, 
+           save_dir = PATHS$results_dir, 
            maxSize = 3000,
            figure_extention = ".pdf"
 )
@@ -508,7 +481,7 @@ plot_fGSEA(deg_results = deg_results$results_all,
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = sig_list_groeningen,
            title_prefix = deg_results$de_details$test, 
-           save_dir = deg_dir, 
+           save_dir = PATHS$results_dir, 
            maxSize = 3000,
            figure_extention = ".pdf"
 )
@@ -523,7 +496,7 @@ deg_results <- generateResults(
   cond_denominator = "control",
   cond_variable = "timepoint",
   ensemblAnnot = annotationData,
-  log2FC_cutoff = param_list$log2FC_cutoff
+  log2FC_cutoff = config$statistical$log2FC_cutoff
 )
 
 XLSX_OUT <- createWorkbook()
@@ -536,7 +509,7 @@ writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
 writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
 
 saveWorkbook(XLSX_OUT, 
-             file.path(deg_dir, "cell_type_48h_vs_control.xlsx"),
+             file.path(PATHS$results_dir, "cell_type_48h_vs_control.xlsx"),
              overwrite = TRUE)
 
 # VOLCANO PLOT 48h
@@ -553,13 +526,13 @@ genes_to_highlight <- c(
 )
 volcano_plot <- plotVolcano(
   dds_results_obj = deg_results$results_all, 
-  log2FC_cutoff = param_list$log2FC_cutoff,
-  padj_cutoff = param_list$padj_cutoff,
+  log2FC_cutoff = config$statistical$log2FC_cutoff,
+  padj_cutoff = config$statistical$padj_cutoff,
   genes_of_interest = genes_to_highlight,
   plot_title = "48H vs control"
 )
 ggsave(
-  filename = paste0(deg_dir, "48H_vs_control_volcano_plot.png"),
+  filename = paste0(PATHS$results_dir, "48H_vs_control_volcano_plot.png"),
   plot = volcano_plot,
   width = 20, height = 20, units = "cm"
 )
@@ -611,12 +584,12 @@ dwn_deg_results <- deg_results$results_signif %>% dplyr::filter(log2FoldChange <
 produce_GSEA_plots(gene_signature = dwn_deg_results, 
                    dds_object = dds, 
                    additional_title = "48h vs control downregulated", 
-                   path_to_pdf_report = deg_dir)
+                   path_to_pdf_report = PATHS$results_dir)
 
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = gene_set_list,
            title_prefix = deg_results$de_details$test, 
-           save_dir = deg_dir, 
+           save_dir = PATHS$results_dir, 
            maxSize = 3000,
            figure_extention = ".pdf"
            )
@@ -624,7 +597,7 @@ plot_fGSEA(deg_results = deg_results$results_all,
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = sig_list_our_data,
            title_prefix = deg_results$de_details$test, 
-           save_dir = deg_dir, 
+           save_dir =  PATHS$results_dir, 
            maxSize = 3000,
            figure_extention = ".pdf"
 )
@@ -632,7 +605,7 @@ plot_fGSEA(deg_results = deg_results$results_all,
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = sig_list_our_data_strict,
            title_prefix = deg_results$de_details$test, 
-           save_dir = deg_dir, 
+           save_dir =  PATHS$results_dir, 
            maxSize = 3000,
            figure_extention = ".pdf"
 )
@@ -640,7 +613,7 @@ plot_fGSEA(deg_results = deg_results$results_all,
 plot_fGSEA(deg_results = deg_results$results_all, 
            gene_set_list = sig_list_groeningen,
            title_prefix = deg_results$de_details$test, 
-           save_dir = deg_dir, 
+           save_dir =  PATHS$results_dir, 
            maxSize = 3000,
            figure_extention = ".pdf"
 )
@@ -680,7 +653,7 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         show_colnames = TRUE)
 
 ggsave(
-  filename = paste0(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"),
+  filename = paste0(PATHS$results_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"),
   plot = ssgsea_mes_adr_ncc_noradr_heatmap,
   width = 20, height = 10, units = "cm"
 )
@@ -699,7 +672,7 @@ ssgsea_mes_adr_ncc_noradr_heatmap_MES <- pheatmap::pheatmap(ssgsea_mes_adr_celli
                                                         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
                                                         show_colnames = TRUE)
 ggsave(
-  filename = paste0(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ_MES.pdf"),
+  filename = paste0(PATHS$results_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ_MES.pdf"),
   plot = ssgsea_mes_adr_ncc_noradr_heatmap_MES,
   width = 20, height = 10, units = "cm"
 )
@@ -717,7 +690,7 @@ ssgsea_mes_adr_ncc_noradr_heatmap_ADR <- pheatmap::pheatmap(ssgsea_mes_adr_celli
                                                             color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
                                                             show_colnames = TRUE)
 ggsave(
-  filename = paste0(deg_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ_ADR.pdf"),
+  filename = paste0(PATHS$results_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ_ADR.pdf"),
   plot = ssgsea_mes_adr_ncc_noradr_heatmap_ADR,
   width = 20, height = 10, units = "cm"
 )
@@ -757,7 +730,7 @@ for (cell_line_name in c("CM", "SH")){
   
   dds_cell_line_subset <- filterDatasets(dds_cell_line_subset, 
                                          abs_filt = TRUE, 
-                                         abs_filt_samples = param_list$abs_filt_samples)
+                                         abs_filt_samples = config$filtering$abs_filt_samples)
   dds_cell_line_subset <- DESeq2::estimateSizeFactors(dds_cell_line_subset)
   dds_cell_line_subset <- DESeq2::DESeq(dds_cell_line_subset)
   
@@ -775,7 +748,7 @@ for (cell_line_name in c("CM", "SH")){
       cond_denominator = cond_denominator,
       cond_variable = "comparison_group",
       ensemblAnnot = annotationData,
-      log2FC_cutoff = param_list$log2FC_cutoff
+      log2FC_cutoff = config$statistical$log2FC_cutoff
     )
     
     XLSX_OUT <- createWorkbook()
@@ -786,7 +759,7 @@ for (cell_line_name in c("CM", "SH")){
     writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
     writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
     saveWorkbook(XLSX_OUT, 
-                 file.path(deg_dir, paste0(comparison_name, "_", ".xlsx")),
+                 file.path(PATHS$results_dir, paste0(comparison_name, "_", ".xlsx")),
                  overwrite = TRUE)
     
     # VOLCANO PLOT 
@@ -812,7 +785,7 @@ for (cell_line_name in c("CM", "SH")){
       scale_x_continuous(limits = c(-5, 7.5)) +
       scale_y_continuous(limits = c(-5, 320))
     ggsave(
-      filename = paste0(deg_dir, paste0(comparison_name, "_more_highlited_genes.pdf")),
+      filename = paste0(PATHS$results_dir, paste0(comparison_name, "_more_highlited_genes.pdf")),
       plot = volcano_plot,
       width = 20, height = 20, units = "cm"
     )
@@ -833,7 +806,7 @@ for (cell_line_name in c("CM", "SH")){
       scale_x_continuous(limits = c(-5, 7.5)) +
       scale_y_continuous(limits = c(-5, 320))
     ggsave(
-      filename = paste0(deg_dir, paste0(comparison_name, "_less_highlited_genes.pdf")),
+      filename = paste0(PATHS$results_dir, paste0(comparison_name, "_less_highlited_genes.pdf")),
       plot = volcano_plot,
       width = 20, height = 20, units = "cm"
     )
