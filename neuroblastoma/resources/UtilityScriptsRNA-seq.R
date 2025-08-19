@@ -201,8 +201,8 @@ generateResults <- function(dds_object=NULL,
                   gene_biotype,  location,
                   starts_with(paste0(cond_denominator,"-")), starts_with(paste0(cond_numerator,"-"))) %>% # everything() - other columns not mentioned; starts_with(paste0(cond_denominator,"_S") may not work if other references names dont follow with _S
     #%>% # everything() - other columns not mentioned; starts_with(paste0(cond_denominator,"_S") may not work if other references names dont follow with _S
-    dplyr::rename_at(., .vars = "MeanExpr_numerator", .funs = funs(gsub("numerator", "", paste0("MeanExpr_", cond_numerator)))) %>% # find better way of renaming!  
-    dplyr::rename_at(., .vars = "MeanExpr_denominator", .funs = funs(gsub("denominator", "", paste0("MeanExpr_", cond_denominator))))
+    dplyr::rename_with(.fn = ~ gsub("numerator", "", paste0("MeanExpr_", cond_numerator)), .cols = "MeanExpr_numerator") %>% # find better way of renaming!  
+    dplyr::rename_with(.fn = ~ gsub("denominator", "", paste0("MeanExpr_", cond_denominator)), .cols = "MeanExpr_denominator")
   
   results_data_annot_signif <- results_data_annot %>%
     dplyr::filter((!is.na(padj) & (padj < padj_cutoff)) & abs(log2FoldChange) > log2FC_cutoff)
