@@ -298,7 +298,7 @@ heatmap2
 heatmap3
 ```
 
-Results are exported to pdf file
+Results are exported to a pdf file
 ```{r Genomic features enrichment}
 ## Genomic features enrichment lolipop plot ######
 # use HOMER's output
@@ -946,7 +946,8 @@ plot
 contingency_table <- matrix(c(length(MES_AP1_TEAD_overlaps), length(MES_TEAD) + length(MES_AP1) - length(MES_AP1_TEAD_overlaps), 
                               length(ADR_AP1_TEAD_overlaps), length(ADR_TEAD) + length(ADR_AP1) - length(ADR_AP1_TEAD_overlaps)
                               ), nrow=2, byrow=TRUE)
-fisher_results <- fisher.test(contingency_table, alternative="two.sided")
+fisher_results <- fisher.test(contingency_table, 
+                              alternative = "two.sided")
 fisher_summary_table <- data.table::data.table(comparison = "MES_vs_ADR",
                                                pval = fisher_results$p.value,
                                                odds_ratio = fisher_results$estimate)

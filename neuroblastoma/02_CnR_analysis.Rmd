@@ -135,6 +135,8 @@ for (target_prot in unique(samples$Factor)) {
   DBobj_list_cons[[target_prot]] <- dba.peakset(dfbobj, bRetrieve = TRUE)
 }
 
+# Added on 18.08.25 - remove all non-canonical chromosomes
+
 ```
 
 Check feature distribution for H3K27ac, H3K4me1, Jun, TAZ, YAP. 
