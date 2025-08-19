@@ -322,9 +322,7 @@ ATAC_dds_results$results_signif %>%
               col.names = FALSE)
 
 # run homer annotation
-# TODO
-# FIXIT homer not being possible to run
-#system("bash ~/workspace/neuroblastoma/02_HOMER_diff_peaks_annotation.sh")
+system("bash ~/workspace/neuroblastoma/02_HOMER_diff_peaks_annotation.sh")
 
 ATAC_genome_ADR <- read.delim2("~/workspace/neuroblastoma/results/ATAC-seq/ATAC_genome_states_dataframe_ADR.csv", 
                                sep="\t", 
