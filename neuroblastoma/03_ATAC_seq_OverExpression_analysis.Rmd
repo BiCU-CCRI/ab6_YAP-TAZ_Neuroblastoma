@@ -112,7 +112,6 @@ parsed <- parsed %>% filter(!is.na(V1))
 parsed <- rbind(parsed, c("SH_M_ATAC_S131295_REP1", "SH_M", "NO", "REP1", "old"))
 parsed <- rbind(parsed, c("SH_A_ATAC_S131296_REP1", "SH_A", "NO", "REP1", "old"))
 
-
 # Create a tidy data frame
 parsed_df <- data.frame(
   genotype  = parsed[, 2],
