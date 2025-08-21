@@ -1,6 +1,27 @@
-```{r}
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+---
+title: "ATAC-seq Overexpression of WWTR1 analysis "
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
+```
+
+```{r setup-libraries}
 # OE ATAC-seq analysis
 ## Loading libraries ####
 library(dplyr)
@@ -33,7 +54,7 @@ import::from(
 )
 ```
 
-```{r}
+```{r setup-environment}
 # BugFix - JASPAR2022 cannot be pulled from the web automatically, so it need to be loaded manually
 download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022.sqlite",
               destfile = "/home/rstudio/.cache/R/JASPAR2022.sqlite")
@@ -43,9 +64,9 @@ JASPAR2022 <-  "/home/rstudio/.cache/R/JASPAR2022.sqlite"
 deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_OE/"
 ```
 
-```{r}
+```{r load-atac-data}
 # Analysis part ###########################################################################
-# Assembling the metadata to a DESeq2 object
+# Load and prepare ATAC-seq data
 # We use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
 tmp_dir <- "~/workspace/neuroblastoma/data/ATACseq/new/"
 path_to_the_ATAC_counts_data <- file.path(tmp_dir, "consensus_peaks.mLb.clN.rds")
@@ -58,24 +79,25 @@ ATAC_annotation_data <- ATAC_annotation_data %>%
   mutate(PeakId = factor(PeakId, levels = row.names(ATAC_counts_data))) %>%
   arrange(PeakId)
 
-#remove Scaffolds chrs
+# remove Scaffolds chromosomes
 ATAC_annotation_data <- ATAC_annotation_data[ATAC_annotation_data$Chr %in% c(1:22, "X", "Y"), ]
 ATAC_counts_data <- ATAC_counts_data[rownames(ATAC_counts_data) %in% ATAC_annotation_data$PeakId, ]
 
-#add ranges
+# Add ranges
 rowRanges(ATAC_counts_data) <- GenomicRanges::GRanges(seqnames = paste0("chr", ATAC_annotation_data$Chr), 
                                                       ranges = IRanges::IRanges(start = ATAC_annotation_data$Start, 
-                                                                                end = ATAC_annotation_data$End
-                                                      )
-)
-mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), ATAC_annotation_data)
+                                                                                end = ATAC_annotation_data$End))
+mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), 
+                                     ATAC_annotation_data)
 ```
 
 
-```{r}
-# Drug treatment subset
+```{r subset-overexpression-samples}
+# Subset to overexpression samples and control knockdown samples
+# Extract sample information and create metadata for differential analysis
 samples_to_subset <- colData(ATAC_counts_data)$sample
-samples_to_subset <- samples_to_subset[grep(samples_to_subset, pattern = "^(OE_WWTR1_)|(SH_A_)|(SH_M_).*" )]
+samples_to_subset <- samples_to_subset[grep(samples_to_subset, 
+                                            pattern = "^(OE_WWTR1_)|(SH_A_)|(SH_M_).*" )]
 
 OE_ATAC <- ATAC_counts_data[, colData(ATAC_counts_data)$sample %in% samples_to_subset]
 
@@ -105,8 +127,7 @@ colData(OE_ATAC)$genotype <- factor(colData(OE_ATAC)$genotype, levels = c("WWTR1
 colData(OE_ATAC)$treatment <- factor(colData(OE_ATAC)$treatment )
 design(OE_ATAC) <- as.formula("~ treatment")
 
-
-OE_ATAC@rowRanges@elementMetadata@listData[["PeakId"]]
+#OE_ATAC@rowRanges@elementMetadata@listData[["PeakId"]]
 
 RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
 RNA_SEQ_data <- RNA_SEQ_data %>%
@@ -124,9 +145,8 @@ mcols(OE_ATAC)$is_promoter_3kb <- FALSE
 mcols(OE_ATAC)$is_promoter_3kb[abs(mcols(OE_ATAC)$Distance.to.TSS) <= 3000] <- TRUE
 
 OE_ATAC <- filterDatasets(OE_ATAC,
-                                abs_filt = TRUE,
-                                abs_filt_samples = 2
-)
+                          abs_filt = TRUE,
+                          abs_filt_samples = 2)
 
 OE_ATAC <- estimateSizeFactors(OE_ATAC)
 OE_ATAC <- DESeq(OE_ATAC)
@@ -134,10 +154,11 @@ vsd <- vst(OE_ATAC, blind = F)
 ```
 
 
-```{r}
-# plot full ATAC-seq PCA
+```{r pca-analysis}
+# Perform differential accessibility analysis and generate PCA plots
+# First filter low-count peaks, then run DESeq2 normalization and transformation
 # remove replicate 2
-pca_dar <- generatePCA(transf_object = vsd[ ,vsd$replicate == "REP1"], 
+pca_dar <- generatePCA(transf_object = vsd[, vsd$replicate == "REP1"], 
                        cond_interest_varPart = c("treatment", "genotype"), 
                        color_variable = "treatment", 
                        shape_variable = "genotype",
@@ -147,22 +168,25 @@ pca_dar
 
 # Batch correction
 transf_batch_NObatch_experiment <- vsd[, vsd$replicate == "REP1"]
-transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(SummarizedExperiment::assay(transf_batch_NObatch_experiment),
-                                                                  transf_batch_NObatch_experiment$experiment)
+transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(
+  SummarizedExperiment::assay(transf_batch_NObatch_experiment),
+  transf_batch_NObatch_experiment$experiment)
 SummarizedExperiment::assay(transf_batch_NObatch_experiment) <- transf_batch_NObatch_experiment_count
 pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_experiment, 
-                                                cond_interest_varPart = c("treatment", "genotype"), 
-                                                color_variable = "treatment", 
-                                                shape_variable = "genotype",
-                                                ntop_genes = 1000) +
+                                          cond_interest_varPart = c("treatment", "genotype"), 
+                                          color_variable = "treatment", 
+                                          shape_variable = "genotype",
+                                          ntop_genes = 1000) +
   ggtitle("OE data + old ADNR and MES samples batch corrected") 
 pca_deg_NObatch_experiment
 
 ```
 
 
-```{r}
-######## Analysis of motifs
+```{r chromvar-motif-analysis}
+# ChromVAR motif enrichment analysis
+# Identify transcription factor motifs that are differentially accessible
+# between overexpression conditions
 opts <- list()
 opts[["tax_group"]] <- "vertebrates"
 opts[["species"]] <- "9606"
@@ -170,9 +194,8 @@ opts[["collection"]] <- "CORE"
 opts[["all_versions"]] <- FALSE
 motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
 
+# Filter peaks with low read counts across samples
 # Using different subsets of peaks to check 
-subsets_to_run <- c("ALL")
-
 sbst <-  c("ALL")
 # here we check if there are any peaks that have less than 5 reads across all samples.
 dim(OE_ATAC)
@@ -182,17 +205,10 @@ dim(counts_consensus_filt)
 print(paste("procesing: ", sbst ))
 
 # ChromVar package uses GC content to identify background peaks that are likely to be non-functional and exclude them from further analysis. 
-# This is because GC-rich regions tend to have higher nucleosome occupancy and lower DNase I hypersensitivity, 
-# which are indicators of closed chromatin and reduced accessibility to transcription factors.
-# By identifying and removing background peaks that are likely to be non-functional, 
-# ChromVar is able to focus on the regulatory regions that are most likely to be involved in transcriptional regulation. 
-# This increases the sensitivity and specificity of the analysis and helps to avoid false positive results.
-# Therefore, GC content is an important parameter to consider when working with the ChromVar package.
-counts_consensus_filt <- chromVAR::addGCBias(counts_consensus_filt, genome = BSgenome.Hsapiens.UCSC.hg38) 
+counts_consensus_filt <- chromVAR::addGCBias(counts_consensus_filt,
+                                             genome = BSgenome.Hsapiens.UCSC.hg38) 
 
 # Having corrected for bias, we can use the matchMotifs function to identify motifs under our ATACseq peaks.
-# Here we supply our RangedSummarizedExperiment of counts in peaks and the genome of interest to the matchMotifs function and use the default out of matches.
-
 motif_matches <- motifmatchr::matchMotifs(pwms = motifsToScan, 
                                           subject = counts_consensus_filt, 
                                           genome = BSgenome.Hsapiens.UCSC.hg38, 
@@ -204,13 +220,6 @@ set.seed(42069)
 
 # Run chromVar ----
 #Following the identification of motifs in our peaks, we can perform the summarization of ATACseq signal to motifs using the computeDeviations and the computeVariability functions.
-
-#The function computeDeviations will use a set of background peaks for normalizing the deviation scores. 
-#This computation is done internally by default and not returned – to have greater control over this step, 
-#a user can run the getBackgroundPeaks function themselves and pass the result to computeDeviations under the background_peaks parameter.
-#Background peaks are peaks that are similar to a peak in GC content and average accessibility
-#The result from getBackgroundPeaks is a matrix of indices, where each column represents the index of the peak that is a background peak.
-
 background_peaks <- chromVAR::getBackgroundPeaks(object = counts_consensus_filt) 
 access_expectation <- chromVAR::computeExpectations(object = counts_consensus_filt)
 chrom_access_deviations <- chromVAR::computeDeviations(object = counts_consensus_filt, 
@@ -218,25 +227,32 @@ chrom_access_deviations <- chromVAR::computeDeviations(object = counts_consensus
                                                        background_peaks = background_peaks,
                                                        expectation = access_expectation)
 
-# we can check the correlation of samples
+# Generate sample correlation heatmap to assess data quality
 sample_cor <- chromVAR::getSampleCorrelation(chrom_access_deviations)
 annotation_row_sampleCor <- as.data.frame(SummarizedExperiment::colData(chrom_access_deviations)) %>%
   dplyr::select(sample)
 pheatmap::pheatmap(as.dist(sample_cor), 
                    annotation_row = annotation_row_sampleCor, 
                    clustering_distance_rows = as.dist(1-sample_cor), 
-                   clustering_distance_cols = as.dist(1-sample_cor),  annotation_names_row = TRUE, 
-) 
+                   clustering_distance_cols = as.dist(1-sample_cor),  
+                   annotation_names_row = TRUE) 
 
-#checkign the clusterrization using tSNE
-tsne_results <- chromVAR::deviationsTsne(chrom_access_deviations, threshold = 1.5, perplexity = 8, 
-                                         what = "samples", shiny = FALSE)
+# Perform t-SNE dimensionality reduction for sample clustering visualization
+tsne_results <- chromVAR::deviationsTsne(chrom_access_deviations, 
+                                         threshold = 1.5, 
+                                         perplexity = 8, 
+                                         what = "samples", 
+                                         shiny = FALSE)
 
-tsne_plots <- chromVAR::plotDeviationsTsne(chrom_access_deviations, tsne_results,
-                                           sample_column = "sample", shiny = FALSE)
+tsne_plots <- chromVAR::plotDeviationsTsne(chrom_access_deviations, 
+                                           tsne_results,
+                                           sample_column = "sample", 
+                                           shiny = FALSE)
 tsne_plots
 
-diff_acc <- chromVAR::differentialDeviations(chrom_access_deviations, groups="treatment", parametric = FALSE)
+diff_acc <- chromVAR::differentialDeviations(chrom_access_deviations, 
+                                             groups="treatment", 
+                                             parametric = FALSE)
 motif_annot <- as.data.frame(SummarizedExperiment::rowData(chrom_access_deviations)) %>%
   tibble::rownames_to_column(var = "motif") %>%
   dplyr::select(motif, name)
@@ -245,7 +261,9 @@ diff_acc_annot <- diff_acc %>%
   dplyr::left_join(., motif_annot, by = "motif")
 head(diff_acc_annot) 
 
-diff_var <- chromVAR::differentialVariability(chrom_access_deviations, "treatment", parametric = FALSE)
+diff_var <- chromVAR::differentialVariability(chrom_access_deviations,
+                                              "treatment",
+                                              parametric = FALSE)
 diff_var_annot <- diff_var %>%
   tibble::rownames_to_column(var = "motif") %>%
   dplyr::left_join(., motif_annot, by = "motif")
@@ -258,7 +276,8 @@ devZscores_df <- tibble::rownames_to_column(as.data.frame(devZscores), var="jasp
 # across all cell/samples for a set of peaks), bootstrap confidence intervals for that variability (by resampling cells/samples), 
 # and a p-value for the variability being greater than the null hypothesis of 1.
 chrom_access_variability <- chromVAR::computeVariability(chrom_access_deviations)
-chrom_access_variability_plot <- chromVAR::plotVariability(chrom_access_variability, use_plotly = FALSE)
+chrom_access_variability_plot <- chromVAR::plotVariability(chrom_access_variability,
+                                                           use_plotly = FALSE)
 chrom_access_variability_plot
 
 ggsave(chrom_access_variability_plot, 
@@ -290,8 +309,7 @@ devToPlot <- devTop %>%
                 OE_WWTR1_dox_ATAC_S165177_REP1,
                 OE_WWTR1_dox_TDI_ATAC_S165175_REP1,
                 SH_M_ATAC_S131295_REP1,
-                SH_A_ATAC_S131296_REP1
-  ) %>%
+                SH_A_ATAC_S131296_REP1) %>%
   tibble::column_to_rownames(var = "long_name")
 
 annotCol_forHeatmap <- as.data.frame(colData(OE_ATAC)) %>%
@@ -302,8 +320,6 @@ annotCol_forHeatmap_colors <- list(phenotype = c(dox = "#525252",
                                                  DMSO = "green", 
                                                  dox_TDI = "yellow", 
                                                  NO = "pink"))
-
-
 
 color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
 
@@ -329,7 +345,7 @@ ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_OE_DMSO_TDI_dox_T
        plot=heatmap,
        width = 18, height = 24, units = "cm")
 
-# REMOVE SH_M and SH_A old samples
+# Generate heatmap without control samples (SH_M and SH_A) to focus on overexpression effects
 devToPlot <- devTop %>%
   dplyr::select(long_name, 
                 OE_WWTR1_DMSO_ATAC_S165172_REP1,
