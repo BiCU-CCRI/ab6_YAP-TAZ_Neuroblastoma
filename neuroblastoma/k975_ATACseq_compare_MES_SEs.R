@@ -2,6 +2,38 @@
 # Analysis of accessibility changes at MES super enhancers after K975 treatment
 # Comparing control vs 24h vs 48h treatment in CM (CLB-Ma) and SH (SK-N-SH) cell lines
 
+## scores_per_transcript are produced by ~/workspace/neuroblastoma/data/ATACseq/bigWigs/multiBigWigSummary.sh
+
+## Additional scores_per_transcript_overlap_with_histone_marks produced by the same file.
+CLB_SKN_Mes_SEs <- read.delim("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_M.bed", header = FALSE)
+CLB_SKN_Mes_H3K27ac <- read.delim("~/workspace/neuroblastoma/data/CnR/peaks/SK-N-SH-A_H3K27ac_R1.macs2_peaks.narrowPeak", header = FALSE)
+
+CLB_SKN_Mes_SEs_grange <- GRanges(seqnames = paste0("chr", CLB_SKN_Mes_SEs$V1), 
+                                  ranges = IRanges(
+                                    start = CLB_SKN_Mes_SEs$V2,
+                                    end = CLB_SKN_Mes_SEs$V3)
+)
+CLB_SKN_Mes_H3K27ac <- GRanges(seqnames = paste0("chr", CLB_SKN_Mes_H3K27ac$V1), 
+                               ranges = IRanges(
+                                 start = CLB_SKN_Mes_H3K27ac$V2,
+                                 end = CLB_SKN_Mes_H3K27ac$V3)
+)
+SEs_H3K27Ac_ovelap <- ChIPpeakAnno::findOverlapsOfPeaks(CLB_SKN_Mes_H3K27ac,CLB_SKN_Mes_SEs_grange)
+SEs_H3K27Ac_ovelap_bed <- SEs_H3K27Ac_ovelap$overlappingPeaks %>% 
+  as.data.frame() %>%
+  dplyr::select(ends_with("seqnames"), ends_with("start"), ends_with("end"))
+colnames(SEs_H3K27Ac_ovelap_bed) <- c("seqmanes", "start", "end")
+SEs_H3K27Ac_ovelap_bed$seqmanes <- sub("chr", "", SEs_H3K27Ac_ovelap_bed$seqmanes)
+
+write.table(SEs_H3K27Ac_ovelap_bed,
+            file = "~/workspace/neuroblastoma/data/ATACseq/bigWigs/CLB_SKN_M_h3K27Ac.bed",
+            sep = "\t",
+            row.names = FALSE,
+            col.names = FALSE, 
+            quote = FALSE)
+
+
+
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -20,10 +52,11 @@ if (!dir.exists(results_dir)) {
   dir.create(results_dir, recursive = TRUE)
 }
 
+# alternative analysis - check scores_per_transcript_clbm_skn_MES_SEs_h3k27ac.tab
 # 1. Load ATAC-seq accessibility scores at super enhancers
 cat("Loading ATAC-seq accessibility scores...\n")
 atac_scores <- read.table(
-  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript.tab"),
+  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_skn_MES_SEs_h3k27ac.tab"),
   header = TRUE,
   sep = "\t",
   stringsAsFactors = FALSE
@@ -131,7 +164,7 @@ if (file.exists(mes_se_file)) {
       atac_index = overlaps_df$queryHits,
       homer_index = overlaps_df$subjectHits,
       coordinates = paste(atac_coord_strings[overlaps_df$queryHits], 
-                         homer_coord_strings[overlaps_df$subjectHits], sep = " <-> "),
+                          homer_coord_strings[overlaps_df$subjectHits], sep = " <-> "),
       stringsAsFactors = FALSE
     )
   }
@@ -275,6 +308,8 @@ for (cell_line in c("CLB_Ma", "SK_N_SH")) {
 
 # Heatmap of accessibility changes
 cat("Creating visualizations...\n")
+
+all_results[is.nan(all_results)] <- 0
 
 # Prepare matrix for heatmap (log2 fold changes)
 heatmap_matrix <- all_results %>%
@@ -479,33 +514,33 @@ if (exists("mes_se") && nrow(mes_se) > 0 && exists("coordinate_mapping")) {
 } else {
   top_affected_annotated <- top_affected
 }
-  
-  write.csv(top_affected_annotated, file.path(results_dir, "K975_top50_affected_SEs_annotated.csv"), row.names = FALSE)
-  
-  # Summary by annotation type
-  if (nrow(top_affected_annotated) > 0) {
-    annot_summary <- top_affected_annotated %>%
-      filter(!is.na(annotation)) %>%
-      mutate(
-        annotation_simple = case_when(
-          grepl("promoter", annotation, ignore.case = TRUE) ~ "Promoter",
-          grepl("intron", annotation, ignore.case = TRUE) ~ "Intronic",
-          grepl("intergenic", annotation, ignore.case = TRUE) ~ "Intergenic",
-          grepl("exon", annotation, ignore.case = TRUE) ~ "Exonic",
-          TRUE ~ "Other"
-        )
-      ) %>%
-      group_by(annotation_simple, cell_line) %>%
-      summarise(
-        count = n(),
-        mean_abs_change = mean(max_abs_change, na.rm = TRUE),
-        .groups = "drop"
+
+write.csv(top_affected_annotated, file.path(results_dir, "K975_top50_affected_SEs_annotated.csv"), row.names = FALSE)
+
+# Summary by annotation type
+if (nrow(top_affected_annotated) > 0) {
+  annot_summary <- top_affected_annotated %>%
+    filter(!is.na(annotation)) %>%
+    mutate(
+      annotation_simple = case_when(
+        grepl("promoter", annotation, ignore.case = TRUE) ~ "Promoter",
+        grepl("intron", annotation, ignore.case = TRUE) ~ "Intronic",
+        grepl("intergenic", annotation, ignore.case = TRUE) ~ "Intergenic",
+        grepl("exon", annotation, ignore.case = TRUE) ~ "Exonic",
+        TRUE ~ "Other"
       )
-    
-    write.csv(annot_summary, file.path(results_dir, "K975_annotation_type_summary.csv"), row.names = FALSE)
-    cat("\nAnnotation type summary for top affected SEs:\n")
-    print(annot_summary)
-  }
+    ) %>%
+    group_by(annotation_simple, cell_line) %>%
+    summarise(
+      count = n(),
+      mean_abs_change = mean(max_abs_change, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  write.csv(annot_summary, file.path(results_dir, "K975_annotation_type_summary.csv"), row.names = FALSE)
+  cat("\nAnnotation type summary for top affected SEs:\n")
+  print(annot_summary)
+}
 } else {
   write.csv(top_affected, file.path(results_dir, "K975_top50_affected_SEs.csv"), row.names = FALSE)
 }
