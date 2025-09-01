@@ -65,9 +65,87 @@ if (file.exists(mes_se_file)) {
   
   cat(sprintf("Loaded %d MES super enhancers with HOMER annotations\n", length(mes_se_gr)))
   cat(sprintf("Annotation types: %s\n", paste(unique(mes_se$Annotation)[1:min(5, length(unique(mes_se$Annotation)))], collapse = ", ")))
+  
+  # COORDINATE VALIDATION CHECK
+  cat("\n=== COORDINATE VALIDATION ===\n")
+  
+  # Create comparable coordinate strings for both datasets
+  atac_coord_strings <- paste(atac_scores$chr, atac_scores$start, atac_scores$end, sep = ":")
+  homer_coord_strings <- paste(mes_se$Chr, mes_se$Start, mes_se$End, sep = ":")
+  
+  # Check for exact matches
+  exact_matches <- intersect(atac_coord_strings, homer_coord_strings)
+  cat(sprintf("Exact coordinate matches: %d out of %d ATAC regions (%d HOMER regions)\n", 
+              length(exact_matches), length(atac_coord_strings), length(homer_coord_strings)))
+  
+  # Check for overlaps using GenomicRanges
+  overlaps <- findOverlaps(atac_coords, mes_se_gr)
+  overlap_count <- length(unique(queryHits(overlaps)))
+  cat(sprintf("Overlapping regions: %d out of %d ATAC regions\n", overlap_count, length(atac_coords)))
+  
+  # Detailed validation
+  if (length(exact_matches) == 0 && overlap_count == 0) {
+    cat("❌ ERROR: No coordinate matches found between ATAC data and HOMER annotations!\n")
+    cat("This suggests the coordinate systems may be different.\n")
+    
+    # Diagnostic information
+    cat("\nDiagnostic information:\n")
+    cat("ATAC coordinates (first 5):\n")
+    print(head(atac_coord_strings, 5))
+    cat("\nHOMER coordinates (first 5):\n")
+    print(head(homer_coord_strings, 5))
+    
+    # Check if chromosome naming is the issue
+    atac_chrs <- unique(atac_scores$chr)
+    homer_chrs <- unique(mes_se$Chr)
+    cat(sprintf("\nATAC chromosomes: %s\n", paste(head(atac_chrs, 10), collapse = ", ")))
+    cat(sprintf("HOMER chromosomes: %s\n", paste(head(homer_chrs, 10), collapse = ", ")))
+    
+    stop("Coordinate validation failed. Please check that ATAC-seq and HOMER annotation files refer to the same genomic regions.")
+    
+  } else if (length(exact_matches) > 0) {
+    cat("✅ VALIDATION PASSED: Found exact coordinate matches\n")
+    cat(sprintf("Match rate: %.1f%% of ATAC regions have exact matches in HOMER annotations\n", 
+                100 * length(exact_matches) / length(atac_coord_strings)))
+    
+    # Create mapping for matched regions
+    atac_matched_idx <- match(exact_matches, atac_coord_strings)
+    homer_matched_idx <- match(exact_matches, homer_coord_strings)
+    
+    coordinate_mapping <- data.frame(
+      atac_index = atac_matched_idx,
+      homer_index = homer_matched_idx,
+      coordinates = exact_matches,
+      stringsAsFactors = FALSE
+    )
+    
+  } else if (overlap_count > 0) {
+    cat("⚠️  PARTIAL MATCH: Found overlapping regions but no exact matches\n")
+    cat("This may indicate slightly different coordinate systems or region boundaries.\n")
+    cat(sprintf("Overlap rate: %.1f%% of ATAC regions overlap with HOMER annotations\n",
+                100 * overlap_count / length(atac_coords)))
+    
+    # Create mapping for overlapping regions
+    overlaps_df <- as.data.frame(overlaps)
+    coordinate_mapping <- data.frame(
+      atac_index = overlaps_df$queryHits,
+      homer_index = overlaps_df$subjectHits,
+      coordinates = paste(atac_coord_strings[overlaps_df$queryHits], 
+                         homer_coord_strings[overlaps_df$subjectHits], sep = " <-> "),
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  # Save coordinate mapping for reference
+  if (exists("coordinate_mapping")) {
+    write.csv(coordinate_mapping, file.path(results_dir, "coordinate_mapping_validation.csv"), row.names = FALSE)
+    cat("Coordinate mapping saved to coordinate_mapping_validation.csv\n")
+  }
+  
 } else {
   cat("MES super enhancer annotation file not found, proceeding with all regions as potential SEs\n")
   mes_se_gr <- atac_coords  # Use all regions if SE annotation not found
+  coordinate_mapping <- NULL
 }
 
 # 3. Prepare data matrix and metadata
@@ -200,11 +278,11 @@ cat("Creating visualizations...\n")
 
 # Prepare matrix for heatmap (log2 fold changes)
 heatmap_matrix <- all_results %>%
-  select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
+  dplyr::select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
   pivot_longer(cols = c(log2fc_24h, log2fc_48h), names_to = "timepoint", values_to = "log2fc") %>%
   unite("condition", cell_line, timepoint, sep = "_") %>%
   pivot_wider(names_from = condition, values_from = log2fc) %>%
-  column_to_rownames("se_id") %>%
+  textshape::column_to_rownames("se_id") %>%
   as.matrix()
 
 # Create heatmap
@@ -214,7 +292,7 @@ pheatmap(
   scale = "none",
   cluster_rows = TRUE,
   cluster_cols = FALSE,
-  color = colorRampPalette(rev(RdBu(100)))(100),
+  #color = colorRampPalette(rev(RdBu(100)))(100),
   breaks = seq(-2, 2, length.out = 101),
   main = "Super Enhancer Accessibility Changes\n(Log2 Fold Change vs Control)",
   fontsize = 10,
@@ -245,7 +323,7 @@ ggsave(file.path(results_dir, "K975_SE_accessibility_scatter.pdf"), p1, width = 
 
 # Box plots showing distribution of changes
 plot_data <- all_results %>%
-  select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
+  dplyr::select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
   pivot_longer(cols = c(log2fc_24h, log2fc_48h), names_to = "timepoint", values_to = "log2fc") %>%
   mutate(
     timepoint = gsub("log2fc_", "", timepoint),
@@ -281,7 +359,7 @@ top_changing_ses <- all_results %>%
 
 # Prepare data for time course plot
 timecourse_data <- top_changing_ses %>%
-  select(se_id, cell_line, control_accessibility, h24_accessibility, h48_accessibility) %>%
+  dplyr::select(se_id, cell_line, control_accessibility, h24_accessibility, h48_accessibility) %>%
   pivot_longer(cols = c(control_accessibility, h24_accessibility, h48_accessibility),
                names_to = "timepoint", values_to = "accessibility") %>%
   mutate(
@@ -345,8 +423,42 @@ top_affected <- all_results %>%
   head(50)
 
 # Add HOMER annotation information to top affected SEs if available
-if (exists("mes_se") && nrow(mes_se) > 0) {
-  # Create lookup table for annotations
+if (exists("mes_se") && nrow(mes_se) > 0 && exists("coordinate_mapping")) {
+  # Create lookup table for annotations using validated coordinate mapping
+  if (!is.null(coordinate_mapping) && nrow(coordinate_mapping) > 0) {
+    
+    annotation_lookup <- data.frame(
+      chr = mes_se$Chr[coordinate_mapping$homer_index],
+      start = mes_se$Start[coordinate_mapping$homer_index],
+      end = mes_se$End[coordinate_mapping$homer_index],
+      peak_id = mes_se[coordinate_mapping$homer_index, 1],
+      annotation = mes_se$Annotation[coordinate_mapping$homer_index],
+      gene_name = mes_se$Gene.Name[coordinate_mapping$homer_index],
+      distance_to_tss = mes_se$Distance.to.TSS[coordinate_mapping$homer_index],
+      gene_description = if("Gene.Description" %in% colnames(mes_se)) mes_se$Gene.Description[coordinate_mapping$homer_index] else NA,
+      atac_index = coordinate_mapping$atac_index,
+      stringsAsFactors = FALSE
+    )
+    
+    # Add ATAC se_id for joining
+    annotation_lookup$se_id <- paste0("SE_", annotation_lookup$atac_index)
+    
+    # Add annotation info to top affected regions using se_id
+    top_affected_annotated <- top_affected %>%
+      left_join(annotation_lookup %>% select(-chr, -start, -end, -atac_index), by = "se_id") %>%
+      select(se_id, chr, start, end, cell_line, log2fc_24h, log2fc_48h, max_abs_change, 
+             primary_effect, peak_id, annotation, gene_name, distance_to_tss, gene_description)
+    
+    cat(sprintf("Successfully annotated %d out of %d top affected regions\n", 
+                sum(!is.na(top_affected_annotated$annotation)), nrow(top_affected_annotated)))
+    
+  } else {
+    cat("Warning: No valid coordinate mapping found, proceeding without annotations\n")
+    top_affected_annotated <- top_affected
+  }
+} else if (exists("mes_se") && nrow(mes_se) > 0) {
+  # Fallback: try direct coordinate matching (original approach)
+  cat("Using fallback coordinate matching method...\n")
   annotation_lookup <- data.frame(
     chr = mes_se$Chr,
     start = mes_se$Start,
@@ -364,6 +476,9 @@ if (exists("mes_se") && nrow(mes_se) > 0) {
     left_join(annotation_lookup, by = c("chr", "start", "end")) %>%
     select(se_id, chr, start, end, cell_line, log2fc_24h, log2fc_48h, max_abs_change, 
            primary_effect, peak_id, annotation, gene_name, distance_to_tss, gene_description)
+} else {
+  top_affected_annotated <- top_affected
+}
   
   write.csv(top_affected_annotated, file.path(results_dir, "K975_top50_affected_SEs_annotated.csv"), row.names = FALSE)
   

@@ -4964,6 +4964,14 @@
         "xtable"
       ]
     },
+    "slam": {
+      "Package": "slam",
+      "Version": "0.1-55",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Hash": "a2a11fdcb7cf5afbf31aeb0e3828fbf6",
+      "Requirements": []
+    },
     "snow": {
       "Package": "snow",
       "Version": "0.4-4",
@@ -5161,6 +5169,18 @@
         "rlang",
         "waldo",
         "withr"
+      ]
+    },
+    "textshape": {
+      "Package": "textshape",
+      "Version": "1.7.5",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Hash": "15360de1c662f65faa1c11a1d0f5bc5e",
+      "Requirements": [
+        "data.table",
+        "slam",
+        "stringi"
       ]
     },
     "textshaping": {
