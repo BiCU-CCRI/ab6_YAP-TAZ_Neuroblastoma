@@ -27,6 +27,6 @@ nextflow run nf-core/cutandrun \
     -profile singularity \
     --peakcaller SEACR,MACS2 \
     --normalisation_binsize 1 \
-    -c ./biohazard_12c60g.config \
+    -c ./config_12c60g.config \
     --dt_calc_all_matrix false 
 
