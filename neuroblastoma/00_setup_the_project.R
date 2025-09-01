@@ -7,9 +7,6 @@
 renv::activate(project = "/home/rstudio/workspace/")
 renv::restore(project = "/home/rstudio/workspace/", prompt=FALSE)
 
-# Install HOMER
-# http://homer.ucsd.edu/homer/
-system("bash ~/workspace/neuroblastoma/_install_homer.sh")
 
 # Pull the missing data from SRA/GEO
 # TODO - write this module when GEO data is public
