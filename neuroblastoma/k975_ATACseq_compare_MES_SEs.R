@@ -2,37 +2,7 @@
 # Analysis of accessibility changes at MES super enhancers after K975 treatment
 # Comparing control vs 24h vs 48h treatment in CM (CLB-Ma) and SH (SK-N-SH) cell lines
 
-## scores_per_transcript are produced by ~/workspace/neuroblastoma/data/ATACseq/bigWigs/multiBigWigSummary.sh
-
-## Additional scores_per_transcript_overlap_with_histone_marks produced by the same file.
-CLB_SKN_Mes_SEs <- read.delim("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_M.bed", header = FALSE)
-CLB_SKN_Mes_H3K27ac <- read.delim("~/workspace/neuroblastoma/data/CnR/peaks/SK-N-SH-A_H3K27ac_R1.macs2_peaks.narrowPeak", header = FALSE)
-
-CLB_SKN_Mes_SEs_grange <- GRanges(seqnames = paste0("chr", CLB_SKN_Mes_SEs$V1), 
-                                  ranges = IRanges(
-                                    start = CLB_SKN_Mes_SEs$V2,
-                                    end = CLB_SKN_Mes_SEs$V3)
-)
-CLB_SKN_Mes_H3K27ac <- GRanges(seqnames = paste0("chr", CLB_SKN_Mes_H3K27ac$V1), 
-                               ranges = IRanges(
-                                 start = CLB_SKN_Mes_H3K27ac$V2,
-                                 end = CLB_SKN_Mes_H3K27ac$V3)
-)
-SEs_H3K27Ac_ovelap <- ChIPpeakAnno::findOverlapsOfPeaks(CLB_SKN_Mes_H3K27ac,CLB_SKN_Mes_SEs_grange)
-SEs_H3K27Ac_ovelap_bed <- SEs_H3K27Ac_ovelap$overlappingPeaks %>% 
-  as.data.frame() %>%
-  dplyr::select(ends_with("seqnames"), ends_with("start"), ends_with("end"))
-colnames(SEs_H3K27Ac_ovelap_bed) <- c("seqmanes", "start", "end")
-SEs_H3K27Ac_ovelap_bed$seqmanes <- sub("chr", "", SEs_H3K27Ac_ovelap_bed$seqmanes)
-
-write.table(SEs_H3K27Ac_ovelap_bed,
-            file = "~/workspace/neuroblastoma/data/ATACseq/bigWigs/CLB_SKN_M_h3K27Ac.bed",
-            sep = "\t",
-            row.names = FALSE,
-            col.names = FALSE, 
-            quote = FALSE)
-
-
+## scores_per_transcript are produced by ~/workspace/neuroblastoma/resources/multiBigWigSummary.sh
 
 library(dplyr)
 library(tidyr)
@@ -56,7 +26,8 @@ if (!dir.exists(results_dir)) {
 # 1. Load ATAC-seq accessibility scores at super enhancers
 cat("Loading ATAC-seq accessibility scores...\n")
 atac_scores <- read.table(
-  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_skn_MES_SEs_h3k27ac.tab"),
+  #file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_skn_MES_SEs_h3k27ac.tab"),
+  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript.tab"),
   header = TRUE,
   sep = "\t",
   stringsAsFactors = FALSE
@@ -309,7 +280,8 @@ for (cell_line in c("CLB_Ma", "SK_N_SH")) {
 # Heatmap of accessibility changes
 cat("Creating visualizations...\n")
 
-all_results[is.nan(all_results)] <- 0
+all_results <- all_results %>%
+  mutate(across(where(is.numeric), ~ifelse(is.nan(.), 0, .)))
 
 # Prepare matrix for heatmap (log2 fold changes)
 heatmap_matrix <- all_results %>%
@@ -385,6 +357,52 @@ p2 <- ggplot(plot_data, aes(x = timepoint, y = log2fc, fill = timepoint)) +
   )
 
 ggsave(file.path(results_dir, "K975_SE_accessibility_boxplot.pdf"), p2, width = 10, height = 6)
+
+# New boxplot with raw values and statistical testing
+library(ggpubr)
+
+# Prepare data for raw values boxplot
+raw_values_data <- all_results %>%
+  dplyr::select(se_id, cell_line, control_accessibility, h24_accessibility, h48_accessibility) %>%
+  pivot_longer(cols = c(control_accessibility, h24_accessibility, h48_accessibility),
+               names_to = "timepoint", values_to = "accessibility") %>%
+  mutate(
+    timepoint_clean = case_when(
+      timepoint == "control_accessibility" ~ "Control",
+      timepoint == "h24_accessibility" ~ "24h",
+      timepoint == "h48_accessibility" ~ "48h"
+    ),
+    timepoint_clean = factor(timepoint_clean, levels = c("Control", "24h", "48h")),
+    cell_line_label = ifelse(cell_line == "CLB_Ma", "CLB-Ma (CM)", "SK-N-SH (SH)")
+  )
+
+# Replace NaN values with 0 for plotting
+raw_values_data <- raw_values_data %>%
+  mutate(accessibility = ifelse(is.nan(accessibility), 0, accessibility))
+
+# Create boxplot with statistical comparisons
+p4 <- ggplot(raw_values_data, aes(x = timepoint_clean, y = accessibility, fill = timepoint_clean)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+  stat_compare_means(method = "wilcox.test", 
+                     comparisons = list(c("Control", "24h"), c("Control", "48h"), c("24h", "48h")),
+                     label = "p.signif") +
+  facet_wrap(~cell_line_label) +
+  scale_fill_viridis_d(option = "plasma", begin = 0.2, end = 0.8) +
+  labs(
+    x = "Treatment Duration",
+    y = "Raw ATAC-seq Accessibility Score",
+    title = "Super Enhancer Accessibility - Raw Values",
+    subtitle = "Wilcoxon rank-sum test comparisons between timepoints"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    strip.text = element_text(size = 12, face = "bold"),
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+ggsave(file.path(results_dir, "K975_SE_accessibility_raw_values_boxplot.pdf"), p4, width = 10, height = 6)
 
 # Time course plot for top changing SEs
 top_changing_ses <- all_results %>%
@@ -540,7 +558,6 @@ if (nrow(top_affected_annotated) > 0) {
   write.csv(annot_summary, file.path(results_dir, "K975_annotation_type_summary.csv"), row.names = FALSE)
   cat("\nAnnotation type summary for top affected SEs:\n")
   print(annot_summary)
-}
 } else {
   write.csv(top_affected, file.path(results_dir, "K975_top50_affected_SEs.csv"), row.names = FALSE)
 }
