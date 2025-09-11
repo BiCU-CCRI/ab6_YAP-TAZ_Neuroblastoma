@@ -1,6 +1,6 @@
 ---
 title: "K975 ATAC-seq Super Enhancer Accessibility Analysis"
-subtitle: "Analysis of accessibility changes at MES super enhancers after K975 treatment"
+subtitle: "Analysis of accessibility changes at ADR super enhancers after K975 treatment"
 author: "Neuroblastoma Research Project"
 date: "`r Sys.Date()`"
 output:
@@ -28,7 +28,7 @@ knitr::opts_chunk$set(
 
 # Overview
 
-This analysis compares ATAC-seq accessibility at MES (mesenchymal) super enhancers across different time points of K975 treatment in two neuroblastoma cell lines:
+This analysis compares ATAC-seq accessibility at ADR (mesenchymal) super enhancers across different time points of K975 treatment in two neuroblastoma cell lines:
 
 - **CLB-Ma (CM)**: Control vs 24h vs 48h treatment
 - **SK-N-SH (SH)**: Control vs 24h vs 48h treatment
@@ -49,7 +49,7 @@ library(GenomicRanges)
 
 # Setup paths
 data_dir <- "~/workspace/neuroblastoma/data"
-results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment"
+results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/ADR_SE"
 
 # Create results directory if it doesn't exist
 if (!dir.exists(results_dir)) {
@@ -65,7 +65,7 @@ if (!dir.exists(results_dir)) {
 # Load ATAC-seq accessibility scores at super enhancers
 cat("Loading ATAC-seq accessibility scores...\n")
 atac_scores <- read.table(
-  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript.tab"),
+  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_skn_ADR.tab"),
   header = TRUE,
   sep = "\t",
   stringsAsFactors = FALSE
@@ -85,48 +85,48 @@ atac_coords <- GRanges(
 cat(sprintf("Loaded accessibility data for %d super enhancer regions\n", nrow(atac_scores)))
 ```
 
-## Load MES Super Enhancer Annotations
+## Load ADR Super Enhancer Annotations
 
 ```{r load-annotations}
-# Load MES super enhancer annotations from HOMER annotation file
-cat("Loading MES super enhancer annotations...\n")
-mes_se_file <- "~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv"
+# Load ADR super enhancer annotations from HOMER annotation file
+cat("Loading ADR super enhancer annotations...\n")
+adr_se_file <- "~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv"
 
-if (file.exists(mes_se_file)) {
+if (file.exists(adr_se_file)) {
   # Read HOMER annotation file
-  mes_se <- read.csv(mes_se_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  adr_se <- read.csv(adr_se_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
   
   # Extract coordinates (remove 'chr' prefix if present for consistency)
-  mes_se$Chr <- gsub("chr", "", mes_se$Chr)
+  adr_se$Chr <- gsub("chr", "", adr_se$Chr)
   
   # Create GRanges for MES super enhancers
-  mes_se_gr <- GRanges(
-    seqnames = mes_se$Chr,
-    ranges = IRanges(start = mes_se$Start, end = mes_se$End),
-    peak_id = mes_se[,1],  # First column contains PeakID
-    annotation = mes_se$Annotation,
-    gene_name = mes_se$Gene.Name,
-    distance_to_tss = mes_se$Distance.to.TSS
+  adr_se_gr <- GRanges(
+    seqnames = adr_se$Chr,
+    ranges = IRanges(start = adr_se$Start, end = adr_se$End),
+    peak_id = adr_se[,1],  # First column contains PeakID
+    annotation = adr_se$Annotation,
+    gene_name = adr_se$Gene.Name,
+    distance_to_tss = adr_se$Distance.to.TSS
   )
   
-  cat(sprintf("Loaded %d MES super enhancers with HOMER annotations\n", length(mes_se_gr)))
-  cat(sprintf("Annotation types: %s\n", paste(unique(mes_se$Annotation)[1:min(5, length(unique(mes_se$Annotation)))], collapse = ", ")))
+  cat(sprintf("Loaded %d ADR super enhancers with HOMER annotations\n", length(adr_se_gr)))
+  cat(sprintf("Annotation types: %s\n", paste(unique(adr_se$Annotation)[1:min(5, length(unique(adr_se$Annotation)))], collapse = ", ")))
   
 } else {
-  cat("MES super enhancer annotation file not found, proceeding with all regions as potential SEs\n")
-  mes_se_gr <- atac_coords  # Use all regions if SE annotation not found
+  cat("ADR super enhancer annotation file not found, proceeding with all regions as potential SEs\n")
+  adr_se_gr <- atac_coords  # Use all regions if SE annotation not found
 }
 ```
 
 ## Coordinate Validation
 
 ```{r coordinate-validation}
-if (exists("mes_se")) {
+if (exists("adr_se")) {
   cat("\n=== COORDINATE VALIDATION ===\n")
   
   # Create comparable coordinate strings for both datasets
   atac_coord_strings <- paste(atac_scores$chr, atac_scores$start, atac_scores$end, sep = ":")
-  homer_coord_strings <- paste(mes_se$Chr, mes_se$Start, mes_se$End, sep = ":")
+  homer_coord_strings <- paste(adr_se$Chr, adr_se$Start, adr_se$End, sep = ":")
   
   # Check for exact matches
   exact_matches <- intersect(atac_coord_strings, homer_coord_strings)
@@ -134,7 +134,7 @@ if (exists("mes_se")) {
               length(exact_matches), length(atac_coord_strings), length(homer_coord_strings)))
   
   # Check for overlaps using GenomicRanges
-  overlaps <- findOverlaps(atac_coords, mes_se_gr)
+  overlaps <- findOverlaps(atac_coords, adr_se_gr)
   overlap_count <- length(unique(queryHits(overlaps)))
   cat(sprintf("Overlapping regions: %d out of %d ATAC regions\n", overlap_count, length(atac_coords)))
   
@@ -152,7 +152,7 @@ if (exists("mes_se")) {
     
     # Check if chromosome naming is the issue
     atac_chrs <- unique(atac_scores$chr)
-    homer_chrs <- unique(mes_se$Chr)
+    homer_chrs <- unique(adr_se$Chr)
     cat(sprintf("\nATAC chromosomes: %s\n", paste(head(atac_chrs, 10), collapse = ", ")))
     cat(sprintf("HOMER chromosomes: %s\n", paste(head(homer_chrs, 10), collapse = ", ")))
     
@@ -877,19 +877,19 @@ top_affected <- all_results %>%
   head(50)
 
 # Add HOMER annotation information to top affected SEs if available
-if (exists("mes_se") && nrow(mes_se) > 0 && exists("coordinate_mapping")) {
+if (exists("adr_se") && nrow(adr_se) > 0 && exists("coordinate_mapping")) {
   # Create lookup table for annotations using validated coordinate mapping
   if (!is.null(coordinate_mapping) && nrow(coordinate_mapping) > 0) {
     
     annotation_lookup <- data.frame(
-      chr = mes_se$Chr[coordinate_mapping$homer_index],
-      start = mes_se$Start[coordinate_mapping$homer_index],
-      end = mes_se$End[coordinate_mapping$homer_index],
-      peak_id = mes_se[coordinate_mapping$homer_index, 1],
-      annotation = mes_se$Annotation[coordinate_mapping$homer_index],
-      gene_name = mes_se$Gene.Name[coordinate_mapping$homer_index],
-      distance_to_tss = mes_se$Distance.to.TSS[coordinate_mapping$homer_index],
-      gene_description = if("Gene.Description" %in% colnames(mes_se)) mes_se$Gene.Description[coordinate_mapping$homer_index] else NA,
+      chr = adr_se$Chr[coordinate_mapping$homer_index],
+      start = adr_se$Start[coordinate_mapping$homer_index],
+      end = adr_se$End[coordinate_mapping$homer_index],
+      peak_id = adr_se[coordinate_mapping$homer_index, 1],
+      annotation = adr_se$Annotation[coordinate_mapping$homer_index],
+      gene_name = adr_se$Gene.Name[coordinate_mapping$homer_index],
+      distance_to_tss = adr_se$Distance.to.TSS[coordinate_mapping$homer_index],
+      gene_description = if("Gene.Description" %in% colnames(adr_se)) adr_se$Gene.Description[coordinate_mapping$homer_index] else NA,
       atac_index = coordinate_mapping$atac_index,
       stringsAsFactors = FALSE
     )
@@ -910,18 +910,18 @@ if (exists("mes_se") && nrow(mes_se) > 0 && exists("coordinate_mapping")) {
     cat("Warning: No valid coordinate mapping found, proceeding without annotations\n")
     top_affected_annotated <- top_affected
   }
-} else if (exists("mes_se") && nrow(mes_se) > 0) {
+} else if (exists("adr_se") && nrow(adr_se) > 0) {
   # Fallback: try direct coordinate matching (original approach)
   cat("Using fallback coordinate matching method...\n")
   annotation_lookup <- data.frame(
-    chr = mes_se$Chr,
-    start = mes_se$Start,
-    end = mes_se$End,
-    peak_id = mes_se[,1],
-    annotation = mes_se$Annotation,
-    gene_name = mes_se$Gene.Name,
-    distance_to_tss = mes_se$Distance.to.TSS,
-    gene_description = if("Gene.Description" %in% colnames(mes_se)) mes_se$Gene.Description else NA,
+    chr = adr_se$Chr,
+    start = adr_se$Start,
+    end = adr_se$End,
+    peak_id = adr_se[,1],
+    annotation = adr_se$Annotation,
+    gene_name = adr_se$Gene.Name,
+    distance_to_tss = adr_se$Distance.to.TSS,
+    gene_description = if("Gene.Description" %in% colnames(adr_se)) adr_se$Gene.Description else NA,
     stringsAsFactors = FALSE
   )
   
