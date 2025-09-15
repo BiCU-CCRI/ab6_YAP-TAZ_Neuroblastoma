@@ -1,0 +1,404 @@
+---
+  title: "shRNA-seq - Improved Version"
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
+output:
+  html_document: 
+  toc: true
+toc_float: true
+code_folding: hide
+theme: flatly
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
+
+set.seed(42)
+analysis_start_time <- Sys.time()
+message("Starting RNA-seq shRNA at: ", analysis_start_time)
+```
+
+## Configuration and Setup
+
+```{r configuration}
+config <- list(
+  filtering = list(
+    abs_filt_samples = 2,
+    min_count_threshold = 10
+  ),
+  statistical = list(
+    padj_cutoff = 0.05,
+    log2FC_cutoff = 1,
+    var_expl_needed = 0.6
+  ),
+  visualization = list(
+    ntop_genes_pca = 1000,
+    plot_width = 20,
+    plot_height = 20,
+    plot_units = "cm",
+    top_pathways_show = 20
+  ),
+  fgsea = list(
+    min_size = 15,
+    max_size = 500
+  )
+)
+
+PATHS <- list(
+  data_dir = here::here("neuroblastoma", "data", "RNAseq"),
+  results_dir = here::here("neuroblastoma", "results", "RNA-seq_shRNA"),
+  resources_dir = here::here("neuroblastoma", "resources")
+)
+
+print("Configuration loaded successfully")
+```
+
+```{r load_libraries}
+suppressPackageStartupMessages({
+  # Core analysis packages
+  library(DESeq2)
+  library(stringr)
+  library(org.Hs.eg.db)
+  
+  # Enrichment analysis
+  library(fgsea)
+  library(hypeR)
+  library(GSVA)
+  
+  # Visualization
+  library(ggplot2)
+  library(ggrepel)
+  library(pheatmap)
+  library(RColorBrewer)
+  
+  # Data manipulation
+  library(dplyr)
+  library(tidyr)
+  library(readr)
+  
+  # Batch correction
+  library(limma)
+  
+  # File operations
+  library(openxlsx)
+  library(openxlsx2)
+  library(here)
+  
+  # Load all utility functions from consolidated script
+  source(here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"))
+})
+
+print("Libraries loaded successfully")
+```
+
+
+```{r setup_environment}
+if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
+# Load gene sets directly (no caching to avoid repository bloat)
+message("Loading gene sets from MSigDB...")
+gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean = TRUE)
+gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean = TRUE)
+gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
+gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP", clean = TRUE)
+gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean = TRUE)
+gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean = TRUE)
+gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
+gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
+                                         "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
+
+print("Environment setup completed")
+```
+
+
+## Data Loading and Preparation
+
+```{r load_data}
+message("Loading sh RNA-seq  data...")
+
+annotation_data <- read.table(
+  file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),
+  sep = "\t",
+  header = TRUE
+)
+colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
+
+# Load WWTR1 overexpression data with validation
+load(file.path(PATHS$data_dir, "deseq2_shRNA.dds.RData"))
+dds_reduced <- dds[, c(2,4,6)]
+dds_reduced$Group3 <- factor(c("ctrl", "ctrl", "dox"), levels = c("ctrl", "dox"))
+design(dds_reduced) <- as.formula("~ Group3")
+```
+
+```{r}
+# make PCA with ALL samples
+# Filtering lowly expressed genes
+dds_reduced_filt <- filterDatasets(dds_reduced,
+                               abs_filt = TRUE,
+                               abs_filt_samples = config$filtering$abs_filt_samples
+)
+
+# Estimate size factors and running DESEQ2
+dds_reduced_filt <- DESeq2::estimateSizeFactors(dds_reduced_filt)
+dds_reduced_filt <- DESeq2::DESeq(dds_reduced_filt)
+dds_reduced_filt_vsd <- DESeq2::vst(dds_reduced_filt, blind = TRUE) # blind = TRUE for QC
+
+resultsNames(dds_reduced_filt)
+```
+
+```{r Get DEGs, include=FALSE}
+deg_results <- generateResults(
+  dds_object = dds_reduced_filt,
+  coeff_name = "Group3_dox_vs_ctrl",
+  cond_numerator = "dox",
+  cond_denominator = "ctrl",
+  cond_variable = "Group3",
+  ensemblAnnot = annotation_data,
+  log2FC_cutoff = config$statistical$log2FC_cutoff
+)
+
+# Write the result to the xlsx file
+XLSX_OUT <- openxlsx::createWorkbook()
+openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+openxlsx::addWorksheet(XLSX_OUT, "de_details")
+openxlsx::addWorksheet(XLSX_OUT, "results_all")
+openxlsx::writeData(XLSX_OUT, x = deg_results$results_signif, sheet = "results_signif")
+openxlsx::writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
+openxlsx::writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
+openxlsx::saveWorkbook(XLSX_OUT, file.path(PATHS$results_dir, "YAP_dox_vs_ctrl.xlsx"), overwrite = T)
+
+```
+
+```{r}
+gene_set_list <- list(
+  GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set
+)
+
+# TDI_vs_DMSO
+deg_results_YAPdox_vs_ctrl_ranked <- deg_results$results_all
+deg_results_YAPdox_vs_ctrl_ranked <- deg_results_YAPdox_vs_ctrl_ranked %>%
+  group_by(gene_symbol) %>%
+  slice_max(baseMean, n = 1, with_ties = FALSE) %>%
+  ungroup()
+deg_results_YAPdox_vs_ctrl_ranked <- deg_results_YAPdox_vs_ctrl_ranked %>% arrange(desc(log2FoldChange))
+deg_results_YAPdox_vs_ctrl_ranked <- setNames(c(deg_results_YAPdox_vs_ctrl_ranked$log2FoldChange),
+                                           c(deg_results_YAPdox_vs_ctrl_ranked$gene_symbol))
+
+
+fgseaRes_YAPdox_vs_ctrl <- fgsea(
+  pathways = gene_set_list,
+  stats = deg_results_YAPdox_vs_ctrl_ranked,
+  minSize = 15,
+  maxSize = 2500
+)
+
+for(gene_set_to_plot_name in names(gene_set_list)){
+  # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
+  gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
+  
+  title_values <- fgseaRes_YAPdox_vs_ctrl %>% dplyr::filter(pathway == gene_set_to_plot_name) %>% dplyr::select(pathway, NES, padj)
+  p <- plotEnrichment(pathway = gene_set_to_plot, stats = deg_results_YAPdox_vs_ctrl_ranked) + 
+    labs(title = paste(title_values$pathway, "\n",
+                       "NES =", title_values$NES, "\n",
+                       "padj = ", title_values$padj))
+  
+ plot(p)
+  
+  ggsave(
+    filename = file.path(PATHS$results_dir, paste0("yap_vs_dox_fgsea_", gene_set_to_plot_name, ".pdf")),
+    plot = p,
+    width = 20, height = 20, units = "cm"
+  )
+}
+```
+
+```{r}
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+mes_adrn_gene_list <- RNA_SEQ_data %>%
+  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
+sig_list_our_data <- list(
+  Aderenergic = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "ADRN"],
+  Mesenchymal = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "MES"]
+)
+
+# prepare vsd
+vsd_counts_matrix <- assay(dds_reduced_filt_vsd)
+row.names(vsd_counts_matrix) <- annotation_data[, 'gene_symbol'][match(row.names(vsd_counts_matrix), 
+                                                                      annotation_data[, 'ensembl_id'])]
+
+# Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
+ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
+                                      sig_list_our_data,
+                                      method=c("ssgsea"),
+                                      min.sz=1, 
+                                      max.sz=Inf, 
+                                      ssgsea.norm=TRUE, 
+                                      verbose=TRUE, 
+                                      parallel.sz=10)
+ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
+                                                        scale = "row",
+                                                        #annotation_col = heatmap_col_annot_DTC,
+                                                        cluster_rows = TRUE,
+                                                        cluster_cols = FALSE,
+                                                        color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                        show_colnames = TRUE)
+
+```
+
+```{r plot_gsva_heatmap}
+ssgsea_mes_adr_ncc_noradr_heatmap
+```
+
+
+
+############
+# Produce ffGSEAs for each individual pair of dox vs ctrl
+## Data Loading and Preparation
+
+```{r load_data}
+message("Loading sh RNA-seq  data...")
+
+annotation_data <- read.table(
+  file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),
+  sep = "\t",
+  header = TRUE
+)
+colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
+
+# Load WWTR1 overexpression data with validation
+load(file.path(PATHS$data_dir, "deseq2_shRNA.dds.RData"))
+dds_reduced <- dds
+dds_reduced$Group3 <- factor(c("ctrl", "dox", "ctrl", "dox","ctrl", "dox"), levels = c("ctrl", "dox"))
+dds_reduced$Group1 <- factor(c(dds_reduced$Group1), levels = unique(dds_reduced$Group1))
+```
+
+```{r}
+# make PCA with ALL samples
+# Filtering lowly expressed genes
+dds_reduced_filt <- filterDatasets(dds_reduced,
+                                   abs_filt = TRUE,
+                                   abs_filt_samples = config$filtering$abs_filt_samples
+)
+
+# Estimate size factors and running DESEQ2
+dds_reduced_filt <- DESeq2::estimateSizeFactors(dds_reduced_filt)
+dds_reduced_filt <- DESeq2::DESeq(dds_reduced_filt)
+dds_reduced_filt_vsd <- DESeq2::vst(dds_reduced_filt, blind = TRUE) # blind = TRUE for QC
+
+resultsNames(dds_reduced_filt)
+```
+
+```{r Get DEGs, include=FALSE}
+deg_results <- generateResults(
+  dds_object = dds_reduced_filt,
+  coeff_name = "Group3_dox_vs_ctrl",
+  cond_numerator = "dox",
+  cond_denominator = "ctrl",
+  cond_variable = "Group3",
+  ensemblAnnot = annotation_data,
+  log2FC_cutoff = config$statistical$log2FC_cutoff
+)
+
+# Write the result to the xlsx file
+XLSX_OUT <- openxlsx::createWorkbook()
+openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+openxlsx::addWorksheet(XLSX_OUT, "de_details")
+openxlsx::addWorksheet(XLSX_OUT, "results_all")
+openxlsx::writeData(XLSX_OUT, x = deg_results$results_signif, sheet = "results_signif")
+openxlsx::writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
+openxlsx::writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
+openxlsx::saveWorkbook(XLSX_OUT, file.path(PATHS$results_dir, "YAP_dox_vs_ctrl.xlsx"), overwrite = T)
+
+```
+
+```{r}
+gene_set_list <- list(
+  GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set
+)
+
+# TDI_vs_DMSO
+deg_results_YAPdox_vs_ctrl_ranked <- deg_results$results_all
+deg_results_YAPdox_vs_ctrl_ranked <- deg_results_YAPdox_vs_ctrl_ranked %>%
+  group_by(gene_symbol) %>%
+  slice_max(baseMean, n = 1, with_ties = FALSE) %>%
+  ungroup()
+deg_results_YAPdox_vs_ctrl_ranked <- deg_results_YAPdox_vs_ctrl_ranked %>% arrange(desc(log2FoldChange))
+deg_results_YAPdox_vs_ctrl_ranked <- setNames(c(deg_results_YAPdox_vs_ctrl_ranked$log2FoldChange),
+                                              c(deg_results_YAPdox_vs_ctrl_ranked$gene_symbol))
+
+
+fgseaRes_YAPdox_vs_ctrl <- fgsea(
+  pathways = gene_set_list,
+  stats = deg_results_YAPdox_vs_ctrl_ranked,
+  minSize = 15,
+  maxSize = 2500
+)
+
+for(gene_set_to_plot_name in names(gene_set_list)){
+  # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
+  gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
+  
+  title_values <- fgseaRes_YAPdox_vs_ctrl %>% dplyr::filter(pathway == gene_set_to_plot_name) %>% dplyr::select(pathway, NES, padj)
+  p <- plotEnrichment(pathway = gene_set_to_plot, stats = deg_results_YAPdox_vs_ctrl_ranked) + 
+    labs(title = paste(title_values$pathway, "\n",
+                       "NES =", title_values$NES, "\n",
+                       "padj = ", title_values$padj))
+  
+  plot(p)
+  
+  ggsave(
+    filename = file.path(PATHS$results_dir, paste0("yap_vs_dox_fgsea_", gene_set_to_plot_name, ".pdf")),
+    plot = p,
+    width = 20, height = 20, units = "cm"
+  )
+}
+```
+
+```{r}
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+mes_adrn_gene_list <- RNA_SEQ_data %>%
+  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
+sig_list_our_data <- list(
+  Aderenergic = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "ADRN"],
+  Mesenchymal = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "MES"]
+)
+
+# prepare vsd
+vsd_counts_matrix <- assay(dds_reduced_filt_vsd)
+row.names(vsd_counts_matrix) <- annotation_data[, 'gene_symbol'][match(row.names(vsd_counts_matrix), 
+                                                                       annotation_data[, 'ensembl_id'])]
+
+# Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
+ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
+                                      sig_list_our_data,
+                                      method=c("ssgsea"),
+                                      min.sz=1, 
+                                      max.sz=Inf, 
+                                      ssgsea.norm=TRUE, 
+                                      verbose=TRUE, 
+                                      parallel.sz=10)
+ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
+                                                        scale = "row",
+                                                        #annotation_col = heatmap_col_annot_DTC,
+                                                        cluster_rows = TRUE,
+                                                        cluster_cols = FALSE,
+                                                        color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                        show_colnames = TRUE)
+
+```
+
+```{r plot_gsva_heatmap}
+ssgsea_mes_adr_ncc_noradr_heatmap
+```
