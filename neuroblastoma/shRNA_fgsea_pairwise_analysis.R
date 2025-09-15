@@ -110,6 +110,11 @@ gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), 
 gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
                                          "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
 
+#k975_48h_results <- read.xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx", sheet = 1)
+k975_48h_results <- read.xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/comparison_group_CM_48h_vs_CM_control_.xlsx", sheet = 1)
+k975_48h_up <- k975_48h_results %>% dplyr::filter(log2FoldChange > 0) %>% dplyr::pull(gene_symbol)
+k975_48h_down <- k975_48h_results %>% dplyr::filter(log2FoldChange < 0) %>% dplyr::pull(gene_symbol)
+
 # Combine gene sets for analysis
 gene_set_list <- list(
   Hallmark_EMT = gs_hallmark[["genesets"]][["Epithelial Mesenchymal Transition"]],
@@ -117,7 +122,9 @@ gene_set_list <- list(
   GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
   REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
   C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
-  Hippo_Wang = gs_wang_hippo$wang_hippo_set
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set,
+  k975_48h_down = k975_48h_down,
+  k975_48h_up = k975_48h_up
 )
 
 # Function to calculate log2FC and run fGSEA for a pair of samples
