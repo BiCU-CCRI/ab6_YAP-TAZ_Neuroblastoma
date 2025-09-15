@@ -12,6 +12,9 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(here)
   library(openxlsx2)
+  library(GSVA)
+  library(pheatmap)
+  library(reshape2)
 })
 
 # Configuration
@@ -345,6 +348,114 @@ summary_table <- combined_fgsea %>%
   select(pair, pathway, NES, pval, padj, size)
 
 openxlsx2::write_xlsx(summary_table, file.path(PATHS$results_dir, "significant_pathways_summary.xlsx"))
+
+# GSVA analysis for MES/ADR signatures
+message("Running GSVA analysis for MES/ADR signatures...")
+
+# Load MES/ADR gene signatures from previous RNA-seq analysis
+tryCatch({
+  RNA_SEQ_data <- openxlsx2::read_xlsx(file.path(here::here("neuroblastoma", "results", "RNA-seq"), "cell_type_MES_vs_ADR.xlsx"), sheet = 1)
+  mes_adrn_gene_list <- RNA_SEQ_data %>%
+    mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
+  sig_list_our_data <- list(
+    Adrenergic = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "ADRN"],
+    Mesenchymal = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "MES"]
+  )
+  
+  # Prepare VST counts matrix for GSVA
+  # Need to get VST transformed data
+  dds_for_gsva <- dds_filtered
+  dds_for_gsva <- DESeq(dds_for_gsva)
+  vsd_for_gsva <- vst(dds_for_gsva, blind = TRUE)
+  
+  # Prepare expression matrix with gene symbols
+  vsd_counts_matrix <- assay(vsd_for_gsva)
+  gene_symbols_gsva <- annotation_data$gene_symbol[match(rownames(vsd_counts_matrix), annotation_data$ensembl_id)]
+  gene_symbols_gsva[is.na(gene_symbols_gsva)] <- rownames(vsd_counts_matrix)[is.na(gene_symbols_gsva)]
+  
+  # Handle duplicate gene symbols for GSVA
+  mean_expr_gsva <- rowMeans(vsd_counts_matrix)
+  df_temp_gsva <- data.frame(
+    ensembl_id = rownames(vsd_counts_matrix),
+    gene_symbol = gene_symbols_gsva, 
+    mean_expr = mean_expr_gsva,
+    stringsAsFactors = FALSE
+  )
+  
+  # Remove duplicates by keeping the gene with highest mean expression
+  df_temp_gsva <- df_temp_gsva %>%
+    group_by(gene_symbol) %>%
+    slice_max(mean_expr, n = 1, with_ties = FALSE) %>%
+    ungroup()
+  
+  # Filter expression matrix and set gene symbols as rownames
+  vsd_counts_matrix <- vsd_counts_matrix[df_temp_gsva$ensembl_id, ]
+  rownames(vsd_counts_matrix) <- df_temp_gsva$gene_symbol
+  
+  # Run GSVA/ssGSEA
+  ssgsea_mes_adr <- GSVA::gsva(
+    vsd_counts_matrix,
+    sig_list_our_data,
+    method = "ssgsea",
+    min.sz = 1, 
+    max.sz = Inf, 
+    ssgsea.norm = TRUE, 
+    verbose = TRUE, 
+    parallel.sz = 10
+  )
+  
+  # Create heatmap
+  ssgsea_mes_adr_heatmap <- pheatmap::pheatmap(
+    ssgsea_mes_adr,
+    scale = "row",
+    cluster_rows = TRUE,
+    cluster_cols = FALSE,
+    color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+    show_colnames = TRUE,
+    main = "MES/ADR Signatures - ssGSEA Scores",
+    filename = file.path(PATHS$results_dir, "gsva_mes_adr_signatures_heatmap.pdf"),
+    width = 10,
+    height = 6
+  )
+  
+  # Save GSVA scores as data frame
+  gsva_scores_df <- as.data.frame(t(ssgsea_mes_adr))
+  gsva_scores_df$sample <- rownames(gsva_scores_df)
+  gsva_scores_df$treatment <- sapply(strsplit(gsva_scores_df$sample, "_"), function(x) x[1])
+  gsva_scores_df$condition <- sapply(strsplit(gsva_scores_df$sample, "_"), function(x) x[2])
+  
+  # Save GSVA results
+  openxlsx2::write_xlsx(gsva_scores_df, file.path(PATHS$results_dir, "gsva_mes_adr_scores.xlsx"))
+  
+  # Create summary plot showing MES vs ADR scores by treatment
+  library(tidyr)
+  gsva_long <- gsva_scores_df %>%
+    select(-sample) %>%
+    pivot_longer(cols = c("Adrenergic", "Mesenchymal"), names_to = "signature", values_to = "score")
+  
+  p_gsva <- ggplot(gsva_long, aes(x = paste(treatment, condition, sep = "_"), y = score, fill = signature)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    theme_minimal() +
+    labs(
+      title = "MES/ADR Signature Scores by Treatment",
+      x = "Sample",
+      y = "ssGSEA Score",
+      fill = "Signature"
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  ggsave(
+    filename = file.path(PATHS$results_dir, "gsva_mes_adr_barplot.pdf"),
+    plot = p_gsva,
+    width = 10, height = 6
+  )
+  
+  message("GSVA analysis completed successfully")
+  
+}, error = function(e) {
+  message(paste("Warning: Could not complete GSVA analysis:", e$message))
+  message("This might be due to missing MES/ADR signature file")
+})
 
 message("Analysis complete!")
 message(paste("Results saved to:", PATHS$results_dir))
