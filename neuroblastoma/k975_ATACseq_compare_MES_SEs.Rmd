@@ -65,9 +65,11 @@ if (!dir.exists(results_dir)) {
 # Load ATAC-seq accessibility scores at super enhancers
 cat("Loading ATAC-seq accessibility scores...\n")
 atac_scores <- read.table(
-  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript.tab"),
+  #file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript.tab"),
+  file.path("~/workspace/neuroblastoma/temp_results/super_enhancers_genome_wide_normalized.csv"),
   header = TRUE,
-  sep = "\t",
+  #sep = "\t",
+  sep = ",",
   stringsAsFactors = FALSE
 )
 
