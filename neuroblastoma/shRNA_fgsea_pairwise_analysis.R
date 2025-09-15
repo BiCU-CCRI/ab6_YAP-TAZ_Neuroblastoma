@@ -166,12 +166,12 @@ create_enrichment_plots <- function(analysis_result, gene_sets, output_dir) {
   log2fc_ranked <- analysis_result$log2fc_ranked
   pair_name <- analysis_result$pair_name
   
-  # Create plots for significant pathways
-  significant_pathways <- fgsea_res[fgsea_res$padj < 0.05, ]
+  # Create plots for ALL pathways (not just significant ones)
+  all_pathways <- fgsea_res
   
-  if(nrow(significant_pathways) > 0) {
-    for(i in 1:nrow(significant_pathways)) {
-      pathway_name <- significant_pathways$pathway[i]
+  if(nrow(all_pathways) > 0) {
+    for(i in 1:nrow(all_pathways)) {
+      pathway_name <- all_pathways$pathway[i]
       pathway_genes <- gene_sets[[pathway_name]]
       
       if(!is.null(pathway_genes) && length(pathway_genes) > 0) {
@@ -180,8 +180,8 @@ create_enrichment_plots <- function(analysis_result, gene_sets, output_dir) {
           p <- plotEnrichment(pathway_genes, log2fc_ranked) +
             labs(
               title = paste(pair_name, "-", pathway_name),
-              subtitle = paste("NES =", round(significant_pathways$NES[i], 3),
-                             "| padj =", format(significant_pathways$padj[i], scientific = TRUE, digits = 3))
+              subtitle = paste("NES =", round(all_pathways$NES[i], 3),
+                             "| padj =", format(all_pathways$padj[i], scientific = TRUE, digits = 3))
             ) +
             theme_minimal()
           
@@ -194,7 +194,7 @@ create_enrichment_plots <- function(analysis_result, gene_sets, output_dir) {
       }
     }
   } else {
-    message(paste("No significant pathways found for", pair_name))
+    message(paste("No pathways found for", pair_name))
   }
 }
 
