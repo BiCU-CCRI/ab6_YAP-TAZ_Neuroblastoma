@@ -65,7 +65,7 @@ if (!dir.exists(results_dir)) {
 # Load raw ATAC-seq accessibility scores at super enhancers
 cat("Loading raw ATAC-seq accessibility scores...\n")
 atac_scores_raw <- read.table(
-  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript.tab"),
+  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_skn_MESu.tab"),
   header = TRUE,
   sep = "\t",
   stringsAsFactors = FALSE
