@@ -49,7 +49,7 @@ library(GenomicRanges)
 
 # Setup paths
 data_dir <- "~/workspace/neuroblastoma/data"
-results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment"
+results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/CLBM-SKNSH_MES_SEs"
 
 # Create results directory if it doesn't exist
 if (!dir.exists(results_dir)) {

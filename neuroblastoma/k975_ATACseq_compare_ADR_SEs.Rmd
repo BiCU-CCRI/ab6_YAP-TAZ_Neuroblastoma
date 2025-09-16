@@ -49,7 +49,11 @@ library(GenomicRanges)
 
 # Setup paths
 data_dir <- "~/workspace/neuroblastoma/data"
-results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/ADR_SE"
+#results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/ADR_SE_"
+#results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/CLBM_ADR"
+# results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/CLBM_MES"
+# results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/SKNSH_ADR"
+results_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/SKNSH_MES"
 
 # Create results directory if it doesn't exist
 if (!dir.exists(results_dir)) {
@@ -65,7 +69,11 @@ if (!dir.exists(results_dir)) {
 # Load raw ATAC-seq accessibility scores at super enhancers
 cat("Loading raw ATAC-seq accessibility scores...\n")
 atac_scores_raw <- read.table(
-  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_skn_ADRu.tab"),
+  #file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_skn_ADRu.tab"),
+  #file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_ADRu.tab"),
+  # file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_clbm_MESu.tab"),
+  # file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_skn_ADRu.tab"),
+  file.path(data_dir, "ATACseq/bigWigs/scores_per_transcript_skn_MESu.tab"),
   header = TRUE,
   sep = "\t",
   stringsAsFactors = FALSE
