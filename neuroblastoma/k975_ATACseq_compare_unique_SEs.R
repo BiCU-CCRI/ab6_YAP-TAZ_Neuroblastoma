@@ -190,25 +190,6 @@ for (file_name in names(list_of_SEs)) {
     stringsAsFactors = FALSE
   )
   
-  # Validation: Calculate normalization effect for CLB-Ma samples if present
-  if (files_to_process[[file_name]]$cell_line == "CLB_Ma") {
-    clb_ma_control_samples <- intersect(sample_size_factors$sample[sample_size_factors$cell_line == "CLB_Ma" & sample_size_factors$timepoint == "control"], sample_cols)
-    clb_ma_24h_samples <- intersect(sample_size_factors$sample[sample_size_factors$cell_line == "CLB_Ma" & sample_size_factors$timepoint == "24h"], sample_cols)
-    
-    if (length(clb_ma_control_samples) > 0 && length(clb_ma_24h_samples) > 0) {
-      raw_control_mean <- rowMeans(atac_matrix_raw[, clb_ma_control_samples, drop = FALSE], na.rm = TRUE)
-      raw_24h_mean <- rowMeans(atac_matrix_raw[, clb_ma_24h_samples, drop = FALSE], na.rm = TRUE)
-      raw_fc <- log2((raw_24h_mean + 0.001) / (raw_control_mean + 0.001))
-      
-      norm_control_mean <- rowMeans(atac_matrix_normalized[, clb_ma_control_samples, drop = FALSE], na.rm = TRUE)
-      norm_24h_mean <- rowMeans(atac_matrix_normalized[, clb_ma_24h_samples, drop = FALSE], na.rm = TRUE)
-      norm_fc <- log2((norm_24h_mean + 0.001) / (norm_control_mean + 0.001))
-      
-      cat(sprintf("  Raw data - Median log2FC: %.3f\n", median(raw_fc, na.rm = TRUE)))
-      cat(sprintf("  Normalized - Median log2FC: %.3f\n", median(norm_fc, na.rm = TRUE)))
-    }
-  }
-  
   normalized_list_of_SEs[[file_name]] <- atac_scores_normalized
   cat(sprintf("  Completed normalization for %d regions\n", nrow(atac_scores_normalized)))
 }
@@ -327,6 +308,7 @@ process_dataset <- function(data, file_name, file_info) {
   return(dataset_results)
 }
 
+debug(process_dataset)
 # Process all datasets
 all_dataset_results <- list()
 
@@ -335,6 +317,7 @@ for (file_name in names(normalized_list_of_SEs)) {
   dataset_result <- process_dataset(normalized_list_of_SEs[[file_name]], file_name, file_info)
   all_dataset_results[[file_name]] <- dataset_result
 }
+undebug(process_dataset)
 
 # Combine all results
 all_results <- do.call(rbind, all_dataset_results)
@@ -393,11 +376,12 @@ library(gridExtra)
 library(textshape)
 
 # Function to create comparative boxplots for each dataset type
-create_dataset_boxplots <- function() {
-  cat("\nCreating comparative boxplots...\n")
+create_dataset_boxplots <- function(SE_set) {
+  cat(sprintf("\nCreating comparative boxplots for %s...\n", SE_set))
   
   # Prepare data for visualization
   plot_data <- all_results %>%
+    filter(file_type == SE_set) %>%
     select(se_id, cell_line, phenotype, file_type, control_accessibility, h24_accessibility, h48_accessibility) %>%
     pivot_longer(cols = c(control_accessibility, h24_accessibility, h48_accessibility),
                  names_to = "timepoint", values_to = "accessibility") %>%
@@ -412,22 +396,68 @@ create_dataset_boxplots <- function() {
       accessibility = ifelse(is.nan(accessibility), 0, accessibility)
     )
   
-  # Create boxplot comparing all unique SE types
-  p_all <- ggplot(plot_data, aes(x = timepoint_clean, y = accessibility, fill = cell_phenotype)) +
+  # Get unique cell-phenotype combinations
+  unique_combinations <- unique(plot_data$cell_phenotype)
+  
+  # Create individual plots for each combination
+  plot_list <- list()
+  
+  for (combo in unique_combinations) {
+    cat(sprintf("  Creating boxplot for %s...\n", combo))
+    
+    # Filter data for this combination
+    combo_data <- plot_data %>% filter(cell_phenotype == combo)
+    
+    # Skip if no data
+    if (nrow(combo_data) == 0) {
+      cat(sprintf("    Skipping %s - no data\n", combo))
+      next
+    }
+    
+    # Create individual plot
+    p_individual <- ggplot(combo_data, aes(x = timepoint_clean, y = accessibility)) +
+      geom_boxplot(aes(fill = timepoint_clean), alpha = 0.7, outlier.size = 0.5) +
+      stat_compare_means(
+        method = "wilcox.test",
+        comparisons = list(c("Control", "24h"), c("Control", "48h"), c("24h", "48h")),
+        label = "p.signif",
+        size = 4,
+        bracket.size = 0.5
+      ) +
+      scale_fill_viridis_d(option = "plasma", name = "Timepoint") +
+      labs(
+        x = "Treatment Duration",
+        y = "ATAC-seq Accessibility Score",
+        title = paste("Unique Super Enhancer Accessibility Changes"),
+        subtitle = paste("K975 Treatment Effects:", combo)
+      ) +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(size = 14, face = "bold"),
+        plot.subtitle = element_text(size = 12, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom"
+      )
+    
+    # Save individual plot
+    safe_combo_name <- gsub("[^A-Za-z0-9_]", "_", combo)
+    filename <- file.path(results_dir, paste0(SE_set, "_boxplot_", safe_combo_name, ".pdf"))
+    ggsave(filename, p_individual, width = 8, height = 6)
+    
+    plot_list[[combo]] <- p_individual
+    cat(sprintf("    Saved: %s\n", filename))
+  }
+  
+  # Create combined overview plot (without statistical comparisons to avoid conflicts)
+  p_overview <- ggplot(plot_data, aes(x = timepoint_clean, y = accessibility, fill = cell_phenotype)) +
     geom_boxplot(alpha = 0.7, outlier.size = 0.3) +
-    stat_compare_means(
-      method = "wilcox.test",
-      comparisons = list(c("Control", "24h"), c("Control", "48h"), c("24h", "48h")),
-      label = "p.signif",
-      size = 3
-    ) +
     facet_wrap(~cell_phenotype, scales = "free_y", ncol = 2) +
     scale_fill_viridis_d(option = "plasma", name = "SE Type") +
     labs(
       x = "Treatment Duration",
       y = "ATAC-seq Accessibility Score",
-      title = "Unique Super Enhancer Accessibility Changes",
-      subtitle = "K975 Treatment Effects on Cell-Type Specific Super Enhancers"
+      title = "Unique Super Enhancer Accessibility Changes - Overview",
+      subtitle = "K975 Treatment Effects on Cell-Type Specific Super Enhancers (Individual plots with statistics saved separately)"
     ) +
     theme_minimal() +
     theme(
@@ -438,11 +468,18 @@ create_dataset_boxplots <- function() {
       legend.position = "bottom"
     )
   
-  print(p_all)
-  ggsave(file.path(results_dir, "unique_SEs_all_boxplot.pdf"), p_all, width = 12, height = 10)
+  # Save overview plot
+  ggsave(file.path(results_dir, paste0(SE_set, "_unique_SEs_overview_boxplot.pdf")), p_overview, width = 12, height = 10)
+  cat("  Saved overview plot: unique_SEs_overview_boxplot.pdf\n")
   
-  return(p_all)
+  cat(sprintf("  Created %d individual boxplots with statistical comparisons\n", length(plot_list)))
+  
+  return(list(overview = p_overview, individual_plots = plot_list))
 }
+
+
+
+
 
 # Function to create heatmaps for each dataset type
 create_dataset_heatmaps <- function() {
@@ -530,6 +567,12 @@ create_log2fc_boxplots <- function() {
   
   p_log2fc <- ggplot(log2fc_data, aes(x = timepoint, y = log2fc, fill = timepoint)) +
     geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+    stat_compare_means(
+      method = "wilcox.test",
+      comparisons = list(c("24h", "48h")),
+      label = "p.signif",
+      size = 3
+    ) +
     geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
     geom_hline(yintercept = c(-log2_threshold, log2_threshold), linetype = "dotted", alpha = 0.5) +
     facet_wrap(~cell_phenotype, scales = "free_y") +
@@ -594,7 +637,12 @@ create_summary_comparison <- function() {
 
 # Execute all visualizations
 cat("\n=== CREATING VISUALIZATIONS ===\n")
-plot_boxplot <- create_dataset_boxplots()
+# test
+
+for (SE_set in unique(all_results$file_type)) {
+  create_dataset_boxplots(SE_set = SE_set)
+}
+
 create_dataset_heatmaps()
 plot_scatter <- create_scatter_plots()
 plot_log2fc <- create_log2fc_boxplots()
