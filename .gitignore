@@ -12,3 +12,11 @@ cache/
 neuroblastoma/cache/
 *.rds
 *cache*
+.npm/
+.local/
+.claude/
+envs/
+neuroblastoma_backup202607/
+.local/share/*
+R/
+.rstudio_server/

@@ -112,7 +112,7 @@ setup_output_dirs(PATHS$results_dir, c("plots", "tables", "reports"))
 message("Loading gene sets from MSigDB...")
 gene_sets <- list(
   hallmark = hypeR::msigdb_gsets("Homo sapiens", "H", clean = TRUE),
-  kegg = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:KEGG", clean = TRUE),
+  kegg = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:KEGG_LEGACY", clean = TRUE),
   reactome = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:REACTOME", clean = TRUE),
   gobp = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:BP", clean = TRUE),
   gocc = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:CC", clean = TRUE),
@@ -143,7 +143,10 @@ print("Environment setup completed")
 ```{r load_data}
 message("Loading RNA-seq data...")
 
-rnaseq_dds <- readRDS(file.path(PATHS$data_dir, "rnaseq_deseq_global_deseq_data_set.rds"))
+load(file.path(PATHS$data_dir, "deseq2.dds.RData"))
+rnaseq_dds <- dds
+rm(dds)
+#rnaseq_dds <- readRDS(file.path(PATHS$data_dir, "deseq2.dds.RData"))
 design(rnaseq_dds) <- as.formula("~ cell_line + cell_type")
 annotation_data <- read.table(
   file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),

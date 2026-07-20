@@ -13,10 +13,10 @@ renv::restore(project = "/home/rstudio/workspace/", prompt=FALSE)
 
 # Create output directories for results
 list_of_dirs_to_create <- list(
-  "~/workspace/neuroblastoma/results/",
-  "~/workspace/neuroblastoma/results/RNA-seq",
-  "~/workspace/neuroblastoma/results/ATAC-seq",
-  "~/workspace/neuroblastoma/results/CnR"
+  "~/neuroblastoma/results/",
+  "~/neuroblastoma/results/RNA-seq",
+  "~/neuroblastoma/results/ATAC-seq",
+  "~/neuroblastoma/results/CnR"
 )
 for(dir_to_create in list_of_dirs_to_create){
   if(!dir.exists(dir_to_create)) {
