@@ -26,7 +26,6 @@ Code split into individual blocks, each for specific part of the analysis. And s
 6) Setup the project (folders, packages, etc. using `00_setup_the_project.R`)
 This will do several things: 
   - Reconstruct the R environment using renv framework.
-  - Install HOMER
   - Create folders that are used for storing results
 7) Run the analysises in the following order:
   - 01_RNA_seq_analysis.Rmd 

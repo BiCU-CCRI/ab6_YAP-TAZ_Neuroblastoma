@@ -1,0 +1,130 @@
+---
+title: "ATAC-seq addtitional analysis - YAP/TAZ inhibition using K-975"
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
+
+```
+
+```{r setup-libraries}
+# Set up the environment ####
+deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
+
+## Loading libraries ####
+library(dplyr)
+library(tidyr)
+library(DESeq2)
+library(ggplot2)
+library(IRanges)
+library(patchwork)
+import::from(stringr, str_extract, str_detect)
+import::from(GenomicRanges,GRanges)
+import::from(openxlsx, addWorksheet, writeData, saveWorkbook)
+import::from(openxlsx2, read_xlsx)
+import::from(.from = RColorBrewer, brewer.pal)
+import::from(.from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+             "generatePCA", 
+             "extract_results_nextflow_output",
+             "meanExprsPerGroup_nextflow",
+             "extract_results_DDS_HIC",
+             "plotVolcano",
+             "get_the_poissoon_p_val")
+import::from(
+  .from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+  "filterDatasets",
+  .character_only = TRUE
+)
+```
+
+
+
+```{r load-atac-data results and SEs from previous analysis}
+
+ATAC_dds_results_48h <- read_xlsx(file.path(deg_dir,  paste0("DAR_results_time_48h_vs_control.xlsx")), sheet = "results_signif")
+ATAC_dds_results_24h <- read_xlsx(file.path(deg_dir,  paste0("DAR_results_time_24h_vs_control.xlsx")), sheet = "results_signif")
+
+
+# Load SEs that were determined in 05_Lily_CNR_SuperEnhancer_detection.
+CLB_SKN_A_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
+CLB_SKN_M_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
+CLB_SKN_AM_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
+```
+
+
+```{r Filter regions that present only in SEs}
+# Convert DESeq2 results into GRanges, that can be used for finding overlap with SEs
+ATAC_dds_results_24h_grange <- GRanges(seqnames = paste0("chr", ATAC_dds_results_24h$Chr), 
+                                       ranges = IRanges(
+                                         start = ATAC_dds_results_24h$Start,
+                                         end = ATAC_dds_results_24h$End),
+                                       mcols = ATAC_dds_results_24h[, c(1,6:29)]
+                                       )
+ATAC_dds_results_48h_grange <- GRanges(seqnames = paste0("chr", ATAC_dds_results_48h$Chr), 
+                                       ranges = IRanges(
+                                         start = ATAC_dds_results_48h$Start,
+                                         end = ATAC_dds_results_48h$End),
+                                       mcols =  ATAC_dds_results_48h[, c(1,6:29)])
+
+# Convert SEs BEDs into GRanges
+CLB_SKN_M_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_M_SEs_annot$Chr, 
+                                      ranges = IRanges(
+                                        start = CLB_SKN_M_SEs_annot$Start,
+                                        end = CLB_SKN_M_SEs_annot$End))
+CLB_SKN_A_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_A_SEs_annot$Chr, 
+                                      ranges = IRanges(
+                                        start = CLB_SKN_A_SEs_annot$Start,
+                                        end = CLB_SKN_A_SEs_annot$End))
+CLB_SKN_AM_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_AM_SEs_annot$Chr, 
+                                       ranges = IRanges(
+                                         start = CLB_SKN_AM_SEs_annot$Start,
+                                         end = CLB_SKN_AM_SEs_annot$End))
+
+
+ATAC_24h_AM_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_24h_grange,
+                                                          CLB_SKN_AM_SEs_annot_grange,
+                                                          maxgap = 50)
+ATAC_24h_M_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_24h_grange,
+                                                          CLB_SKN_M_SEs_annot_grange,
+                                                          maxgap = 50)
+write.csv(ATAC_24h_M_overlaps$overlappingPeaks, 
+          file = "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/ATAC_24h_MES_SEs_overlaps.tsv",
+          sep = "\t", 
+          row.names = TRUE,
+          col.names = TRUE)
+ATAC_24h_A_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_24h_grange,
+                                                          CLB_SKN_A_SEs_annot_grange,
+                                                          maxgap = 50)
+
+
+
+ATAC_48h_AM_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_48h_grange,
+                                                          CLB_SKN_AM_SEs_annot_grange,
+                                                          maxgap = 50)
+ATAC_48h_M_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_48h_grange,
+                                                          CLB_SKN_M_SEs_annot_grange,
+                                                          maxgap = 50)
+write.csv(ATAC_48h_M_overlaps$overlappingPeaks, 
+          file = "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/ATAC_48h_MES_SEs_overlaps.tsv",
+          sep = "\t", 
+          row.names = TRUE,
+          col.names = TRUE)
+ATAC_48h_A_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_48h_grange,
+                                                          CLB_SKN_A_SEs_annot_grange,
+                                                          maxgap = 50)
+```

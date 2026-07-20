@@ -473,7 +473,6 @@ ChIPpeakAnno::makeVennDiagram(ol,
                               cat.col = c("#D55E00", "#0072B2")
 )
 
-
 ## try to use only SEs that are present in both CLB and SKN
 Grange_CLB_Ma_A_merged <- reduce(c(SE_list[[1]], SE_list[[2]]), drop.empty.ranges = F, min.gapwidth = 1)
 Grange_SK_N_SH_A_merged <- reduce(c(SE_list[[7]], SE_list[[8]]), drop.empty.ranges = F, min.gapwidth = 1)
@@ -546,6 +545,20 @@ ChIPpeakAnno::makeVennDiagram(ol,
 CLB_SKN_A_u <- ol[["peaklist"]][["Grange_CLB_Ma_A_merged///Grange_SK_N_SH_A_merged"]]
 CLB_SKN_M_u <- ol[["peaklist"]][["Grange_CLB_Ma_M_merged///Grange_SK_N_SH_M_merged"]]
 CLB_SKN_AM_u <- ol[["peaklist"]][["Grange_CLB_Ma_A_merged///Grange_SK_N_SH_A_merged///Grange_CLB_Ma_M_merged///Grange_SK_N_SH_M_merged"]]
+SKN_M_u <- ol[["peaklist"]][["Grange_SK_N_SH_M_merged"]]
+SKN_A_u <- ol[["peaklist"]][["Grange_SK_N_SH_A_merged"]]
+CLB_M_u <- ol[["peaklist"]][["Grange_CLB_Ma_M_merged"]]
+CLB_A_u <- ol[["peaklist"]][["Grange_CLB_Ma_A_merged"]]
+
+
+Export_my_BED(CLB_SKN_A_u, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(CLB_SKN_M_u, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(CLB_SKN_AM_u, "~/workspace/neuroblastoma/temp_results/BEDs/")
+
+Export_my_BED(SKN_M_u, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(SKN_A_u, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(CLB_M_u, "~/workspace/neuroblastoma/temp_results/BEDs/")
+Export_my_BED(CLB_A_u, "~/workspace/neuroblastoma/temp_results/BEDs/")
 
 tmp <- data.frame(
   Jun = c(countOverlaps( CLB_SKN_A_u,  DBobj_list_cons$Jun)/width(CLB_SKN_A_u)*10^3, 
@@ -593,6 +606,7 @@ my_comparisons <- list(
   c("CLB_SKN_A", "CLB_SKN_M"),
   c("CLB_SKN_AM", "CLB_SKN_M") 
 )
+
 
 stat.test <- tmp_long %>%
   group_by(TF) %>%

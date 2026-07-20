@@ -1,28 +1,107 @@
-```{r load libraries, include=FALSE}
-###########################################################################################################################
-## new analysis whith not united replicates TDI, dox, dox_TDI, DMSO
-import::from(openxlsx, createWorkbook, addWorksheet, writeData, saveWorkbook)
-import::from(
-  .from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
-  "filterDatasets",
-  "generatePCA",
-  "generateEnsemblAnnotation",
-  "generateResults",
-  "meanExprsPerGroup",
-  "plotVolcano",
-  .character_only = TRUE
-) # used for filtering
+---
+title: "RNA-seq WWTR1 Overexpression Analysis - Improved Version"
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+---
 
-library(stringr)
-library(org.Hs.eg.db)
-library(fgsea)
-library(ggplot2)
-library(DESeq2)
-library(dplyr)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
+
+set.seed(42)
+analysis_start_time <- Sys.time()
+message("Starting RNA-seq WWTR1 overexpression analysis at: ", analysis_start_time)
 ```
 
-```{r load gene sets, include=FALSE}
-# load gene sets
+## Configuration and Setup
+
+```{r configuration}
+config <- list(
+  filtering = list(
+    abs_filt_samples = 2,
+    min_count_threshold = 10
+  ),
+  statistical = list(
+    padj_cutoff = 0.05,
+    log2FC_cutoff = 1,
+    var_expl_needed = 0.6
+  ),
+  visualization = list(
+    ntop_genes_pca = 1000,
+    plot_width = 20,
+    plot_height = 20,
+    plot_units = "cm",
+    top_pathways_show = 20
+  ),
+  fgsea = list(
+    min_size = 15,
+    max_size = 500
+  )
+)
+
+PATHS <- list(
+  data_dir = here::here("neuroblastoma", "data", "RNAseq"),
+  results_dir = here::here("neuroblastoma", "results", "RNA-seq_TDI"),
+  resources_dir = here::here("neuroblastoma", "resources")
+)
+
+print("Configuration loaded successfully")
+```
+
+```{r load_libraries}
+suppressPackageStartupMessages({
+  # Core analysis packages
+  library(DESeq2)
+  library(stringr)
+  library(org.Hs.eg.db)
+  
+  # Enrichment analysis
+  library(fgsea)
+  library(hypeR)
+  library(GSVA)
+  
+  # Visualization
+  library(ggplot2)
+  library(ggrepel)
+  library(pheatmap)
+  library(RColorBrewer)
+  
+  # Data manipulation
+  library(dplyr)
+  library(tidyr)
+  library(readr)
+  
+  # Batch correction
+  library(limma)
+  
+  # File operations
+  library(openxlsx)
+  library(openxlsx2)
+  library(here)
+  
+  # Load all utility functions from consolidated script
+  source(here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"))
+})
+
+print("Libraries loaded successfully")
+```
+
+```{r setup_environment}
+if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
+# Load gene sets directly (no caching to avoid repository bloat)
+message("Loading gene sets from MSigDB...")
 gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean = TRUE)
 gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean = TRUE)
 gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
@@ -32,28 +111,36 @@ gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), 
 gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
 gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
                                          "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
+
+print("Environment setup completed")
 ```
 
-```{r set up parameters and variables, include=FALSE}
-# Set up the parameters
-param_list <- list(
-  abs_filt_samples = 2,
-  padj_cutoff = 0.05,
-  log2FC_cutoff = 1,
-  var_expl_needed = 0.6
-)
-deg_dir <- "~/workspace/neuroblastoma/results/RNA-seq_TDI/"
-```
 
-```{r Load data, include=FALSE}
-annotationData <- read.table(
-  file = file.path("~/workspace/neuroblastoma/data/RNAseq/rnaseq_deseq_global_annotation_gene.tsv"),
+## Data Loading and Preparation
+
+```{r load_data}
+message("Loading RNA-seq WWTR1 overexpression data...")
+
+annotation_data <- read.table(
+  file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),
   sep = "\t",
   header = TRUE
 )
-colnames(annotationData)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
+colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
-dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/OE_WWTR1_experiment.dds.RDS")
+# Load WWTR1 overexpression data with validation
+tryCatch({
+  dds <- readRDS(file.path(PATHS$data_dir, "OE_WWTR1_experiment.dds.RDS"))
+  message("Successfully loaded WWTR1 overexpression data")
+}, error = function(e) {
+  # Try alternative file location
+  tryCatch({
+    dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/OE_WWTR1_experiment.dds.RDS")
+    message("Loaded WWTR1 data from alternative location")
+  }, error = function(e2) {
+    stop("Failed to load WWTR1 data: ", e2$message)
+  })
+})
 
 samples_to_select_full <- c("OE_WWTR1_DMSO_RNA_S165191_R1", 
                             "OE_WWTR1_TDI_RNA_S165188_R1", 
@@ -65,7 +152,15 @@ samples_to_select_full <- c("OE_WWTR1_DMSO_RNA_S165191_R1",
                             "OE_WWTR1_dox_TDI_RNA_S165178_R2"
                             )
 
-TDI_dds <- dds[,colnames(dds) %in% samples_to_select_full]
+# Subset to WWTR1 samples with validation
+if (!all(samples_to_select_full %in% colnames(dds))) {
+  missing_samples <- setdiff(samples_to_select_full, colnames(dds))
+  warning("Missing samples: ", paste(missing_samples, collapse = ", "))
+  samples_to_select_full <- intersect(samples_to_select_full, colnames(dds))
+}
+
+TDI_dds <- dds[, colnames(dds) %in% samples_to_select_full]
+message("Selected ", ncol(TDI_dds), " samples for analysis")
 
 sample_names <- colData(TDI_dds)$sample
 
@@ -94,7 +189,7 @@ design(TDI_dds) <- as.formula("~ treatment")
 # Filtering lowly expressed genes
 TDI_dds_filt <- filterDatasets(TDI_dds,
                                abs_filt = TRUE,
-                               abs_filt_samples = param_list$abs_filt_samples
+                               abs_filt_samples = config$filtering$abs_filt_samples
 )
 
 # Estimate size factors and running DESEQ2
@@ -110,8 +205,8 @@ deg_results_TDI_vs_DMSO <- generateResults(
   cond_numerator = "TDI",
   cond_denominator = "DMSO",
   cond_variable = "treatment",
-  ensemblAnnot = annotationData,
-  log2FC_cutoff = param_list$log2FC_cutoff
+  ensemblAnnot = annotation_data,
+  log2FC_cutoff = config$statistical$log2FC_cutoff
 )
 
 # Write the result to the xlsx file
@@ -122,7 +217,7 @@ openxlsx::addWorksheet(XLSX_OUT, "results_all")
 openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$results_signif, sheet = "results_signif")
 openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$de_details, sheet = "de_details")
 openxlsx::writeData(XLSX_OUT, x = deg_results_TDI_vs_DMSO$results_all, sheet = "results_all")
-openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "treatment_TDI_vs_DMSO.xlsx"), overwrite = T)
+openxlsx::saveWorkbook(XLSX_OUT, file.path(PATHS$results_dir, "treatment_TDI_vs_DMSO.xlsx"), overwrite = T)
 
 deg_results_doxTDI_vs_dox <- generateResults(
   dds_object = TDI_dds_filt,
@@ -130,8 +225,8 @@ deg_results_doxTDI_vs_dox <- generateResults(
   cond_numerator = "dox_TDI",
   cond_denominator = "dox",
   cond_variable = "treatment",
-  ensemblAnnot = annotationData,
-  log2FC_cutoff = param_list$log2FC_cutoff
+  ensemblAnnot = annotation_data,
+  log2FC_cutoff = config$statistical$log2FC_cutoff
 )
 
 # Write the result to the xlsx file
@@ -142,7 +237,7 @@ openxlsx::addWorksheet(XLSX_OUT, "results_all")
 openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$results_signif, sheet = "results_signif")
 openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$de_details, sheet = "de_details")
 openxlsx::writeData(XLSX_OUT, x = deg_results_doxTDI_vs_dox$results_all, sheet = "results_all")
-openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir, "treatment_doxTDI_vs_dox.xlsx"), overwrite = T)
+openxlsx::saveWorkbook(XLSX_OUT, file.path(PATHS$results_dir, "treatment_doxTDI_vs_dox.xlsx"), overwrite = T)
 ```
 
 ```{r PCA visualisation, include=FALSE}
@@ -159,7 +254,7 @@ tmp_pca_deg <- generatePCA(
   ntop_genes = 1000
 ) + ggtitle("PCA plot for dox doxTDI DMSO TDI WWTR1 only")
 ggsave(
-  filename = paste0(deg_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO.pdf"),
+  filename = file.path(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO.pdf"),
   plot = tmp_pca_deg,
   width = 20, height = 20, units = "cm"
 )
@@ -209,7 +304,7 @@ for(gene_set_to_plot_name in names(gene_set_list)){
  plot(p)
   
   ggsave(
-    filename = paste0(deg_dir, "TDI_vs_DMSO_fgsea_", gene_set_to_plot_name, ".pdf"),
+    filename = file.path(PATHS$results_dir, paste0("TDI_vs_DMSO_fgsea_", gene_set_to_plot_name, ".pdf")),
     plot = p,
     width = 20, height = 20, units = "cm"
   )
@@ -245,7 +340,7 @@ for(gene_set_to_plot_name in names(gene_set_list)){
   plot(p)
   
   ggsave(
-    filename = paste0(deg_dir, "doxTDI_vs_dox_fgsea_", gene_set_to_plot_name, ".pdf"),
+    filename = file.path(PATHS$results_dir, paste0("doxTDI_vs_dox_fgsea_", gene_set_to_plot_name, ".pdf")),
     plot = p,
     width = 20, height = 20, units = "cm"
   )
@@ -303,7 +398,7 @@ TDI_plus_OG <- DESeqDataSetFromMatrix(countData = TDI_plus_OG_counts,
 # Filtering lowly expressed genes
 TDI_plus_OG_filt <- filterDatasets(TDI_plus_OG,
                                abs_filt = TRUE,
-                               abs_filt_samples = param_list$abs_filt_samples
+                               abs_filt_samples = config$filtering$abs_filt_samples
 )
 
 # Estimate size factors and running DESEQ2
@@ -325,7 +420,7 @@ tmp_pca_deg <- generatePCA(
 ggtitle("dox tdi dox/tdi dmso experiment + OG samples. NOT batch corrected") 
 
 ggsave(
-  filename = paste0(deg_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs.pdf"),
+  filename = file.path(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs.pdf"),
   plot = tmp_pca_deg,
   width = 20, height = 20, units = "cm"
 )
@@ -343,7 +438,7 @@ pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_e
   ggtitle("dox tdi dox/tdi dmso experiment + OG samples. batch corrected") 
 
 ggsave(
-  filename = paste0(deg_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs_batch_corrected.pdf"),
+  filename = file.path(PATHS$results_dir, "PCA_WWTR1_only_dox_doxTDI_DMSO_plus_OGs_batch_corrected.pdf"),
   plot = pca_deg_NObatch_experiment,
   width = 20, height = 20, units = "cm"
 )
@@ -366,8 +461,8 @@ sig_list_our_data <- list(
 
 # prepare vsd
 vsd_counts_matrix <- assay(TDI_plus_OG_filt_vsd)
-row.names(vsd_counts_matrix) <- annotationData[, 'gene_symbol'][match(row.names(vsd_counts_matrix), 
-                                                                      annotationData[, 'ensembl_id'])]
+row.names(vsd_counts_matrix) <- annotation_data[, 'gene_symbol'][match(row.names(vsd_counts_matrix), 
+                                                                      annotation_data[, 'ensembl_id'])]
 
 # Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
 ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
@@ -388,7 +483,56 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines[
 
 ```
 
-```{r plot GSVA old + new samples}
+```{r plot_gsva_heatmap}
 ssgsea_mes_adr_ncc_noradr_heatmap
-
 ```
+
+## Analysis Summary and Session Information
+
+```{r analysis_summary}
+analysis_end_time <- Sys.time()
+analysis_duration <- difftime(analysis_end_time, analysis_start_time, units = "mins")
+
+# Create comprehensive summary report
+summary_report <- data.frame(
+  Analysis = c("TDI vs DMSO", "doxTDI vs dox"),
+  Significant_Genes = c(
+    nrow(deg_results_TDI_vs_DMSO$results_signif),
+    nrow(deg_results_doxTDI_vs_dox$results_signif)
+  ),
+  Upregulated = c(
+    sum(deg_results_TDI_vs_DMSO$results_signif$log2FoldChange > 0),
+    sum(deg_results_doxTDI_vs_dox$results_signif$log2FoldChange > 0)
+  ),
+  Downregulated = c(
+    sum(deg_results_TDI_vs_DMSO$results_signif$log2FoldChange < 0),
+    sum(deg_results_doxTDI_vs_dox$results_signif$log2FoldChange < 0)
+  ),
+  Files_Generated = c(
+    "WWTR1_TDI_vs_DMSO_analysis.xlsx",
+    "WWTR1_doxTDI_vs_dox_analysis.xlsx"
+  )
+)
+
+knitr::kable(summary_report, caption = "WWTR1 Overexpression Analysis Summary")
+
+message("=== WWTR1 OVEREXPRESSION ANALYSIS COMPLETED ===")
+message("Total analysis time: ", round(analysis_duration, 2), " minutes")
+message("Results saved to: ", PATHS$results_dir)
+```
+
+```{r session_info}
+session_info <- sessionInfo()
+writeLines(
+  capture.output(session_info),
+  file.path(PATHS$results_dir, "wwtr1_oe_session_info.txt")
+)
+
+session_info
+```
+
+---
+
+**Analysis completed at:** `r Sys.time()`  
+**Total runtime:** `r round(difftime(Sys.time(), analysis_start_time, units = "mins"), 2)` minutes  
+**Output directory:** `r PATHS$results_dir`

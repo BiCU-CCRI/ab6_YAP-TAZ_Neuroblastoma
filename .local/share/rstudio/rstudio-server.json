@@ -1,0 +1,8 @@
+{
+    "context_id": "EC5BABD0",
+    "theme": {
+        "name": "catppuccin-frappe",
+        "url": "theme/custom/local/catppuccin-frappe.rstheme",
+        "isDark": true
+    }
+}
