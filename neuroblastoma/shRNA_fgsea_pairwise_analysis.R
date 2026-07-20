@@ -111,7 +111,7 @@ gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IG
                                          "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
 
 #k975_48h_results <- read.xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx", sheet = 1)
-k975_48h_results <- read.xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/comparison_group_CM_48h_vs_CM_control_.xlsx", sheet = 1)
+k975_48h_results <- openxlsx::read.xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/comparison_group_CM_48h_vs_CM_control_.xlsx", sheet = 1)
 k975_48h_up <- k975_48h_results %>% dplyr::filter(log2FoldChange > 0) %>% dplyr::pull(gene_symbol)
 k975_48h_down <- k975_48h_results %>% dplyr::filter(log2FoldChange < 0) %>% dplyr::pull(gene_symbol)
 

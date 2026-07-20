@@ -1226,7 +1226,7 @@ plot1 <- summary_table_MES %>%
        title = "Enrichment of MES-signature in MES and ADR samples")
 
 ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES_signatures_in_MES_ADR_samples.pdf")), 
-       plot = plot,
+       plot = plot1,
        width = 18, height = 20, units = "cm")
 
 
@@ -1263,7 +1263,7 @@ plot2 <- summary_table_ADR %>%
        title = "Enrichment of ADR-signature in MES and ADR samples")
 
 ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_ADR_signatures_in_MES_ADR_samples.pdf")), 
-       plot = plot,
+       plot = plot2,
        width = 18, height = 20, units = "cm")
 
 plot3 <- summary_table_MES %>%
@@ -1298,7 +1298,7 @@ plot3 <- summary_table_MES %>%
        x = "Odds Ratio",
        title = "Enrichment of MES-signature in\n AP1, TEAD and collocalized TEAD & AP1 predicted BS \nin MES and ADR samples")
 ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES_signatures_in_MES_ADR_TEAD_AP1_colloc_samples.pdf")), 
-       plot = plot,
+       plot = plot3,
        width = 18, height = 20, units = "cm")
 
 
@@ -1336,7 +1336,7 @@ plot4 <- summary_table_MES %>%
        title = "Enrichment of MES-signature in\n AP1, TEAD and collocalized TEAD & AP1 predicted BS \nin MES and ADR samples")
 
 ggsave(filename = file.path(deg_dir, paste0("Enrichment_of_MES-sig_in_coloc_TEAD_AP1_BS", ".eps")), 
-       plot=plot,
+       plot=plot4,
        width = 18, height = 20, units = "cm")
 ```
 

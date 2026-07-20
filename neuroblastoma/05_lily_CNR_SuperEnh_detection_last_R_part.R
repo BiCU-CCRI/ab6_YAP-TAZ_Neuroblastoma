@@ -607,6 +607,7 @@ my_comparisons <- list(
   c("CLB_SKN_AM", "CLB_SKN_M") 
 )
 
+
 stat.test <- tmp_long %>%
   group_by(TF) %>%
   wilcox_test(enrich_score ~ group) %>%

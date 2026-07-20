@@ -1,0 +1,623 @@
+---
+title: "RNA-seq Analysis - Improved Version"
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
+
+set.seed(42)
+analysis_start_time <- Sys.time()
+message("Starting RNA-seq analysis at: ", analysis_start_time)
+```
+
+## Configuration and Setup
+
+```{r configuration}
+config <- list(
+  filtering = list(
+    abs_filt_samples = 2,
+    min_count_threshold = 10
+  ),
+  statistical = list(
+    padj_cutoff = 0.05,
+    log2FC_cutoff = 1,
+    var_expl_needed = 0.6
+  ),
+  visualization = list(
+    ntop_genes_pca = 1000,
+    plot_width = 20,
+    plot_height = 20,
+    plot_units = "cm",
+    top_pathways_show = 20
+  ),
+  fgsea = list(
+    min_size = 15,
+    max_size = 500,
+    top_pathways_up = 10,
+    top_pathways_down = 10
+  )
+)
+
+PATHS <- list(
+  data_dir = here::here("neuroblastoma", "data", "RNAseq"),
+  results_dir = here::here("neuroblastoma", "results", "RNA-seq_MES_vs_ADR"),
+  resources_dir = here::here("neuroblastoma", "resources")
+)
+
+GENES_OF_INTEREST <- list(
+  all = c("VIM", "YAP1", "WWTR1", "JUN", "FOSL1", "FOSL2", "PHOX2B", "HAND2", "GATA3"),
+  mesenchymal_markers = c("VIM", "CDH2", "FN1"),
+  yap_taz_pathway = c("YAP1", "WWTR1", "TEAD1", "TEAD2", "TEAD3", "TEAD4"),
+  ap1_factors = c("JUN", "JUNB", "JUND", "FOS", "FOSB", "FOSL1", "FOSL2"),
+  adrenergic_markers = c("PHOX2B", "HAND2", "GATA3", "DBH", "TH")
+)
+
+print("Configuration loaded successfully")
+```
+
+```{r load_libraries}
+suppressPackageStartupMessages({
+  # Core analysis packages
+  library(DESeq2)
+  library(stringr)
+  library(org.Hs.eg.db)
+  
+  # Enrichment analysis
+  library(fgsea)
+  library(hypeR)
+  
+  # Visualization
+  library(ggplot2)
+  library(ggrepel)
+  library(RColorBrewer)
+  library(pheatmap)
+  
+  # Data manipulation
+  library(dplyr)
+  library(tidyr)
+  library(readr)
+  
+  # File operations
+  library(openxlsx)
+  library(here)
+  
+  # Load all utility functions from consolidated script
+  source(here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"))
+  
+})
+
+print("Libraries loaded successfully")
+```
+
+```{r setup_environment}
+# Setup directories
+setup_output_dirs(PATHS$results_dir, c("plots", "tables", "reports"))
+
+# Load gene sets 
+message("Loading gene sets from MSigDB...")
+gene_sets <- list(
+  hallmark = hypeR::msigdb_gsets("Homo sapiens", "H", clean = TRUE),
+  kegg = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:KEGG", clean = TRUE),
+  reactome = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:REACTOME", clean = TRUE),
+  gobp = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:BP", clean = TRUE),
+  gocc = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:CC", clean = TRUE),
+  gomf = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:MF", clean = TRUE),
+  oncogenic = hypeR::msigdb_gsets("Homo sapiens", "C6", clean = TRUE),
+  wang_hippo = list(genesets = list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A","TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80")))
+)
+
+# Setup BioMart with error handling
+tryCatch({
+  options(timeout = 30000)
+  mart <- biomaRt::useMart(
+    biomart = "ENSEMBL_MART_ENSEMBL", 
+    dataset = "hsapiens_gene_ensembl",
+    host = "https://www.ensembl.org"
+  )
+  message("BioMart connection established")
+}, error = function(e) {
+  warning("Failed to connect to BioMart: ", e$message)
+  mart <- NULL
+})
+
+print("Environment setup completed")
+```
+
+## Data Loading and Validation
+
+```{r load_data}
+message("Loading RNA-seq data...")
+
+rnaseq_dds <- readRDS(file.path(PATHS$data_dir, "rnaseq_deseq_global_deseq_data_set.rds"))
+design(rnaseq_dds) <- as.formula("~ cell_line + cell_type")
+annotation_data <- read.table(
+  file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),
+  sep = "\t",
+  header = TRUE
+)
+# Standardize column names
+colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
+
+# Display data summary
+message("Data summary:")
+message("- Samples: ", ncol(rnaseq_dds))
+message("- Genes: ", nrow(rnaseq_dds))
+message("- Cell types: ", paste(unique(rnaseq_dds$cell_type), collapse = ", "))
+message("- Cell lines: ", paste(unique(rnaseq_dds$cell_line), collapse = ", "))
+
+```
+
+## Quality Control Analysis
+
+### Initial PCA with All Samples
+
+```{r initial_pca}
+message("Performing initial quality control analysis...")
+
+# Filter lowly expressed genes
+tmp_rnaseq_dds_filt <- filterDatasets(
+  rnaseq_dds,
+  abs_filt = TRUE,
+  abs_filt_samples = config$filtering$abs_filt_samples
+)
+# Run DESeq2 pipeline
+tmp_rnaseq_dds_filt <- DESeq2::estimateSizeFactors(tmp_rnaseq_dds_filt)
+tmp_rnaseq_dds_filt <- DESeq2::DESeq(tmp_rnaseq_dds_filt)
+vsd_initial <- DESeq2::vst(tmp_rnaseq_dds_filt, blind = TRUE)
+
+# Generate initial PCA
+pca_initial <- generatePCA(
+  transf_object = vsd_initial,
+  cond_interest_varPart = c("cell_type", "cell_line"),
+  color_variable = "cell_type",
+  shape_variable = "cell_line",
+  ntop_genes = config$visualization$ntop_genes_pca
+) +
+  scale_color_manual(values = c("navy", "firebrick3")) +
+  scale_shape_manual(values = c(16, 7, 17, 15, 3)) +
+  labs(title = "PCA: All Samples (Before QC)")
+
+# Save plot
+ggsave(
+  filename = file.path(PATHS$results_dir, "plots" ,"PCA_full_dataset.png"),
+  plot = pca_initial,
+  width = config$visualization$plot_width,
+  height = config$visualization$plot_height,
+  units = config$visualization$plot_units
+)
+
+pca_initial
+```
+
+### Sample Quality Control and Filtering
+
+```{r sample_filtering}
+message("Removing problematic samples")
+
+# Remove STA_NB_6 sample (intermixed characteristics)
+rnaseq_dds <- rnaseq_dds[, rnaseq_dds$cell_line != "STA_NB_6"]
+rnaseq_dds$cell_line <- droplevels(rnaseq_dds$cell_line)
+
+message("Samples after filtering: ", ncol(rnaseq_dds))
+message("Removed samples: STA_NB_6")
+
+# Validate inputs after filtering
+validate_inputs(rnaseq_dds, annotation_data)
+
+# Filter lowly expressed genes
+rnaseq_dds_filt <- filterDatasets(
+  rnaseq_dds,
+  abs_filt = TRUE,
+  abs_filt_samples = config$filtering$abs_filt_samples
+)
+# Run DESeq2 pipeline
+rnaseq_dds_filt <- DESeq2::estimateSizeFactors(rnaseq_dds_filt)
+rnaseq_dds_filt <- DESeq2::DESeq(rnaseq_dds_filt)
+
+# Variance stabilization for visualization
+vsd <- DESeq2::vst(rnaseq_dds_filt, blind = TRUE)
+
+# Generate PCA after quality control
+pca_clean <- generatePCA(
+  transf_object = vsd,
+  cond_interest_varPart = c("cell_type", "cell_line"),
+  color_variable = "cell_type",
+  shape_variable = "cell_line",
+  ntop_genes = config$visualization$ntop_genes_pca
+) +
+  scale_color_manual(values = c("navy", "firebrick3")) +
+  labs(title = "PCA: Clean Dataset (After QC)") 
+
+# Save plot using safe function
+safe_save_plot(
+  pca_clean,
+  file.path(PATHS$results_dir, "plots", "PCA_clean_dataset.png"),
+  width = config$visualization$plot_width,
+  height = config$visualization$plot_height,
+  units = config$visualization$plot_units
+)
+
+pca_clean
+```
+
+### Differential Gene Expression
+
+```{r deg_analysis}
+
+# Generate differential expression results
+message("Available contrasts: ", paste(resultsNames(rnaseq_dds_filt), collapse = ", "))
+
+deg_results <- generateResults(
+  dds_object = rnaseq_dds_filt,
+  coeff_name = "cell_type_MES_vs_ADR",
+  cond_numerator = "MES",
+  cond_denominator = "ADR",
+  cond_variable = "cell_type",
+  ensemblAnnot = annotation_data,
+  log2FC_cutoff = config$statistical$log2FC_cutoff
+)
+
+# Validate statistical results
+stat_validation <- validate_statistical_results(deg_results$results_all, config$statistical$padj_cutoff)
+
+```
+
+## Gene Set Creation and Export
+
+```{r gene_set_export}
+message("Creating MES/ADR gene signatures...")
+
+# Create gene lists for downstream analysis
+mes_adrn_gene_list <- deg_results$results_signif %>%
+  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
+
+# Add Entrez IDs if BioMart is available
+if (!is.null(mart)) {
+  tryCatch({
+    biomart_genes <- biomaRt::getBM(
+      filters = "ensembl_gene_id",
+      attributes = c("ensembl_gene_id", "entrezgene_id"),
+      values = mes_adrn_gene_list$ensembl_id,
+      mart = mart
+    )
+    
+    mes_adrn_gene_list <- merge(
+      mes_adrn_gene_list,
+      biomart_genes,
+      by.x = "ensembl_id",
+      by.y = "ensembl_gene_id"
+    ) %>%
+    select(Term, entrezgene_id) %>%
+    rename(gs_id = Term, gene_id = entrezgene_id) %>%
+    filter(!is.na(gene_id))
+    
+    # Export gene signature
+    write.table(
+      mes_adrn_gene_list,
+      file.path(PATHS$resources_dir, "mes_adrn_GS_frm_RNA_seq.tsv"),
+      sep = "\t",
+      row.names = FALSE,
+      quote = FALSE
+    )
+    
+    message("Gene signature exported successfully")
+  }, error = function(e) {
+    warning("Failed to add Entrez IDs: ", e$message)
+  })
+}
+
+```
+
+## Results Export
+
+```{r results_export}
+message("Exporting results to Excel...")
+
+# Create Excel workbook
+xlsx_out <- createWorkbook()
+
+# Add worksheets
+addWorksheet(xlsx_out, "Summary")
+addWorksheet(xlsx_out, "Significant_DEGs")
+addWorksheet(xlsx_out, "DE_Details")
+addWorksheet(xlsx_out, "All_Results")
+
+# Prepare summary data
+analysis_summary <- generate_analysis_summary(deg_results)
+summary_df <- data.frame(
+  Metric = names(analysis_summary),
+  Value = unlist(analysis_summary),
+  stringsAsFactors = FALSE
+)
+
+# Write data to worksheets
+writeData(xlsx_out, "Summary", summary_df)
+writeData(xlsx_out, "Significant_DEGs", deg_results$results_signif)
+writeData(xlsx_out, "DE_Details", deg_results$de_details)
+writeData(xlsx_out, "All_Results", deg_results$results_all)
+
+# Save workbook
+saveWorkbook(
+  xlsx_out,
+  file.path(PATHS$results_dir, "tables", "MES_vs_ADR_comprehensive_results.xlsx"),
+  overwrite = TRUE
+)
+
+message("Results exported to Excel successfully")
+
+```
+
+```{r GSEA, echo=FALSE}
+# Produce GSEA plots
+C5_GOBP <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gene_sets$gobp,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C5_GOCC <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gene_sets$gocc,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C5_GOMF <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gene_sets$gomf,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C2_kegg <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gene_sets$kegg,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C2_reactome <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gene_sets$reactome,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+C6_onco <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gene_sets$oncogenic,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+wang_hippo <- hypeR::hypeR(
+  signature = deg_results$results_signif$gene_symbol,
+  genesets = gene_sets$wang_hippo,
+  test = "hypergeometric",
+  background = nrow(rnaseq_dds_filt)
+)
+
+
+C5_GOBP_plot <- hypeR::hyp_dots(C5_GOBP, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOBP: MES vs ADR") + theme_bw()
+C5_GOCC_plot <- hypeR::hyp_dots(C5_GOCC, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOCC: MES vs ADR") + theme_bw()
+C5_GOMF_plot <- hypeR::hyp_dots(C5_GOMF, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "GOMF: MES vs ADR") + theme_bw()
+C2_kegg_plot <- hypeR::hyp_dots(C2_kegg, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "KEGG: MES vs ADR") + theme_bw()
+C2_rctm_plot <- hypeR::hyp_dots(C2_reactome, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "REACTOME: MES vs ADR") + theme_bw()
+C6_onco_plot <- hypeR::hyp_dots(C6_onco, merge = TRUE, fdr = 0.05, top = 20, abrv = 70, val = "fdr", title = "ONCO: MES vs ADR") + theme_bw()
+
+plot(C5_GOBP_plot)
+plot(C5_GOCC_plot)
+plot(C5_GOMF_plot)
+plot(C2_kegg_plot)
+plot(C2_rctm_plot)
+
+# optional saving to excel tables
+hypeR::hyp_to_excel(C5_GOBP, file_path = file.path(PATHS$results_dir, "tables", "MES_vs_ADRN_GSEA_C5_GOBP.xlsx"))
+hypeR::hyp_to_excel(C2_reactome, file_path = file.path(PATHS$results_dir, "tables", "MES_vs_ADRN_GSEA_C2_reactome.xlsx"))
+hypeR::hyp_to_excel(C6_onco, file_path=file.path(PATHS$results_dir, "tables", "MES_vs_ADRN_GSEA_C6_onco.xlsx"))
+# hypeR::hyp_to_excel(C5_GOCC, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOCC.xlsx"))
+# hypeR::hyp_to_excel(C5_GOMF, file_path=file.path(deg_dir, "MES_vs_ADRN_GSEA_C5_GOMF.xlsx"))
+
+# saving the report to a PDF file
+pdf(file = file.path(PATHS$results_dir, "plots", "MES_vs_ADR_GSEA.pdf"), 
+    width = 10,
+    height = 10)
+plot(C5_GOBP_plot)
+plot(C5_GOCC_plot)
+plot(C5_GOMF_plot)
+plot(C2_kegg_plot)
+plot(C2_rctm_plot)
+dev.off()
+
+#Additionally - save as individual plots
+print(paste0("Plot width = ", config$visualization$plot_width))
+print(paste0("Plot height = ", config$visualization$plot_height))
+print(paste0("Plot units = ", config$visualization$plot_units))
+
+ggsave(
+  filename = file.path(PATHS$results_dir, "plots", "MES_vs_ADRN_GSEA_C5_GOBP.png"),
+  plot = C5_GOBP_plot,
+  width = config$visualization$plot_width, 
+  height = config$visualization$plot_height, 
+  units = config$visualization$plot_units
+)
+ggsave(
+ filename = file.path(PATHS$results_dir, "plots", "MES_vs_ADRN_GSEA_C5_GOCC.png"),
+  plot = C5_GOCC_plot,
+  width = config$visualization$plot_width, 
+  height = config$visualization$plot_height, 
+  units = config$visualization$plot_units
+)
+ggsave(
+  filename = file.path(PATHS$results_dir, "plots", "MES_vs_ADRN_GSEA_C5_GOMF.png"),
+  plot = C5_GOMF_plot,
+  width = config$visualization$plot_width, 
+  height = config$visualization$plot_height, 
+  units = config$visualization$plot_units
+)
+ggsave(
+  filename = file.path(PATHS$results_dir, "plots", "MES_vs_ADRN_GSEA_C2_KEGG.png"),
+  plot = C2_kegg_plot,
+  width = config$visualization$plot_width, 
+  height = config$visualization$plot_height, 
+  units = config$visualization$plot_units
+)
+ggsave(
+  filename = file.path(PATHS$results_dir, "plots", "MES_vs_ADRN_GSEA_C2_REACTOME.png"),
+  plot = C2_rctm_plot,
+  width = config$visualization$plot_width, 
+  height = config$visualization$plot_height, 
+  units = config$visualization$plot_units
+)
+```
+
+Produce fgsea plots
+
+```{r fgsea}
+# Run FastGSEA for GOBP, GOCC, GOMF, KEGG, reactome terms
+# Rank genes based on L2FC
+# The slice_max is necessary to remove duplicated gene names (which are 6 in total). 
+# The reason why they are present is that originally the DEG is done on Transcript IDs which can have identical 
+# gene_symbol. And duplicated values are disrupting the fgsea, so they must be removed for a correct work.
+# There is no ideal way to deal with this problem, so according to advice from the creator of fgsea
+# https://www.biostars.org/p/9591990/#9591997 , The gene with the highest BaseMean kept.
+
+de_genes_ranked <- deg_results$results_all
+de_genes_ranked <- de_genes_ranked %>%
+  group_by(gene_symbol) %>%
+  slice_max(baseMean, n = 1, with_ties = FALSE) %>%
+  ungroup()
+de_genes_ranked <- de_genes_ranked %>% arrange(desc(log2FoldChange))
+de_genes_ranked <- setNames(c(de_genes_ranked$log2FoldChange), c(de_genes_ranked$gene_symbol))
+
+gene_set_list <- gene_sets
+
+
+# pdf(file = file.path(deg_dir, "MES_vs_ADR_fGSEA_and_dotPLOT2.pdf"), width = 10, height = 10)
+for (gene_set_name in names(gene_sets)) {
+  # gene_set_name <- "gs_hallmark"
+  print(gene_set_name)
+  gene_set <- gene_sets[[gene_set_name]]
+
+  fgseaRes <- fgsea(
+    pathways = gene_set[["genesets"]],
+    stats = de_genes_ranked,
+    minSize = 15,
+    maxSize = 500
+  )
+  topPathwaysUp <- fgseaRes[ES > 0][head(order(pval), n = 10), pathway]
+  topPathwaysDown <- fgseaRes[ES < 0][head(order(pval), n = 10), pathway]
+  topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+
+  p <- plotGseaTable(gene_set[["genesets"]][topPathways],
+    de_genes_ranked,
+    fgseaRes,
+    gseaParam = 0.5
+  ) +
+    labs(title = gene_set_name)
+  p[["theme"]][["plot.title"]] <- NULL
+  print(p)
+
+  # Dot plot
+  fgseaRes_dot <- fgseaRes %>%
+    select(pathway, NES, padj) %>%
+    filter(pathway %in% topPathways) %>%
+    arrange(NES) %>%
+    mutate(pathway = factor(pathway, levels = pathway)) %>%
+    mutate(padj_log2 = -log2(padj))
+
+  p <- ggplot(fgseaRes_dot) +
+    aes(x = NES, y = pathway, colour = NES, size = padj_log2) +
+    geom_point(shape = "circle") +
+    scale_color_distiller(palette = "RdBu", direction = -1) +
+    scale_size(range = c(4, 10)) +
+    theme_minimal() +
+    labs(
+      title = gene_set_name,
+      size = "-log2p_adj"
+    )
+  print(p)
+}
+# dev.off()
+
+```
+
+Separate fgsea plots for hippo pathway 
+```{r}
+# Additional separate fsGSEAs for hippos
+gene_set_hippos <- list(
+  GOBP_Hippo_Signaling = gene_sets$gobp[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gene_sets$reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gene_sets$oncogenic[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = gene_sets$wang_hippo[["genesets"]][["wang_hippo_set"]]
+)
+
+fgseaRes <- fgsea(
+  pathways = gene_set_hippos,
+  stats = de_genes_ranked,
+  minSize = 15,
+  maxSize = 500
+)
+
+#pdf(file = file.path(deg_dir, "MES_vs_ADR_fGSEA_hippos.pdf"), width = 10, height = 8)
+for(gene_set_to_plot_name in names(gene_set_hippos)){
+ # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
+  gene_set_to_plot <- gene_set_hippos[[gene_set_to_plot_name]]
+  
+  title_values <- fgseaRes %>% filter(pathway == gene_set_to_plot_name) %>% select(pathway, NES, padj)
+  p <- plotEnrichment(pathway = gene_set_to_plot, stats = de_genes_ranked) + 
+    labs(title = paste(title_values$pathway, "\n",
+                       "NES =", title_values$NES, "\n",
+                       "padj = ", title_values$padj))
+  plot(p)
+  
+ggsave(
+  filename = file.path(PATHS$results_dir, "plots", paste0("fgsea_", gene_set_to_plot_name, ".pdf")),
+  plot = p,
+  width = 20, height = 20, units = "cm"
+)
+}
+#dev.off()
+
+
+```
+
+Volcano plot for selected proteins
+```{r volcano plot}
+# Create a volcano plot
+# Genes to highlight
+genes_to_highlight <- c(
+  "VIM",
+  "YAP1",
+  "WWTR1",
+  "JUN",
+  "FOSL1",
+  "FOSL2",
+  "PHOX2B",
+  "HAND2",
+  "GATA3"
+)
+volcano_plot <- plotVolcano(
+  dds_results_obj = deg_results$results_all,
+  genes_of_interest = genes_to_highlight,
+  plot_title = "MES vs ADRN genes"
+)
+plot(volcano_plot)
+
+ggsave(
+  filename = file.path(PATHS$results_dir, "plots", "MES_vs_ADRN_volcano_plot.png"),
+  plot = volcano_plot,
+  width = 20, height = 20, units = "cm"
+)
+
+```

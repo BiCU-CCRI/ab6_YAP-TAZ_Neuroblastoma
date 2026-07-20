@@ -685,7 +685,7 @@ create_cellline_boxplot <- function(cell_line_name, plot_title) {
     stat_compare_means(
       method = "wilcox.test",
       comparisons = list(c("Control", "24h"), c("Control", "48h"), c("24h", "48h")),
-      label = "p.signif",
+      label = "p.format",
       step.increase = 0.1,
       size = 4,
       paired = TRUE
@@ -887,7 +887,7 @@ p4 <- ggplot(raw_values_data, aes(x = timepoint_clean, y = accessibility)) +
   geom_boxplot(aes(fill = timepoint_clean), alpha = 0.7, outlier.size = 0.5, width = 0.6) +
   stat_compare_means(method = "wilcox.test", 
                      comparisons = list(c("Control", "24h"), c("Control", "48h"), c("24h", "48h")),
-                     label = "p.signif", 
+                     label = "p.format", 
                      paired = TRUE) +
   facet_wrap(~cell_line_label) +
   scale_fill_viridis_d(option = "plasma", begin = 0.2, end = 0.8) +

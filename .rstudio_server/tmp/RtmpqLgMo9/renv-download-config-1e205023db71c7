@@ -1,0 +1,9 @@
+location
+fail
+silent
+show-error
+user-agent = "renv (0.15.4); R/4.5.1 R (4.5.1 x86_64-pc-linux-gnu x86_64 linux-gnu)"
+url = "https://bioconductor.org/packages/3.16/data/annotation/src/contrib/BSgenome.Hsapiens.UCSC.hg38_1.4.5.tar.gz"
+output = "/home/abykov/.cache/R/renv/source/repository/BSgenome.Hsapiens.UCSC.hg38/renv-tempfile-1e205045d6ce35"
+connect-timeout = "20"
+retry = "3"
