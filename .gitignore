@@ -20,3 +20,6 @@ neuroblastoma_backup202607/
 .local/share/*
 R/
 .rstudio_server/
+dot_backups/
+.local/
+deleteme/
