@@ -1,23 +1,19 @@
 {
-  "numStartups": 2,
+  "numStartups": 3,
   "hasSeenTasksHint": true,
   "tipsHistory": {
     "new-user-warmup": 1,
     "plan-mode-for-complex-tasks": 1,
-    "terminal-setup": 1,
-    "memory-command": 1,
-    "theme-command": 1,
-    "colorterm-truecolor": 1,
-    "status-line": 1,
-    "prompt-queue": 1,
-    "enter-to-steer-in-relatime": 1,
-    "todo-list": 1,
-    "ide-upsell-external-terminal": 1,
-    "install-github-app": 1,
-    "install-slack-app": 2,
-    "drag-and-drop-images": 2
+    "terminal-setup": 2,
+    "memory-command": 2,
+    "theme-command": 3,
+    "colorterm-truecolor": 3,
+    "status-line": 3,
+    "prompt-queue": 3,
+    "enter-to-steer-in-relatime": 3,
+    "todo-list": 3
   },
-  "promptQueueUseCount": 5,
+  "promptQueueUseCount": 1,
   "cachedGrowthBookFeatures": {
     "tengu_event_sampling_config": {},
     "tengu_log_segment_events": false,
@@ -40,28 +36,26 @@
     "tengu_post_compact_survey": false,
     "tengu_claudeai_mcp_connectors": true,
     "tengu_pebble_leaf_prune": false,
-    "tengu_tool_search_unsupported_models": [
-      "claude-3-5-haiku",
-      "claude-3-haiku"
-    ],
-    "tengu_system_prompt_global_cache": true,
-    "tengu_attribution_header": true,
-    "enhanced_telemetry_beta": false,
     "tengu_penguins_off": null,
-    "tengu_immediate_model_command": false,
-    "tengu_marble_lantern_disabled": false,
+    "enhanced_telemetry_beta": false,
     "tengu_mulberry_fog": false,
     "tengu_coral_fern": false,
     "tengu_scratch": false,
     "tengu_summarize_tool_results": false,
     "tengu_bergotte_lantern": false,
     "tengu_swann_brevity": "focused",
+    "tengu_system_prompt_global_cache": true,
     "tengu_streaming_tool_execution2": true,
     "tengu_moth_copse": false,
     "tengu_cache_plum_violet": false,
+    "tengu_tool_search_unsupported_models": [
+      "claude-3-5-haiku",
+      "claude-3-haiku"
+    ],
     "tengu_coral_whistle": false,
     "tengu_fgts": false,
     "tengu_plan_mode_interview_phase": false,
+    "tengu_attribution_header": true,
     "tengu_prompt_cache_1h_config": {
       "allowlist": [
         "repl_main_thread*",
@@ -77,17 +71,22 @@
     },
     "tengu_session_memory": false,
     "tengu_tool_input_aliasing": false,
+    "tengu_pid_based_version_locking": false,
     "tengu_permission_explainer": false,
     "tengu_destructive_command_warning": false,
-    "tengu_pid_based_version_locking": false,
-    "tengu_amber_prism": false
+    "tengu_amber_prism": false,
+    "tengu_immediate_model_command": false,
+    "tengu_marble_lantern_disabled": false,
+    "tengu_crystal_beam": {
+      "budgetTokens": 0
+    }
   },
-  "firstStartTime": "2026-07-20T12:18:11.567Z",
+  "firstStartTime": "2026-07-21T13:54:22.943Z",
   "opusProMigrationComplete": true,
   "sonnet1m45MigrationComplete": true,
-  "userID": "f91014a5874e8e3dc17053e53189994eb7041fb175d4e9cabda571e7ca9b71ad",
+  "userID": "d8628da21f5b3ac93576b01e7858f188e5a8943345a3c4653e36e9d446b9283a",
   "cachedChromeExtensionInstalled": false,
-  "changelogLastFetched": 1784549892016,
+  "changelogLastFetched": 1784642364402,
   "oauthAccount": {
     "accountUuid": "d0a315fb-9755-4948-aa6d-8e1c319c9d4f",
     "emailAddress": "corebioinformatics.ccri@gmail.com",
@@ -104,23 +103,7 @@
   "claudeCodeFirstTokenDate": "2026-04-02T07:27:28.718721Z",
   "hasCompletedOnboarding": true,
   "lastOnboardingVersion": "2.1.63",
-  "githubRepoPaths": {
-    "bicu-ccri/ab6_yap-taz_neuroblastoma": [
-      "/home/abykov"
-    ]
-  },
   "lastReleaseNotesSeen": "2.1.63",
-  "hasShownOpus46Notice": {
-    "9c35e0d7-3bed-4c87-b550-2b9c4f98edf1": true
-  },
-  "penguinModeOrgEnabled": true,
-  "groveConfigCache": {
-    "d0a315fb-9755-4948-aa6d-8e1c319c9d4f": {
-      "grove_enabled": true,
-      "timestamp": 1784550105600
-    }
-  },
-  "cachedExtraUsageDisabledReason": null,
   "projects": {
     "/home/abykov": {
       "allowedTools": [],
@@ -129,80 +112,77 @@
       "enabledMcpjsonServers": [],
       "disabledMcpjsonServers": [],
       "hasTrustDialogAccepted": false,
-      "projectOnboardingSeenCount": 0,
+      "projectOnboardingSeenCount": 1,
       "hasClaudeMdExternalIncludesApproved": false,
       "hasClaudeMdExternalIncludesWarningShown": false,
-      "exampleFiles": [
-        "03_CNR_analysis.R",
-        "02_ATAC_seq_analysis.R",
-        "06_RNA-seq_yap_taz_inhibition.R",
-        "01_RNA_seq_analysis.R",
-        "utilityScripts.R"
-      ],
-      "exampleFilesGeneratedAt": 1784550106205,
-      "hasCompletedProjectOnboarding": true,
-      "lastCost": 3.4062092500000007,
-      "lastAPIDuration": 404406,
-      "lastAPIDurationWithoutRetries": 404345,
-      "lastToolDuration": 2964206,
-      "lastDuration": 4807658,
-      "lastLinesAdded": 11,
-      "lastLinesRemoved": 1,
-      "lastTotalInputTokens": 1609,
-      "lastTotalOutputTokens": 18783,
-      "lastTotalCacheCreationInputTokens": 200313,
-      "lastTotalCacheReadInputTokens": 3359810,
+      "exampleFiles": [],
+      "lastCost": 0.19407,
+      "lastAPIDuration": 51950,
+      "lastAPIDurationWithoutRetries": 51921,
+      "lastToolDuration": 157765,
+      "lastDuration": 1806614,
+      "lastLinesAdded": 0,
+      "lastLinesRemoved": 0,
+      "lastTotalInputTokens": 498,
+      "lastTotalOutputTokens": 1785,
+      "lastTotalCacheCreationInputTokens": 6190,
+      "lastTotalCacheReadInputTokens": 216535,
       "lastTotalWebSearchRequests": 0,
-      "lastFpsAverage": 16.23,
-      "lastFpsLow1Pct": 331.93,
+      "lastFpsAverage": 3.62,
+      "lastFpsLow1Pct": 532.32,
       "lastModelUsage": {
-        "claude-haiku-4-5-20251001": {
-          "inputTokens": 528,
-          "outputTokens": 58,
-          "cacheReadInputTokens": 0,
-          "cacheCreationInputTokens": 0,
+        "claude-opus-4-6": {
+          "inputTokens": 498,
+          "outputTokens": 1785,
+          "cacheReadInputTokens": 216535,
+          "cacheCreationInputTokens": 6190,
           "webSearchRequests": 0,
-          "costUSD": 0.000818
-        },
-        "claude-sonnet-4-6": {
-          "inputTokens": 1081,
-          "outputTokens": 18725,
-          "cacheReadInputTokens": 3359810,
-          "cacheCreationInputTokens": 200313,
-          "webSearchRequests": 0,
-          "costUSD": 3.4053912500000005
+          "costUSD": 0.19407
         }
       },
-      "lastSessionId": "f9b0060f-197f-4325-895c-4a8a03d1ca9e",
+      "lastSessionId": "7b419b5b-12d9-44b6-8300-c580a8b50e97",
       "lastSessionMetrics": {
-        "frame_duration_ms_count": 77978,
-        "frame_duration_ms_min": 0.035189999998692656,
-        "frame_duration_ms_max": 87.71396599989384,
-        "frame_duration_ms_avg": 1.076923076200807,
-        "frame_duration_ms_p50": 1.0928314998745918,
-        "frame_duration_ms_p95": 2.06005635028705,
-        "frame_duration_ms_p99": 2.9977086098585275,
-        "pre_tool_hook_duration_ms_count": 65,
+        "frame_duration_ms_count": 6530,
+        "frame_duration_ms_min": 0.03946400000131689,
+        "frame_duration_ms_max": 29.914813000010327,
+        "frame_duration_ms_avg": 0.627175012709865,
+        "frame_duration_ms_p50": 0.8152800000098068,
+        "frame_duration_ms_p95": 1.1695241500012339,
+        "frame_duration_ms_p99": 1.9056389200008,
+        "pre_tool_hook_duration_ms_count": 13,
         "pre_tool_hook_duration_ms_min": 0,
-        "pre_tool_hook_duration_ms_max": 8,
-        "pre_tool_hook_duration_ms_avg": 1.0307692307692307,
+        "pre_tool_hook_duration_ms_max": 2,
+        "pre_tool_hook_duration_ms_avg": 1.0769230769230769,
         "pre_tool_hook_duration_ms_p50": 1,
-        "pre_tool_hook_duration_ms_p95": 1.7999999999999972,
-        "pre_tool_hook_duration_ms_p99": 4.799999999999997,
-        "hook_duration_ms_count": 8,
-        "hook_duration_ms_min": 0,
-        "hook_duration_ms_max": 1,
-        "hook_duration_ms_avg": 0.625,
-        "hook_duration_ms_p50": 1,
-        "hook_duration_ms_p95": 1,
-        "hook_duration_ms_p99": 1
+        "pre_tool_hook_duration_ms_p95": 2,
+        "pre_tool_hook_duration_ms_p99": 2
       }
     }
   },
+  "hasShownOpus46Notice": {
+    "9c35e0d7-3bed-4c87-b550-2b9c4f98edf1": true
+  },
+  "penguinModeOrgEnabled": true,
+  "groveConfigCache": {
+    "d0a315fb-9755-4948-aa6d-8e1c319c9d4f": {
+      "grove_enabled": true,
+      "timestamp": 1784642408102
+    }
+  },
+  "cachedExtraUsageDisabledReason": null,
   "officialMarketplaceAutoInstallAttempted": true,
   "officialMarketplaceAutoInstalled": false,
   "officialMarketplaceAutoInstallFailReason": "unknown",
   "officialMarketplaceAutoInstallRetryCount": 1,
-  "officialMarketplaceAutoInstallLastAttemptTime": 1784550110667,
-  "officialMarketplaceAutoInstallNextRetryTime": 1784557310667
+  "officialMarketplaceAutoInstallLastAttemptTime": 1784642412968,
+  "officialMarketplaceAutoInstallNextRetryTime": 1784649612968,
+  "clientDataCache": {
+    "data": {
+      "cedar_lagoon": {
+        "claude-fable": true,
+        "claude-mythos": true
+      }
+    },
+    "timestamp": 1784647442824
+  }
 }

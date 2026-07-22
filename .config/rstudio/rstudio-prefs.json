@@ -1,11 +1,6 @@
 {
-    "save_workspace": "never",
-    "always_save_history": false,
-    "reuse_sessions_for_project_links": true,
     "jobs_tab_visibility": "shown",
     "initial_working_directory": "~",
     "editor_keybindings": "vim",
-    "posix_terminal_shell": "bash",
-    "editor_theme": "catppuccin-frappe",
-    "show_hidden_files": true
+    "posix_terminal_shell": "bash"
 }

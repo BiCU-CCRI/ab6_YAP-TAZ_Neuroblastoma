@@ -25,10 +25,10 @@ echo "Node allocated CPUs:   $SLURM_CPUS_ON_NODE"
 echo "======================"
 
 
-R_APPTAINER_IMG="/research/lab_ccri_bicu/public/apptainer_images/Rstudio-4.5.1-claude-celltypist.sif"
+R_APPTAINER_IMG="/research/lab_ccri_bicu/public/apptainer_images/Rstudio-4.5.1-claude-celltypist_260721.sif"
 
 module load apptainer/1.1.9
-workdir="/nobackup/lab_ccri_bicu/internal/abykov/projects/ab6_soeren_neuroblastoma/adaptation_for_cemm/ab6_YAP-TAZ_Neuroblastoma"
+workdir="/nobackup/lab_ccri_bicu/internal/abykov/projects/ab6_soeren_neuroblastoma/adaptation_for_cemm/ab6_YAP-TAZ_Neuroblastoma_restorage"
 rstudio_server_config_dir="$(pwd)/.rstudio_server"
 r_version="4.5"
 r_apptainer_img="${R_APPTAINER_IMG}"

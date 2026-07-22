@@ -1,9 +1,0 @@
-# Ignore the user R library (packages installed outside renv)
-R/
-
-# Ignore backup directories
-neuroblastoma_backup*/
-
-# Ignore RStudio internal files
-.rstudio_server/
-.local/share/rstudio/

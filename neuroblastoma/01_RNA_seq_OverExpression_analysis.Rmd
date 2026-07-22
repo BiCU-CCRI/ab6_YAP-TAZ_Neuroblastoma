@@ -53,10 +53,10 @@ config <- list(
 )
 
 PATHS <- list(
-  data_dir = here::here("neuroblastoma", "data", "RNAseq"),
-  results_dir = here::here("neuroblastoma", "results", "RNA-seq_OE"),
-  resources_dir = here::here("neuroblastoma", "resources"),
-  cache_dir = here::here("neuroblastoma", "cache")
+  data_dir = here::here("data", "RNAseq"),
+  results_dir = here::here("results", "RNA-seq_OE"),
+  resources_dir = here::here("resources"),
+  cache_dir = here::here("cache")
 )
 
 print("Configuration loaded successfully")
@@ -96,12 +96,15 @@ suppressPackageStartupMessages({
   
   # Utility functions from existing scripts
   import::from(
-    .from = here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+    .from = here::here("resources/UtilityScriptsRNA-seq.R"),
     "filterDatasets", "generatePCA", "generateEnsemblAnnotation", 
-    "generateResults", "meanExprsPerGroup", "plotVolcano", "generatePCA_repel",
+    "generateResults", "meanExprsPerGroup", "plotVolcano", "generatePCA_repel", ".dots_plot_fixed",
     .character_only = TRUE
   )
 })
+
+environment(.dots_plot_fixed) <- asNamespace("hypeR")
+assignInNamespace(".dots_plot", .dots_plot_fixed, ns = "hypeR")
 
 print("Libraries loaded successfully")
 ```
@@ -123,10 +126,113 @@ print("Environment setup completed")
 ```
 ```{r Load the counts data, echo = FALSE}
 #loading the new DESeq2 file
-load("~/workspace/neuroblastoma/data/RNAseq/rnaseq_yap_taz_OE.RData")
-new_dds_assay <- as.data.frame(counts(dds))
-new_dds_assay$names_of_rows <- row.names(new_dds_assay)
+load(file.path(PATHS$data_dir, "deseq2.dds.RData"))
+rnaseq_dds <- dds[,
+                  c(
+                    "CLB_Ma_ADR_rep1",
+                    "CLB_Ma_ADR_rep2",
+                    "CLB_Ma_MES_rep1",
+                    "CLB_Ma_MES_rep2",
+                    "CLBM_A_RNA_S130492",
+                    "CLBM_M_RNA_S130495",
+                    "SH_A_RNA_S130494",
+                    "SH_M_RNA_S130497",
+                    "SK_N_SH_ADR_rep1_1",
+                    "SK_N_SH_ADR_rep2_1",
+                    "SK_N_SH_MES_rep1_1",
+                    "SK_N_SH_MES_rep2_1",
+                    "CM_OE_EV_RNA_S144621",
+                    "CM_OE_WWTR1_RNA_S144623",
+                    "CM_OE_YAP1_RNA_S144624",
+                    "SH_OE_EV_RNA_S144620",
+                    "SH_OE_WWTR1_RNA_S144622",
+                    "SH_OE_YAP1_RNA_S144619",
+                    "SH_OE_EV_rep1",
+                    "SH_OE_YAP1_rep1",
+                    "SH_OE_TAZ_rep1",
+                    "SH_OE_EV_rep2",
+                    "SH_OE_YAP1_rep2",
+                    "SH_OE_TAZ_rep2",
+                    "CM_OE_EV_rep1",
+                    "CM_OE_YAP1_rep1",
+                    "CM_OE_TAZ_rep1",
+                    "CM_OE_EV_rep2",
+                    "CM_OE_YAP1_rep2",
+                    "CM_OE_TAZ_rep2"
+                  )]
+
 rm(dds)
+rnaseq_dds
+
+rnaseq_dds$cell_line <- as.factor(case_when(
+  str_detect(colnames(rnaseq_dds), "^(CLB)|^(CM)") ~ "CLBMa",
+  str_detect(colnames(rnaseq_dds), "^(SK)|^(SH)") ~ "SK_N_SH",
+  .default = colnames(rnaseq_dds)
+))
+
+rnaseq_dds$cell_type <- as.factor(case_when(
+  str_detect(colnames(rnaseq_dds), "(_ADR_)|(_A_)") ~ "ADR",
+  str_detect(colnames(rnaseq_dds), "(_MES_)|(_M_)") ~ "MES",
+  .default = "undefined"
+))
+
+rnaseq_dds$experiment <- as.factor(case_when(
+  colnames(rnaseq_dds) %in% c(
+    "CLBM_A_RNA_S130492",
+    "CLBM_M_RNA_S130495",
+    "SH_A_RNA_S130494",
+    "SH_M_RNA_S130497") ~ "batch1",
+  
+  colnames(rnaseq_dds) %in% c(
+    "CM_OE_EV_RNA_S144621",
+    "CM_OE_WWTR1_RNA_S144623",
+    "CM_OE_YAP1_RNA_S144624",
+    "SH_OE_EV_RNA_S144620",
+    "SH_OE_WWTR1_RNA_S144622",
+    "SH_OE_YAP1_RNA_S144619") ~ "batch2",
+  
+  colnames(rnaseq_dds) %in% c(
+    "CLB_Ma_ADR_rep1",
+    "CLB_Ma_ADR_rep2",
+    "CLB_Ma_MES_rep1",
+    "CLB_Ma_MES_rep2",
+    "SK_N_SH_ADR_rep1_1",
+    "SK_N_SH_ADR_rep2_1",
+    "SK_N_SH_MES_rep1_1",
+    "SK_N_SH_MES_rep2_1") ~ "batch3.1",
+  
+    colnames(rnaseq_dds) %in% c(
+      "SH_OE_EV_rep1",
+      "SH_OE_YAP1_rep1",
+      "SH_OE_TAZ_rep1",
+      "SH_OE_EV_rep2",
+      "SH_OE_YAP1_rep2",
+      "SH_OE_TAZ_rep2",
+      "CM_OE_EV_rep1",
+      "CM_OE_YAP1_rep1",
+      "CM_OE_TAZ_rep1",
+      "CM_OE_EV_rep2",
+      "CM_OE_YAP1_rep2",
+      "CM_OE_TAZ_rep2") ~ "batch3.2",
+
+    .default = colnames(rnaseq_dds)
+))
+
+rnaseq_dds$exp_type <- case_when(
+  str_detect(colnames(rnaseq_dds), "OE") ~ "OE",
+  TRUE ~ "clear_cell_type"
+)
+
+rnaseq_dds$OE_factor <- case_when(
+  str_detect(colnames(rnaseq_dds), "(WWTR1)|(TAZ)") ~ "WWTR1",
+  str_detect(colnames(rnaseq_dds), "YAP1") ~ "YAP1",
+  TRUE ~ "EV"
+)
+  
+data.frame(colnames(rnaseq_dds), rnaseq_dds$OE_factor, rnaseq_dds$exp_type, rnaseq_dds$cell_type, rnaseq_dds$cell_line, rnaseq_dds$experiment, rnaseq_dds$sample)
+
+
+
 
 wt_dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/rnaseq_deseq_global_deseq_data_set.rds")
 wt_dds_assay <- as.data.frame(counts(wt_dds))
