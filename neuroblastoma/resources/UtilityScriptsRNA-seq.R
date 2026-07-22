@@ -321,7 +321,7 @@ plotVolcano <- function(dds_results_obj=NULL, genes_of_interest=NULL, plot_title
 
 
 generatePCA_repel <- function(transf_object = NULL, cond_interest_varPart = NULL, 
-                              color_variable = NULL, shape_variable = NULL, ntop_genes = 500)
+                              color_variable = NULL, shape_variable = NULL, ntop_genes = 500,  max.overlaps = Inf, label.padding = 0.5)
 {
   pcaData <- DESeq2::plotPCA(transf_object, intgroup = cond_interest_varPart, 
                              returnData = TRUE, ntop = ntop_genes)
@@ -333,7 +333,7 @@ generatePCA_repel <- function(transf_object = NULL, cond_interest_varPart = NULL
     xlab(paste0("PC1: ", percentVar[1], "% variance")) + 
     ylab(paste0("PC2: ", percentVar[2], "% variance")) + 
     theme_bw() +
-    ggrepel::geom_label_repel(label.padding = 0.1)
+    ggrepel::geom_label_repel(max.overlaps = max.overlaps, label.padding = label.padding)
 }
 
 

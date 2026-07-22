@@ -52,9 +52,10 @@ config <- list(
 )
 
 PATHS <- list(
-  data_dir = here::here("neuroblastoma", "data", "RNAseq"),
-  results_dir = here::here("neuroblastoma", "results", "RNA-seq_TDI"),
-  resources_dir = here::here("neuroblastoma", "resources")
+  data_dir = here::here("data", "RNAseq"),
+  results_dir = here::here("results", "RNA-seq", "RNA-seq_TDI"),
+  resources_dir = here::here("resources"),
+  cache_dir = here::here("cache")
 )
 
 print("Configuration loaded successfully")
@@ -92,7 +93,7 @@ suppressPackageStartupMessages({
   library(here)
   
   # Load all utility functions from consolidated script
-  source(here::here("neuroblastoma/resources/UtilityScriptsRNA-seq.R"))
+  source(here::here("resources/UtilityScriptsRNA-seq.R"))
 })
 
 print("Libraries loaded successfully")
@@ -100,19 +101,20 @@ print("Libraries loaded successfully")
 
 ```{r setup_environment}
 if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
-# Load gene sets directly (no caching to avoid repository bloat)
-message("Loading gene sets from MSigDB...")
-gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("H"), clean = TRUE)
-gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:KEGG", clean = TRUE)
-gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C2"), subcategory = "CP:REACTOME", clean = TRUE)
-gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:BP", clean = TRUE)
-gs_C5_GOCC <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:CC", clean = TRUE)
-gs_C5_GOMF <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C5"), subcategory = "GO:MF", clean = TRUE)
-gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", category = c("C6"), clean = TRUE)
-gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
-                                         "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
 
-print("Environment setup completed")
+# Load gene sets 
+message("Loading gene sets from MSigDB...")
+gene_sets <- list(
+  hallmark = hypeR::msigdb_gsets("Homo sapiens", "H", clean = TRUE),
+  kegg = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:KEGG_LEGACY", clean = TRUE),
+  reactome = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:REACTOME", clean = TRUE),
+  gobp = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:BP", clean = TRUE),
+  gocc = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:CC", clean = TRUE),
+  gomf = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:MF", clean = TRUE),
+  oncogenic = hypeR::msigdb_gsets("Homo sapiens", "C6", clean = TRUE),
+  wang_hippo = list(genesets = list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A","TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80")))
+)
+
 ```
 
 
@@ -128,38 +130,34 @@ annotation_data <- read.table(
 )
 colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
-# Load WWTR1 overexpression data with validation
-tryCatch({
-  dds <- readRDS(file.path(PATHS$data_dir, "OE_WWTR1_experiment.dds.RDS"))
-  message("Successfully loaded WWTR1 overexpression data")
-}, error = function(e) {
-  # Try alternative file location
-  tryCatch({
-    dds <- readRDS("~/workspace/neuroblastoma/data/RNAseq/OE_WWTR1_experiment.dds.RDS")
-    message("Loaded WWTR1 data from alternative location")
-  }, error = function(e2) {
-    stop("Failed to load WWTR1 data: ", e2$message)
-  })
-})
+#loading the new DESeq2 file
+load(file.path(PATHS$data_dir, "deseq2.dds.RData"))
+TDI_dds <- dds[,
+                  c(
+                    "OE_WWTR1_DMSO_RNA_S165191",
+                    "OE_WWTR1_dox_RNA_S165189",
+                    "OE_WWTR1_TDI_RNA_S165188",
+                    "OE_WWTR1_dox_TDI_RNA_S165178",
+                    "OE_WWTR1_DMSO_rep1_1",
+                    "OE_WWTR1_TDI_rep1_1",
+                    "OE_WWTR1_dox_rep1_1",
+                    "OE_WWTR1_dox_TDI_rep1_1",
+                    "OE_WWTR1_DMSO_rep3_1",
+                    "OE_WWTR1_TDI_rep3_1",
+                    "OE_WWTR1_dox_rep3",
+                    "OE_WWTR1_dox_TDI_rep3_1",
+                    "SH_A_RNA_S130494",
+                    "SH_M_RNA_S130497",
+                    "SK_N_SH_ADR_rep1_1",
+                    "SK_N_SH_ADR_rep2_1",
+                    "SK_N_SH_MES_rep1_1",
+                    "SK_N_SH_MES_rep2_1"
+                  )]
 
-samples_to_select_full <- c("OE_WWTR1_DMSO_RNA_S165191_R1", 
-                            "OE_WWTR1_TDI_RNA_S165188_R1", 
-                            "OE_WWTR1_dox_RNA_S165189_R1", 
-                            "OE_WWTR1_dox_TDI_RNA_S165178_R1",
-                            "OE_WWTR1_DMSO_RNA_S165191_R2", 
-                            "OE_WWTR1_TDI_RNA_S165188_R2", 
-                            "OE_WWTR1_dox_RNA_S165189_R2", 
-                            "OE_WWTR1_dox_TDI_RNA_S165178_R2"
-                            )
 
-# Subset to WWTR1 samples with validation
-if (!all(samples_to_select_full %in% colnames(dds))) {
-  missing_samples <- setdiff(samples_to_select_full, colnames(dds))
-  warning("Missing samples: ", paste(missing_samples, collapse = ", "))
-  samples_to_select_full <- intersect(samples_to_select_full, colnames(dds))
-}
+rm(dds)
 
-TDI_dds <- dds[, colnames(dds) %in% samples_to_select_full]
+
 message("Selected ", ncol(TDI_dds), " samples for analysis")
 
 sample_names <- colData(TDI_dds)$sample
