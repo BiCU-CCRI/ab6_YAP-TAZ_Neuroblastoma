@@ -154,36 +154,132 @@ TDI_dds <- dds[,
                     "SK_N_SH_MES_rep2_1"
                   )]
 
-
 rm(dds)
-
 
 message("Selected ", ncol(TDI_dds), " samples for analysis")
 
-sample_names <- colData(TDI_dds)$sample
+TDI_dds$treatment <- as.factor(case_when(
+  colnames(TDI_dds) %in%  c("OE_WWTR1_DMSO_RNA_S165191",
+                            "OE_WWTR1_DMSO_rep1_1",
+                            "OE_WWTR1_DMSO_rep3_1") ~ "DMSO",
+  colnames(TDI_dds) %in%  c("OE_WWTR1_dox_RNA_S165189",
+                            "OE_WWTR1_dox_rep1_1",
+                            "OE_WWTR1_dox_rep3") ~ "dox",
+  colnames(TDI_dds) %in%  c("OE_WWTR1_TDI_RNA_S165188",
+                            "OE_WWTR1_TDI_rep1_1",
+                            "OE_WWTR1_TDI_rep3_1") ~ "TDI",
+  colnames(TDI_dds) %in%  c("OE_WWTR1_dox_TDI_RNA_S165178",
+                            "OE_WWTR1_dox_TDI_rep1_1",
+                            "OE_WWTR1_dox_TDI_rep3_1") ~ "dox_TDI",
+  colnames(TDI_dds) %in%  c( "SH_A_RNA_S130494",
+                             "SH_M_RNA_S130497",
+                             "SK_N_SH_ADR_rep1_1",
+                             "SK_N_SH_ADR_rep2_1",
+                             "SK_N_SH_MES_rep1_1",
+                             "SK_N_SH_MES_rep2_1") ~ "NO_treatment",
+  .default = colnames(TDI_dds)
+))
 
-parsed <- str_match(
-  sample_names,
-  "^OE_([^_]+)_((?:[^_]+_)*[^_]+)_RNA_.*_(R\\d+)$"
-)
+TDI_dds$genotype <- as.factor(case_when(
+  colnames(TDI_dds) %in%  c("OE_WWTR1_DMSO_RNA_S165191",
+                            "OE_WWTR1_DMSO_rep1_1",
+                            "OE_WWTR1_DMSO_rep3_1",
+                            "OE_WWTR1_dox_RNA_S165189",
+                            "OE_WWTR1_dox_rep1_1",
+                            "OE_WWTR1_dox_rep3",
+                            "OE_WWTR1_TDI_RNA_S165188",
+                            "OE_WWTR1_TDI_rep1_1",
+                            "OE_WWTR1_TDI_rep3_1",
+                            "OE_WWTR1_dox_TDI_RNA_S165178",
+                            "OE_WWTR1_dox_TDI_rep1_1",
+                            "OE_WWTR1_dox_TDI_rep3_1") ~ "OE_WWTR1",
+  colnames(TDI_dds) %in%  c( "SH_A_RNA_S130494",
+                             "SH_M_RNA_S130497",
+                             "SK_N_SH_ADR_rep1_1",
+                             "SK_N_SH_ADR_rep2_1",
+                             "SK_N_SH_MES_rep1_1",
+                             "SK_N_SH_MES_rep2_1") ~ "WT",
+  .default = colnames(TDI_dds)
+))
 
-# Create a tidy data frame
-parsed_df <- data.frame(
-  genotype  = parsed[, 2],
-  treatment = parsed[, 3],
-  replicate = parsed[, 4],
-  stringsAsFactors = TRUE
-)
+TDI_dds$cell_type <- as.factor(case_when(
+  colnames(TDI_dds) %in%  c("OE_WWTR1_DMSO_RNA_S165191",
+                            "OE_WWTR1_DMSO_rep1_1",
+                            "OE_WWTR1_DMSO_rep3_1",
+                            "OE_WWTR1_dox_RNA_S165189",
+                            "OE_WWTR1_dox_rep1_1",
+                            "OE_WWTR1_dox_rep3",
+                            "OE_WWTR1_TDI_RNA_S165188",
+                            "OE_WWTR1_TDI_rep1_1",
+                            "OE_WWTR1_TDI_rep3_1",
+                            "OE_WWTR1_dox_TDI_RNA_S165178",
+                            "OE_WWTR1_dox_TDI_rep1_1",
+                            "OE_WWTR1_dox_TDI_rep3_1") ~ "undefined",
+  colnames(TDI_dds) %in%  c( "SH_A_RNA_S130494",
+                             "SK_N_SH_ADR_rep1_1",
+                             "SK_N_SH_ADR_rep2_1") ~ "ADR",
+  colnames(TDI_dds) %in%  c( "SK_N_SH_MES_rep1_1",
+                             "SK_N_SH_MES_rep2_1",
+                             "SH_M_RNA_S130497") ~ "MES",
+  .default = colnames(TDI_dds)
+))
 
-colData(TDI_dds) <- cbind(colData(TDI_dds), parsed_df)
-TDI_dds$treatment <- factor(TDI_dds$treatment, levels = c("DMSO", "TDI", "dox", "dox_TDI"))
+TDI_dds$batch <- as.factor(case_when(
+  colnames(TDI_dds) %in%  c( "SH_A_RNA_S130494",
+                             "SH_M_RNA_S130497"
+                             ) ~ "batch1",
+  colnames(TDI_dds) %in%  c("OE_WWTR1_DMSO_RNA_S165191",
+                            "OE_WWTR1_dox_RNA_S165189",
+                            "OE_WWTR1_TDI_RNA_S165188",
+                            "OE_WWTR1_dox_TDI_RNA_S165178"
+                            ) ~ "batch2",
+  colnames(TDI_dds) %in%  c("OE_WWTR1_DMSO_rep1_1",
+                            "OE_WWTR1_DMSO_rep3_1",
+                            "OE_WWTR1_dox_rep1_1",
+                            "OE_WWTR1_dox_rep3",
+                            "OE_WWTR1_TDI_rep1_1",
+                            "OE_WWTR1_TDI_rep3_1",
+                            "OE_WWTR1_dox_TDI_rep1_1",
+                            "OE_WWTR1_dox_TDI_rep3_1"
+                            ) ~ "batch3.1",
+  colnames(TDI_dds) %in%  c("SK_N_SH_ADR_rep1_1",
+                             "SK_N_SH_ADR_rep2_1",
+                            "SK_N_SH_MES_rep1_1",
+                             "SK_N_SH_MES_rep2_1"
+                             ) ~ "bathc3.2",
+  .default = colnames(TDI_dds)
+))
 
-design(TDI_dds) <- as.formula("~ treatment")
+data.frame(TDI_dds$sample, TDI_dds$cell_type, TDI_dds$treatment, TDI_dds$genotype, TDI_dds$batch)
+
+design(TDI_dds) <- as.formula("~ batch + treatment")
+
+TDI_dds_backup <- TDI_dds
+# For now we exclude the old samples
+TDI_dds <- TDI_dds[,
+                  c(
+                    "OE_WWTR1_DMSO_RNA_S165191",
+                    "OE_WWTR1_dox_RNA_S165189",
+                    "OE_WWTR1_TDI_RNA_S165188",
+                    "OE_WWTR1_dox_TDI_RNA_S165178",
+                    "OE_WWTR1_DMSO_rep1_1",
+                    "OE_WWTR1_TDI_rep1_1",
+                    "OE_WWTR1_dox_rep1_1",
+                    "OE_WWTR1_dox_TDI_rep1_1",
+                    "OE_WWTR1_DMSO_rep3_1",
+                    "OE_WWTR1_TDI_rep3_1",
+                    "OE_WWTR1_dox_rep3",
+                    "OE_WWTR1_dox_TDI_rep3_1"
+                  )]
+
+TDI_dds$treatment <- droplevels(TDI_dds$treatment)
+TDI_dds$genotype <- droplevels(TDI_dds$genotype)
+TDI_dds$cell_type <- droplevels(TDI_dds$cell_type)
+TDI_dds$batch <- droplevels(TDI_dds$batch)
 
 ```
 
 ```{r Process the data, include=FALSE}
-# make PCA with ALL samples
 # Filtering lowly expressed genes
 TDI_dds_filt <- filterDatasets(TDI_dds,
                                abs_filt = TRUE,
@@ -242,12 +338,11 @@ openxlsx::saveWorkbook(XLSX_OUT, file.path(PATHS$results_dir, "treatment_doxTDI_
 # Stabilize variance
 TDI_dds_filt_vsd <- DESeq2::vst(TDI_dds_filt, blind = TRUE) # blind = TRUE for QC
 
-#remove R1 replicates
 # generate PCA plots
 tmp_pca_deg <- generatePCA(
-  transf_object = TDI_dds_filt_vsd[, c(1,3,5,7)],
-  cond_interest_varPart = c("genotype", "treatment"),
-  color_variable = "genotype",
+  transf_object = TDI_dds_filt_vsd,
+  cond_interest_varPart = c("cell_type", "treatment"),
+  color_variable = "cell_type",
   shape_variable = "treatment",
   ntop_genes = 1000
 ) + ggtitle("PCA plot for dox doxTDI DMSO TDI WWTR1 only")
@@ -264,11 +359,14 @@ plot(tmp_pca_deg)
 ```
 
 ```{r perform fgsea analysis for TDI_vs_DMSO }
+gene_sets
+gene_sets$wang_hippo
+
 gene_set_list <- list(
-  GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
-  REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
-  C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
-  Hippo_Wang = gs_wang_hippo$wang_hippo_set
+  GOBP_Hippo_Signaling = gene_sets$gobp[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gene_sets$reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gene_sets$oncogenic[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = gene_sets$wang_hippo[["genesets"]][["wang_hippo_set"]]
 )
 
 # TDI_vs_DMSO
@@ -277,10 +375,11 @@ deg_results_TDI_vs_DMSO_ranked <- deg_results_TDI_vs_DMSO_ranked %>%
   group_by(gene_symbol) %>%
   slice_max(baseMean, n = 1, with_ties = FALSE) %>%
   ungroup()
+
 deg_results_TDI_vs_DMSO_ranked <- deg_results_TDI_vs_DMSO_ranked %>% arrange(desc(log2FoldChange))
 deg_results_TDI_vs_DMSO_ranked <- setNames(c(deg_results_TDI_vs_DMSO_ranked$log2FoldChange),
                                            c(deg_results_TDI_vs_DMSO_ranked$gene_symbol))
-
+deg_results_TDI_vs_DMSO_ranked <- deg_results_TDI_vs_DMSO_ranked[-c(which(is.na(names(deg_results_TDI_vs_DMSO_ranked))))]
 
 fgseaRes_TDI_vs_DMSO <- fgsea(
   pathways = gene_set_list,
@@ -317,6 +416,7 @@ deg_results_doxTDI_vs_dox_ranked <- deg_results_doxTDI_vs_dox_ranked %>%
   ungroup()
 deg_results_doxTDI_vs_dox_ranked <- deg_results_doxTDI_vs_dox_ranked %>% arrange(desc(log2FoldChange))
 deg_results_doxTDI_vs_dox_ranked <- setNames(c(deg_results_doxTDI_vs_dox_ranked$log2FoldChange), c(deg_results_doxTDI_vs_dox_ranked$gene_symbol))
+deg_results_doxTDI_vs_dox_ranked <- deg_results_doxTDI_vs_dox_ranked[-c(which(is.na(names(deg_results_doxTDI_vs_dox_ranked))))]
 
 
 fgseaRes_doxTDI_vs_dox <- fgsea(
@@ -349,55 +449,12 @@ for(gene_set_to_plot_name in names(gene_set_list)){
 Additional PCA with old samples
 ```{r Add old samples to current dataset, echo = TRUE}
 # Add old ADR and MES samples for PCA visualisation
-samples_to_select_OG <- c("SH_A_RNA_S130494","SH_M_RNA_S130497")
-rnaseq_OG <- readRDS("~/workspace/neuroblastoma/data/RNAseq/rnaseq_deseq_global_deseq_data_set.rds")
-rnaseq_OG <- rnaseq_OG[ ,colnames(rnaseq_OG) %in% samples_to_select_OG]
-
-TDI_dds_counts <- as.data.frame(TDI_dds@assays@data@listData$counts)
-rnaseq_OG_counts <- as.data.frame(rnaseq_OG@assays@data@listData$counts)
-
-TDI_dds_counts_colnames <- colnames(TDI_dds_counts)
-
-TDI_dds_counts$gene_id <- rownames(TDI_dds)
-rnaseq_OG_counts$gene_id <- rownames(rnaseq_OG)
-
-TDI_plus_OG_counts <- merge.data.frame(TDI_dds_counts, rnaseq_OG_counts, by = "gene_id")
-row.names(TDI_plus_OG_counts) <- TDI_plus_OG_counts$gene_id
-TDI_plus_OG_counts <- select(TDI_plus_OG_counts, !gene_id)
-
-parsed <- str_match(
-  TDI_dds_counts_colnames,
-  "^OE_([^_]+)_((?:[^_]+_)*[^_]+)_RNA_.*_(R\\d+)$"
-)
-
-#manual additon of two control samples
-OG_samples_matrix <-  matrix(
-  c(colnames(TDI_plus_OG_counts)[c(9,10)],
-    c("outside_control_ADR", "outside_control_MES"),
-    c("ADR", "MES"),
-    c("R1", "R1")), 
-  byrow = FALSE,
-  nrow = 2)
-parsed <- rbind(parsed, OG_samples_matrix)
-
-# Create a tidy data frame with metadata
-parsed_df <- data.frame(
-  genotype  = as.factor(parsed[, 2]),
-  treatment = as.factor(parsed[, 3]),
-  replicate = as.factor(parsed[, 4]),
-  stringsAsFactors = TRUE
-)
-parsed_df$is_outer_control <- as.factor(c(rep("not_control", 8), rep("control", 2)))
-
-TDI_plus_OG <- DESeqDataSetFromMatrix(countData = TDI_plus_OG_counts,
-                                  colData = parsed_df,
-                                  design = as.formula("~ 1"))
-
-# Filtering lowly expressed genes
-TDI_plus_OG_filt <- filterDatasets(TDI_plus_OG,
+TDI_plus_OG_filt <- filterDatasets(TDI_dds_backup,
                                abs_filt = TRUE,
                                abs_filt_samples = config$filtering$abs_filt_samples
 )
+
+design(TDI_plus_OG_filt) <- as.formula("~ treatment")
 
 # Estimate size factors and running DESEQ2
 TDI_plus_OG_filt <- DESeq2::estimateSizeFactors(TDI_plus_OG_filt)
@@ -426,11 +483,11 @@ ggsave(
 # Batch correction
 transf_batch_NObatch_experiment <- TDI_plus_OG_filt_vsd
 transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(SummarizedExperiment::assay(transf_batch_NObatch_experiment),
-                                                                  transf_batch_NObatch_experiment$is_outer_control)
+                                                                  transf_batch_NObatch_experiment$batch)
 SummarizedExperiment::assay(transf_batch_NObatch_experiment) <- transf_batch_NObatch_experiment_count
-pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_experiment[,c(1,3,5,7,9,10)], 
-                                                cond_interest_varPart = c("genotype","treatment"), 
-                                                color_variable = "genotype", 
+pca_deg_NObatch_experiment <- generatePCA(transf_object = transf_batch_NObatch_experiment, 
+                                                cond_interest_varPart = c("cell_type","treatment"), 
+                                                color_variable = "cell_type", 
                                                 shape_variable = "treatment",
                                                 ntop_genes = 1000) +
   ggtitle("dox tdi dox/tdi dmso experiment + OG samples. batch corrected") 
@@ -449,7 +506,7 @@ pca_deg_NObatch_experiment
 ```
 
 ```{r GSVA with new and old samples, include=FALSE}
-RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/neuroblastoma/results/RNA-seq/RNA-seq_MES_vs_ADR/tables/MES_vs_ADR_comprehensive_results.xlsx", sheet = 2)
 mes_adrn_gene_list <- RNA_SEQ_data %>%
   mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
 sig_list_our_data <- list(
@@ -459,30 +516,48 @@ sig_list_our_data <- list(
 
 # prepare vsd
 vsd_counts_matrix <- assay(TDI_plus_OG_filt_vsd)
-row.names(vsd_counts_matrix) <- annotation_data[, 'gene_symbol'][match(row.names(vsd_counts_matrix), 
-                                                                      annotation_data[, 'ensembl_id'])]
+gene_symbols <- annotation_data[, 'gene_symbol'][match(row.names(vsd_counts_matrix),
+                                                       annotation_data[, 'ensembl_id'])]
+
+# Drop genes without a mapped symbol
+keep <- !is.na(gene_symbols) & gene_symbols != ""
+vsd_counts_matrix <- vsd_counts_matrix[keep, ]
+gene_symbols <- gene_symbols[keep]
+
+# Collapse duplicate symbols: keep the row with the highest mean expression
+row_means <- rowMeans(vsd_counts_matrix)
+keep_idx <- order(row_means, decreasing = TRUE)
+keep_idx <- keep_idx[!duplicated(gene_symbols[keep_idx])]
+vsd_counts_matrix <- vsd_counts_matrix[keep_idx, ]
+row.names(vsd_counts_matrix) <- gene_symbols[keep_idx]
+
+vsd_counts_matrix <- as.matrix(vsd_counts_matrix)
+stopifnot(!any(duplicated(rownames(vsd_counts_matrix))))
 
 # Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
-ssgsea_mes_adr_cellines <- GSVA::gsva(vsd_counts_matrix,
-                                      sig_list_our_data,
-                                      method=c("ssgsea"),
-                                      min.sz=1, 
-                                      max.sz=Inf, 
-                                      ssgsea.norm=TRUE, 
-                                      verbose=TRUE, 
-                                      parallel.sz=10)
-ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines[,c(1,3,5,7,9,10)],
+our_data_param <- GSVA::ssgseaParam(vsd_counts_matrix,
+                                    sig_list_our_data,
+                                    minSize = 1, maxSize = Inf,
+                                    normalize = TRUE)
+ssgsea_mes_adr_cellines <- GSVA::gsva(our_data_param,
+                                      verbose = TRUE,
+                                      BPPARAM = BiocParallel::MulticoreParam(10))
+ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         scale = "row",
                                                         #annotation_col = heatmap_col_annot_DTC,
                                                         cluster_rows = TRUE,
-                                                        cluster_cols = FALSE,
+                                                        cluster_cols = TRUE,
                                                         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
                                                         show_colnames = TRUE)
 
 ```
 
 ```{r plot_gsva_heatmap}
-ssgsea_mes_adr_ncc_noradr_heatmap
+ggsave(                                                                                                                               
+filename = file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_our_RNAseq.pdf"),                                                   
+plot = ssgsea_mes_adr_ncc_noradr_heatmap$gtable,                                                                                    
+width = 20, height = 20, units = "cm"                                                                                               
+)
 ```
 
 ## Analysis Summary and Session Information
