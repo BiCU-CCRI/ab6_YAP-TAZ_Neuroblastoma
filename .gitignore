@@ -10,7 +10,7 @@ decon_eda_louis.RData
 # Prevent cache files from being committed
 cache/
 neuroblastoma/cache/
-*.rds
+
 *cache*
 .npm/
 .local/
