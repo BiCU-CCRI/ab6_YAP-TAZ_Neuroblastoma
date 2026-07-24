@@ -534,6 +534,27 @@ row.names(vsd_counts_matrix) <- gene_symbols[keep_idx]
 vsd_counts_matrix <- as.matrix(vsd_counts_matrix)
 stopifnot(!any(duplicated(rownames(vsd_counts_matrix))))
 
+# Replicate groups to average (3 replicates per group)
+replicate_groups <- list(
+  OE_WWTR1_DMSO    = c("OE_WWTR1_DMSO_RNA_S165191",    "OE_WWTR1_DMSO_rep1_1",    "OE_WWTR1_DMSO_rep3_1"),
+  OE_WWTR1_dox     = c("OE_WWTR1_dox_RNA_S165189",     "OE_WWTR1_dox_rep1_1",     "OE_WWTR1_dox_rep3"),
+  OE_WWTR1_TDI     = c("OE_WWTR1_TDI_RNA_S165188",     "OE_WWTR1_TDI_rep1_1",     "OE_WWTR1_TDI_rep3_1"),
+  OE_WWTR1_dox_TDI = c("OE_WWTR1_dox_TDI_RNA_S165178", "OE_WWTR1_dox_TDI_rep1_1", "OE_WWTR1_dox_TDI_rep3_1"),
+  SK_N_SH_ADR      = c("SH_A_RNA_S130494",             "SK_N_SH_ADR_rep1_1",      "SK_N_SH_ADR_rep2_1"),
+  SK_N_SH_MES      = c("SH_M_RNA_S130497",             "SK_N_SH_MES_rep1_1",      "SK_N_SH_MES_rep2_1")
+)
+
+# Collapse a ssGSEA score matrix to per-group means (rows = terms, cols = groups)
+average_replicates <- function(mat, groups) {
+  avg <- vapply(groups, function(cols) {
+    cols <- intersect(cols, colnames(mat))
+    rowMeans(mat[, cols, drop = FALSE])
+  }, FUN.VALUE = numeric(nrow(mat)))
+  rownames(avg) <- rownames(mat)
+  as.matrix(avg)
+}
+
+
 # Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
 our_data_param <- GSVA::ssgseaParam(vsd_counts_matrix,
                                     sig_list_our_data,
@@ -549,14 +570,32 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         cluster_cols = TRUE,
                                                         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
                                                         show_colnames = TRUE)
+ssgsea_mes_adr_ncc_noradr_heatmap
 
+# Averaged across replicates
+ssgsea_mes_adr_cellines_avg <- average_replicates(ssgsea_mes_adr_cellines, replicate_groups)
+ssgsea_mes_adr_ncc_noradr_heatmap_avg <- pheatmap::pheatmap(ssgsea_mes_adr_cellines_avg,
+                                                            scale = "row",
+                                                            #annotation_col = heatmap_col_annot_DTC,
+                                                            cluster_rows = TRUE,
+                                                            cluster_cols = TRUE,
+                                                            color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                            show_colnames = TRUE,
+                                                            main = "SSGSEA our RNA-seq terms (averaged replicates)")
+ssgsea_mes_adr_ncc_noradr_heatmap_avg
 ```
 
 ```{r plot_gsva_heatmap}
-ggsave(                                                                                                                               
-filename = file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_our_RNAseq.pdf"),                                                   
-plot = ssgsea_mes_adr_ncc_noradr_heatmap$gtable,                                                                                    
-width = 20, height = 20, units = "cm"                                                                                               
+ggsave(
+filename = file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_our_RNAseq.pdf"),
+plot = ssgsea_mes_adr_ncc_noradr_heatmap$gtable,
+width = 20, height = 20, units = "cm"
+)
+
+ggsave(
+filename = file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_our_RNAseq_averaged.pdf"),
+plot = ssgsea_mes_adr_ncc_noradr_heatmap_avg$gtable,
+width = 20, height = 20, units = "cm"
 )
 ```
 

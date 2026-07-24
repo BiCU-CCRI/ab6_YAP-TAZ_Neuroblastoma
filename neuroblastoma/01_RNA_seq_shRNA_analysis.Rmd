@@ -393,6 +393,7 @@ row.names(vsd_counts_matrix) <- gene_symbols[keep_idx]
 vsd_counts_matrix <- as.matrix(vsd_counts_matrix)
 stopifnot(!any(duplicated(rownames(vsd_counts_matrix))))
 
+
 # Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
 our_data_param <- GSVA::ssgseaParam(vsd_counts_matrix,
                                     sig_list_our_data,
@@ -401,6 +402,27 @@ our_data_param <- GSVA::ssgseaParam(vsd_counts_matrix,
 ssgsea_mes_adr_cellines <- GSVA::gsva(our_data_param,
                                       verbose = TRUE,
                                       BPPARAM = BiocParallel::MulticoreParam(2))
+
+# Replicate groups to average (CM_48h has only 2 replicates)
+replicate_groups <- list(
+  CM_24h     = c("CM_24h_batch1",     "CM_24h_rep1_1",       "CM_24h_rep2_1"),
+  CM_48h     = c("CM_48h_batch1",     "CM_48h_rep1_1"),
+  CM_control = c("CM_control_batch1", "CM_DMSO_ctrl_rep1_1", "CM_DMSO_ctrl_rep2_1"),
+  SH_24h     = c("SH_24h_batch1",     "SH_24h_rep1_1",       "SH_24h_rep2_1"),
+  SH_48h     = c("SH_48h_batch1",     "SH_48h_rep1_1",       "SH_48h_rep2_1"),
+  SH_control = c("SH_control_batch1", "SH_DMSO_ctrl_rep1_1", "SH_DMSO_ctrl_rep2_1")
+)
+
+# Collapse a ssGSEA score matrix to per-group means (rows = terms, cols = groups)
+average_replicates <- function(mat, groups) {
+  avg <- vapply(groups, function(cols) {
+    cols <- intersect(cols, colnames(mat))
+    rowMeans(mat[, cols, drop = FALSE])
+  }, FUN.VALUE = numeric(nrow(mat)))
+  rownames(avg) <- rownames(mat)
+  as.matrix(avg)
+}
+
 
 ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         scale = "row",
@@ -412,6 +434,21 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
 
 ggsave(file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_all.pdf"),
        plot = ssgsea_mes_adr_ncc_noradr_heatmap,
+        width = 22, height = 12, units = "cm")
+
+# Averaged across replicates
+ssgsea_mes_adr_cellines_avg <- average_replicates(ssgsea_mes_adr_cellines, replicate_groups)
+ssgsea_mes_adr_ncc_noradr_heatmap_avg <- pheatmap::pheatmap(ssgsea_mes_adr_cellines_avg,
+                                                            scale = "row",
+                                                            #annotation_col = heatmap_col_annot_DTC,
+                                                            cluster_rows = TRUE,
+                                                            cluster_cols = TRUE,
+                                                            color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                            show_colnames = TRUE,
+                                                            main = "SSGSEA our RNA-seq terms (averaged replicates)")
+
+ggsave(file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_all_averaged.pdf"),
+       plot = ssgsea_mes_adr_ncc_noradr_heatmap_avg,
         width = 22, height = 12, units = "cm")
 ```
 

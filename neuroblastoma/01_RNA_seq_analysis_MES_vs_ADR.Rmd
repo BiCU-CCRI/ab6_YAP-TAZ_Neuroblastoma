@@ -68,6 +68,8 @@ GENES_OF_INTEREST <- list(
 )
 
 print("Configuration loaded successfully")
+
+setwd(here::here())
 ```
 
 ```{r load_libraries}
@@ -146,13 +148,11 @@ print("Environment setup completed")
 ```{r load_data}
 message("Loading RNA-seq data...")
 
-load(file.path(PATHS$data_dir, "deseq2.dds.RData"))
+# load(file.path(PATHS$data_dir, "deseq2.dds.RData"))
+
+dds <- readRDS(here::here("data/RNAseq/rnaseq_deseq_global_deseq_data_set.rds"))
 rnaseq_dds <- dds[,
                   c(
-                    "CLB_Ma_ADR_rep1",
-                    "CLB_Ma_ADR_rep2",
-                    "CLB_Ma_MES_rep1",
-                    "CLB_Ma_MES_rep2",
                     "CLBM_A_RNA_S130492",
                     "CLBM_M_RNA_S130495",
                     "NB10_A_RNA_S130490",
@@ -160,37 +160,23 @@ rnaseq_dds <- dds[,
                     "NB8_A_RNA_S130499",
                     "NB8_M_RNA_S130491",
                     "SH_A_RNA_S130494",
-                    "SH_M_RNA_S130497",
-                    "SK_N_SH_ADR_rep1_1",
-                    "SK_N_SH_ADR_rep2_1",
-                    "SK_N_SH_MES_rep1_1",
-                    "SK_N_SH_MES_rep2_1"
+                    "SH_M_RNA_S130497"
                   )]
 rm(dds)
 rnaseq_dds
 rnaseq_dds$cell_line <- as.factor(c(
-                    "CLBMa",
-                    "CLBMa",
-                    "CLBMa",
-                    "CLBMa",
+
                     "CLBMa",
                     "CLBMa",
                     "NB10",
                     "NB10",
                     "NB8",
                     "NB8",
-                    "SK_N_SH",
-                    "SK_N_SH",
-                    "SK_N_SH",
-                    "SK_N_SH",
                     "SK_N_SH",
                     "SK_N_SH"
 ))
 rnaseq_dds$cell_type <- as.factor(c(
-                    "ADR",
-                    "ADR",
-                    "MES",
-                    "MES",
+
                     "ADR",
                     "MES",
                     "ADR",
@@ -198,11 +184,8 @@ rnaseq_dds$cell_type <- as.factor(c(
                     "ADR",
                     "MES",
                     "ADR",
-                    "MES",
-                    "ADR",
-                    "ADR",
-                    "MES",
                     "MES"
+
 ))
 design(rnaseq_dds) <- as.formula("~ cell_line + cell_type")
 annotation_data <- read.table(
@@ -559,7 +542,7 @@ de_genes_ranked <- de_genes_ranked %>%
   ungroup()
 de_genes_ranked <- de_genes_ranked %>% arrange(desc(log2FoldChange))
 de_genes_ranked <- setNames(c(de_genes_ranked$log2FoldChange), c(de_genes_ranked$gene_symbol))
-de_genes_ranked <- de_genes_ranked[-c(which(is.na(names(de_genes_ranked))))]
+de_genes_ranked <- de_genes_ranked[!is.na(names(de_genes_ranked))]
 gene_set_list <- gene_sets
 
 

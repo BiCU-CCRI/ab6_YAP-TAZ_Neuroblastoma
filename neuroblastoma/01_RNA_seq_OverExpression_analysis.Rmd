@@ -334,6 +334,32 @@ ssgsea_mes_adr_cellines <- GSVA::gsva(groeningen_param,
                                       verbose = TRUE,
                                       BPPARAM = BiocParallel::MulticoreParam(10))
 
+# Replicate groups to average (3 replicates per group)
+replicate_groups <- list(
+  CLBMa_ADR   = c("CLB_Ma_ADR_rep1",        "CLB_Ma_ADR_rep2",    "CLBM_A_RNA_S130492"),
+  CLBMa_MES   = c("CLB_Ma_MES_rep1",        "CLB_Ma_MES_rep2",    "CLBM_M_RNA_S130495"),
+  SK_N_SH_ADR = c("SH_A_RNA_S130494",       "SK_N_SH_ADR_rep1_1", "SK_N_SH_ADR_rep2_1"),
+  SK_N_SH_MES = c("SH_M_RNA_S130497",       "SK_N_SH_MES_rep1_1", "SK_N_SH_MES_rep2_1"),
+
+  CM_OE_EV    = c("CM_OE_EV_RNA_S144621",   "CM_OE_EV_rep1",      "CM_OE_EV_rep2"),
+  CM_OE_WWTR1 = c("CM_OE_WWTR1_RNA_S144623","CM_OE_TAZ_rep1",     "CM_OE_TAZ_rep2"),
+  CM_OE_YAP1  = c("CM_OE_YAP1_RNA_S144624", "CM_OE_YAP1_rep1",    "CM_OE_YAP1_rep2"),
+
+  SH_OE_EV    = c("SH_OE_EV_RNA_S144620",   "SH_OE_EV_rep1",      "SH_OE_EV_rep2"),
+  SH_OE_WWTR1 = c("SH_OE_WWTR1_RNA_S144622","SH_OE_TAZ_rep1",     "SH_OE_TAZ_rep2"),
+  SH_OE_YAP1  = c("SH_OE_YAP1_RNA_S144619", "SH_OE_YAP1_rep1",    "SH_OE_YAP1_rep2")
+)
+
+# Collapse a ssGSEA score matrix to per-group means (rows = terms, cols = groups)
+average_replicates <- function(mat, groups) {
+  avg <- vapply(groups, function(cols) {
+    cols <- intersect(cols, colnames(mat))
+    rowMeans(mat[, cols, drop = FALSE])
+  }, FUN.VALUE = numeric(nrow(mat)))
+  rownames(avg) <- rownames(mat)
+  as.matrix(avg)
+}
+
 
 ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         scale = "row",
@@ -345,6 +371,20 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                         main = "SSGSEA Groeningen terms")
 pdf(file = file.path(PATHS$results_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_GROEN.pdf"))
 ssgsea_mes_adr_ncc_noradr_heatmap
+dev.off()
+
+# Averaged across replicates (Groeningen terms)
+ssgsea_mes_adr_cellines_avg <- average_replicates(ssgsea_mes_adr_cellines, replicate_groups)
+ssgsea_mes_adr_ncc_noradr_heatmap_avg <- pheatmap::pheatmap(ssgsea_mes_adr_cellines_avg,
+                                                            scale = "row",
+                                                            #annotation_col = heatmap_col_annot_DTC,
+                                                            cluster_rows = TRUE,
+                                                            cluster_cols = TRUE,
+                                                            color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                            show_colnames = TRUE,
+                                                            main = "SSGSEA Groeningen terms (averaged replicates)")
+pdf(file = file.path(PATHS$results_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_GROEN_averaged.pdf"))
+ssgsea_mes_adr_ncc_noradr_heatmap_avg
 dev.off()
 
 
@@ -366,5 +406,19 @@ ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
                                                                  show_colnames = TRUE)
 pdf(file = file.path(PATHS$results_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ.pdf"))
 ssgsea_mes_adr_ncc_noradr_heatmap
+dev.off()
+
+# Averaged across replicates (our RNA-seq terms)
+ssgsea_mes_adr_cellines_avg <- average_replicates(ssgsea_mes_adr_cellines, replicate_groups)
+ssgsea_mes_adr_ncc_noradr_heatmap_avg <- pheatmap::pheatmap(ssgsea_mes_adr_cellines_avg,
+                                                            scale = "row",
+                                                            #annotation_col = heatmap_col_annot_DTC,
+                                                            cluster_rows = TRUE,
+                                                            cluster_cols = TRUE,
+                                                            color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+                                                            show_colnames = TRUE,
+                                                            main = "SSGSEA our RNA-seq terms (averaged replicates)")
+pdf(file = file.path(PATHS$results_dir, "ssgsea_mes_adr_ncc_noradr_heatmap_OUR_RNASEQ_averaged.pdf"))
+ssgsea_mes_adr_ncc_noradr_heatmap_avg
 dev.off()
 ```
