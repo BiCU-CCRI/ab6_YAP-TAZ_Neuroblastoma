@@ -10,123 +10,39 @@ output:
     theme: flatly
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-  echo = TRUE,
-  warning = FALSE,
-  message = FALSE,
-  fig.width = 10,
-  fig.height = 8,
-  dpi = 300
-)
+```{r}
+# shRNA-seq Pairwise fGSEA Analysis
+# Analyzing DOX vs CTRL pairs without replicates
+# Author: Claude Code
+# Date: 2025-09-15
 
-set.seed(42)
-analysis_start_time <- Sys.time()
-message("Starting RNA-seq shRNA at: ", analysis_start_time)
-```
-
-## Configuration and Setup
-
-```{r configuration}
-config <- list(
-  filtering = list(
-    abs_filt_samples = 2,
-    min_count_threshold = 10
-  ),
-  statistical = list(
-    padj_cutoff = 0.05,
-    log2FC_cutoff = 1,
-    var_expl_needed = 0.6
-  ),
-  visualization = list(
-    ntop_genes_pca = 1000,
-    plot_width = 20,
-    plot_height = 20,
-    plot_units = "cm",
-    top_pathways_show = 20
-  ),
-  fgsea = list(
-    min_size = 15,
-    max_size = 500
-  )
-)
-
-PATHS <- list(
-  data_dir = here::here("data", "RNAseq"),
-  results_dir = here::here("results", "RNA-seq", "RNA-seq_shRNA"),
-  resources_dir = here::here("resources")
-)
-
-print("Configuration loaded successfully")
-```
-
-```{r load_libraries}
+# Load required libraries
 suppressPackageStartupMessages({
-  # Core analysis packages
   library(DESeq2)
-  library(stringr)
-  library(org.Hs.eg.db)
-  
-  # Enrichment analysis
   library(fgsea)
   library(hypeR)
-  library(GSVA)
-  
-  # Visualization
-  library(ggplot2)
-  library(ggrepel)
-  library(pheatmap)
-  library(RColorBrewer)
-  
-  # Data manipulation
   library(dplyr)
-  library(tidyr)
-  library(readr)
-  
-  # Batch correction
-  library(limma)
-  
-  # File operations
-  library(openxlsx)
-  library(openxlsx2)
+  library(ggplot2)
   library(here)
-  
-  # Load all utility functions from consolidated script
-  source(here::here("resources/UtilityScriptsRNA-seq.R"))
+  library(openxlsx2)
+  library(GSVA)
+  library(pheatmap)
+  library(reshape2)
 })
 
-environment(.dots_plot_fixed) <- asNamespace("hypeR")
-assignInNamespace(".dots_plot", .dots_plot_fixed, ns = "hypeR")
+# Configuration
+PATHS <- list(
+  data_dir = "~/neuroblastoma/data/RNA-seq",
+  results_dir = "~/neuroblastoma/results/RNAseq/RNA-seq_shRNA_pairwise",
+  resources_dir = "~/neuroblastoma/resources")
 
-print("Libraries loaded successfully")
-```
-
-
-```{r setup_environment}
+# Create results directory
 if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRUE)
 
-# Load gene sets
-message("Loading gene sets from MSigDB...")
-gene_sets <- list(
-  hallmark = hypeR::msigdb_gsets("Homo sapiens", "H", clean = TRUE),
-  kegg = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:KEGG_LEGACY", clean = TRUE),
-  reactome = hypeR::msigdb_gsets("Homo sapiens", "C2", "CP:REACTOME", clean = TRUE),
-  gobp = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:BP", clean = TRUE),
-  gocc = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:CC", clean = TRUE),
-  gomf = hypeR::msigdb_gsets("Homo sapiens", "C5", "GO:MF", clean = TRUE),
-  oncogenic = hypeR::msigdb_gsets("Homo sapiens", "C6", clean = TRUE),
-  wang_hippo = list(genesets = list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A","TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80")))
-)
+# Load utility functions
+source("~/neuroblastoma/resources/UtilityScriptsRNA-seq.R")
 
-print("Environment setup completed")
-```
-
-
-## Data Loading and Preparation
-
-```{r load_data}
-message("Loading sh RNA-seq  data...")
-
+# Load annotation data
 annotation_data <- read.table(
   file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),
   sep = "\t",
@@ -134,489 +50,438 @@ annotation_data <- read.table(
 )
 colnames(annotation_data)[c(5, 7)] <- c("ensembl_id", "gene_symbol")
 
-#loading the new DESeq2 file
-load(file.path(PATHS$data_dir, "deseq2.dds.RData"))
-shRNAdds <- dds[,
-                c(
-                  "CM_24h_1_RNA_S162602", 
-                  "CM_24h_2_RNA_S162607", 
-                  "CM_24h_3_RNA_S162608",                  
-                  "CM_48h_1_RNA_S162605",
-                  "CM_48h_2_RNA_S162606",
-                  "CM_48h_3_RNA_S162609",
-                  "CM_control_1_RNA_S162603",
-                  "CM_control_2_RNA_S162604",
-                  "CM_control_3_RNA_S162601", 
-                  "CM_DMSO_ctrl_rep1_1",
-                  "CM_24h_rep1_1", 
-                  "CM_48h_rep1_1",                    
-                  "CM_DMSO_ctrl_rep2_1",
-                  "CM_24h_rep2_1", 
-                  "SH_24h_1_RNA_S162593",
-                  "SH_24h_2_RNA_S162594",
-                  "SH_24h_3_RNA_S162599",
-                  "SH_48h_1_RNA_S162600",
-                  "SH_48h_2_RNA_S162597",
-                  "SH_48h_3_RNA_S162598",
-                  "SH_control_1_RNA_S162592",
-                  "SH_control_2_RNA_S162595",
-                  "SH_control_3_RNA_S162596",
-                  "SH_DMSO_ctrl_rep1_1", 
-                  "SH_24h_rep1_1",
-                  "SH_48h_rep1_1",
-                  "SH_DMSO_ctrl_rep2_1",
-                  "SH_24h_rep2_1",
-                  "SH_48h_rep2_1"
-                )]
+# Load shRNA DESeq2 object
+message("Loading shRNA-seq data...")
+load(file.path(PATHS$data_dir, "deseq2_shRNA.dds.RData"))
 
-colData(shRNAdds)$biosample <- dplyr::case_when(
-  colnames(shRNAdds) %in% c("CM_24h_1_RNA_S162602", 
-                  "CM_24h_2_RNA_S162607", 
-                  "CM_24h_3_RNA_S162608") ~ "CM_24h_batch1",
- colnames(shRNAdds) %in% c("CM_48h_1_RNA_S162605",
-                  "CM_48h_2_RNA_S162606",
-                  "CM_48h_3_RNA_S162609") ~ "CM_48h_batch1",
- colnames(shRNAdds) %in% c("CM_control_1_RNA_S162603",
-                  "CM_control_2_RNA_S162604",
-                  "CM_control_3_RNA_S162601") ~ "CM_control_batch1",
- colnames(shRNAdds) %in% c("SH_24h_1_RNA_S162593",
-                  "SH_24h_2_RNA_S162594",
-                  "SH_24h_3_RNA_S162599") ~ "SH_24h_batch1",
- colnames(shRNAdds) %in% c("SH_48h_1_RNA_S162600",
-                  "SH_48h_2_RNA_S162597",
-                  "SH_48h_3_RNA_S162598") ~ "SH_48h_batch1",
- colnames(shRNAdds) %in% c("SH_control_1_RNA_S162592",
-                  "SH_control_2_RNA_S162595",
-                  "SH_control_3_RNA_S162596") ~ "SH_control_batch1",
- .default = colnames(shRNAdds)
-)
+# Examine the data structure
+message("Examining data structure...")
+print("Sample metadata:")
+print(colData(dds))
+print("Design formula:")
+print(design(dds))
+print("Sample names:")
+print(colnames(dds))
 
-shRNAdds <- DESeq2::collapseReplicates(
-  shRNAdds,
-  groupby = shRNAdds$biosample,
-  run = colnames(shRNAdds)
-)
+# Identify sample pairs based on metadata
+# Assuming Group1 contains the treatment types (LUC, TGFP, YAP)
+# and samples alternate between CTRL and DOX
+sample_info <- as.data.frame(colData(dds))
+sample_info$sample_name <- rownames(sample_info)
 
-shRNAdds$cell_type <- as.factor(
-  case_when(
-    colnames(shRNAdds) %in% c("CM_24h_batch1",
-                              "CM_24h_rep1_1",
-                              "CM_24h_rep2_1",
-                              "CM_48h_batch1",
-                              "CM_48h_rep1_1",
-                              "CM_control_batch1",
-                              "CM_DMSO_ctrl_rep1_1",
-                              "CM_DMSO_ctrl_rep2_1") ~ "CLBMa",
-    colnames(shRNAdds) %in% c("SH_24h_batch1",
-                              "SH_24h_rep1_1",
-                              "SH_24h_rep2_1",
-                              "SH_48h_batch1",
-                              "SH_48h_rep1_1",
-                              "SH_48h_rep2_1",
-                              "SH_control_batch1",
-                              "SH_DMSO_ctrl_rep1_1",
-                              "SH_DMSO_ctrl_rep2_1") ~ "SK_N_SH",
- .default = colnames(shRNAdds)
-  )
-)
+# Print sample information to understand structure
+print("Full sample information:")
+print(sample_info)
 
-shRNAdds$time <- as.factor(
-  case_when(
-    colnames(shRNAdds) %in% c("CM_24h_batch1",
-                              "CM_24h_rep1_1",
-                              "CM_24h_rep2_1",
-                              "SH_24h_batch1",
-                              "SH_24h_rep1_1",
-                              "SH_24h_rep2_1") ~ "h24",
-    colnames(shRNAdds) %in% c("CM_48h_batch1",
-                              "CM_48h_rep1_1",
-                              "SH_48h_batch1",
-                              "SH_48h_rep1_1",
-                              "SH_48h_rep2_1") ~ "h48",
-     colnames(shRNAdds) %in% c("CM_control_batch1",
-                              "CM_DMSO_ctrl_rep1_1",
-                              "CM_DMSO_ctrl_rep2_1",
-                              "SH_control_batch1",
-                              "SH_DMSO_ctrl_rep1_1",
-                              "SH_DMSO_ctrl_rep2_1") ~ "DMSO",
- .default = colnames(shRNAdds)
-  )
-)
+# Basic filtering and normalization
+message("Filtering and normalizing data...")
 
-shRNAdds$treatment <- as.factor(
-  case_when(
-    colnames(shRNAdds) %in% c("CM_24h_batch1",
-                              "CM_24h_rep1_1",
-                              "CM_24h_rep2_1",
-                              "SH_24h_batch1",
-                              "SH_24h_rep1_1",
-                              "SH_24h_rep2_1",
-                              "CM_48h_batch1",
-                              "CM_48h_rep1_1",
-                              "SH_48h_batch1",
-                              "SH_48h_rep1_1",
-                              "SH_48h_rep2_1") ~ "treated",
-     colnames(shRNAdds) %in% c("CM_control_batch1",
-                              "CM_DMSO_ctrl_rep1_1",
-                              "CM_DMSO_ctrl_rep2_1",
-                              "SH_control_batch1",
-                              "SH_DMSO_ctrl_rep1_1",
-                              "SH_DMSO_ctrl_rep2_1") ~ "DMSO",
- .default = colnames(shRNAdds)
-  )
-)
+# Filter lowly expressed genes (keep genes with ≥10 counts in ≥2 samples)
+keep <- rowSums(counts(dds) >= 10) >= 2
+dds_filtered <- dds[keep,]
 
-data.frame(shRNAdds$sample, shRNAdds$biosample, shRNAdds$runsCollapsed, shRNAdds$cell_type, shRNAdds$treatment, shRNAdds$time)
+# Estimate size factors for normalization
+dds_filtered <- estimateSizeFactors(dds_filtered)
 
-rm(dds)
+# Get normalized counts
+normalized_counts <- counts(dds_filtered, normalized = TRUE)
 
-message("Selected ", ncol(shRNAdds), " samples for analysis")
+# Add gene symbols as rownames for easier interpretation
+gene_symbols <- annotation_data$gene_symbol[match(rownames(normalized_counts), annotation_data$ensembl_id)]
+# Handle missing symbols
+gene_symbols[is.na(gene_symbols)] <- rownames(normalized_counts)[is.na(gene_symbols)]
 
-# Load WWTR1 overexpression data with validation
-
-design(shRNAdds) <- as.formula("~ cell_type + treatment")
-```
-
-```{r}
-# make PCA with ALL samples
-# Filtering lowly expressed genes
-shRNAdds_filt <- filterDatasets(shRNAdds,
-                               abs_filt = TRUE,
-                               abs_filt_samples = config$filtering$abs_filt_samples
-)
-
-# Estimate size factors and running DESEQ2
-shRNAdds_filt <- DESeq2::estimateSizeFactors(shRNAdds_filt)
-shRNAdds_filt <- DESeq2::DESeq(shRNAdds_filt)
-dds_reduced_filt_vsd <- DESeq2::vst(shRNAdds_filt, blind = TRUE) # blind = TRUE for QC
-
-resultsNames(shRNAdds_filt)
-```
-
-```{r Get DEGs, include=FALSE}
-deg_results <- generateResults(
-  dds_object = shRNAdds_filt,
-  coeff_name = "treatment_treated_vs_DMSO",
-  cond_numerator = "treated",
-  cond_denominator = "DMSO",
-  cond_variable = "treatment",
-  ensemblAnnot = annotation_data,
-  log2FC_cutoff = config$statistical$log2FC_cutoff
-)
-
-# Write the result to the xlsx file
-XLSX_OUT <- openxlsx::createWorkbook()
-openxlsx::addWorksheet(XLSX_OUT, "results_signif")
-openxlsx::addWorksheet(XLSX_OUT, "de_details")
-openxlsx::addWorksheet(XLSX_OUT, "results_all")
-openxlsx::writeData(XLSX_OUT, x = deg_results$results_signif, sheet = "results_signif")
-openxlsx::writeData(XLSX_OUT, x = deg_results$de_details, sheet = "de_details")
-openxlsx::writeData(XLSX_OUT, x = deg_results$results_all, sheet = "results_all")
-openxlsx::saveWorkbook(XLSX_OUT, file.path(PATHS$results_dir, "ShRNA-seq_treated_vs_DMSO.xlsx"), overwrite = T)
-
-```
-
-```{r}
-gene_set_list <- list(
-  GOBP_Hippo_Signaling = gene_sets$gobp[["genesets"]][["Hippo Signaling"]],
-  REACTOME_Signaling_By_Hippo = gene_sets$reactome[["genesets"]][["Signaling By Hippo"]],
-  C6_onko_Cordenonsi_Yap_Conserved_Signature = gene_sets$oncogenic[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
-  Hippo_Wang = gene_sets$wang_hippo[["genesets"]][["wang_hippo_set"]]
-)
-
-# treated_vs_DMSO
-deg_results_DMSO_vs_ctrl_ranked <- deg_results$results_all
-deg_results_DMSO_vs_ctrl_ranked <- deg_results_DMSO_vs_ctrl_ranked %>%
-  group_by(gene_symbol) %>%
-  slice_max(baseMean, n = 1, with_ties = FALSE) %>%
-  ungroup()
-deg_results_DMSO_vs_ctrl_ranked <- deg_results_DMSO_vs_ctrl_ranked %>% arrange(desc(log2FoldChange))
-deg_results_DMSO_vs_ctrl_ranked <- setNames(c(deg_results_DMSO_vs_ctrl_ranked$log2FoldChange),
-                                           c(deg_results_DMSO_vs_ctrl_ranked$gene_symbol))
-
-deg_results_DMSO_vs_ctrl_ranked <- deg_results_DMSO_vs_ctrl_ranked[!is.na(names(deg_results_DMSO_vs_ctrl_ranked))]
-
-
-
-fgseaRes_DMSO_vs_ctrl <- fgsea(
-  pathways = gene_set_list,
-  stats = deg_results_DMSO_vs_ctrl_ranked,
-  minSize = 15,
-  maxSize = 2500
-)
-
-for(gene_set_to_plot_name in names(gene_set_list)){
-  # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
-  gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
-  
-  title_values <- fgseaRes_DMSO_vs_ctrl %>% dplyr::filter(pathway == gene_set_to_plot_name) %>% dplyr::select(pathway, NES, padj)
-  p <- plotEnrichment(pathway = gene_set_to_plot, stats = deg_results_DMSO_vs_ctrl_ranked) + 
-    labs(title = paste(title_values$pathway, "\n",
-                       "NES =", title_values$NES, "\n",
-                       "padj = ", title_values$padj))
-  
- plot(p)
-  
-  ggsave(
-    filename = file.path(PATHS$results_dir, paste0("treated_vs_DMSO_fgsea_", gene_set_to_plot_name, ".pdf")),
-    plot = p,
-    width = 20, height = 20, units = "cm"
-  )
-}
-```
-
-```{r}
-RNA_SEQ_data <- openxlsx2::read_xlsx("~/neuroblastoma/results/RNA-seq/RNA-seq_MES_vs_ADR/tables/MES_vs_ADR_comprehensive_results.xlsx", sheet = 2)
-mes_adrn_gene_list <- RNA_SEQ_data %>%
-  mutate(Term = if_else(log2FoldChange < 0, "ADR", "MES"))
-sig_list_our_data <- list(
-  Aderenergic = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "ADR"],
-  Mesenchymal = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "MES"]
-)
-
-# prepare vsd
-vsd_counts_matrix <- assay(dds_reduced_filt_vsd)
-gene_symbols <- annotation_data[, 'gene_symbol'][match(row.names(vsd_counts_matrix),
-                                                       annotation_data[, 'ensembl_id'])]
-# Drop genes without a mapped symbol
-keep <- !is.na(gene_symbols) & gene_symbols != ""
-vsd_counts_matrix <- vsd_counts_matrix[keep, ]
-gene_symbols <- gene_symbols[keep]
-
-# Collapse duplicate symbols: keep the row with the highest mean expression
-row_means <- rowMeans(vsd_counts_matrix)
-keep_idx <- order(row_means, decreasing = TRUE)
-keep_idx <- keep_idx[!duplicated(gene_symbols[keep_idx])]
-vsd_counts_matrix <- vsd_counts_matrix[keep_idx, ]
-row.names(vsd_counts_matrix) <- gene_symbols[keep_idx]
-
-vsd_counts_matrix <- as.matrix(vsd_counts_matrix)
-stopifnot(!any(duplicated(rownames(vsd_counts_matrix))))
-
-
-# Plot terms based on terms defined from RNA-seq profiles obtained from our RNA seq
-our_data_param <- GSVA::ssgseaParam(vsd_counts_matrix,
-                                    sig_list_our_data,
-                                    minSize = 1, maxSize = Inf,
-                                    normalize = TRUE)
-ssgsea_mes_adr_cellines <- GSVA::gsva(our_data_param,
-                                      verbose = TRUE,
-                                      BPPARAM = BiocParallel::MulticoreParam(2))
-
-# Replicate groups to average (CM_48h has only 2 replicates)
-replicate_groups <- list(
-  CM_24h     = c("CM_24h_batch1",     "CM_24h_rep1_1",       "CM_24h_rep2_1"),
-  CM_48h     = c("CM_48h_batch1",     "CM_48h_rep1_1"),
-  CM_control = c("CM_control_batch1", "CM_DMSO_ctrl_rep1_1", "CM_DMSO_ctrl_rep2_1"),
-  SH_24h     = c("SH_24h_batch1",     "SH_24h_rep1_1",       "SH_24h_rep2_1"),
-  SH_48h     = c("SH_48h_batch1",     "SH_48h_rep1_1",       "SH_48h_rep2_1"),
-  SH_control = c("SH_control_batch1", "SH_DMSO_ctrl_rep1_1", "SH_DMSO_ctrl_rep2_1")
-)
-
-# Collapse a ssGSEA score matrix to per-group means (rows = terms, cols = groups)
-average_replicates <- function(mat, groups) {
-  avg <- vapply(groups, function(cols) {
-    cols <- intersect(cols, colnames(mat))
-    rowMeans(mat[, cols, drop = FALSE])
-  }, FUN.VALUE = numeric(nrow(mat)))
-  rownames(avg) <- rownames(mat)
-  as.matrix(avg)
-}
-
-
-ssgsea_mes_adr_ncc_noradr_heatmap <- pheatmap::pheatmap(ssgsea_mes_adr_cellines,
-                                                        scale = "row",
-                                                        #annotation_col = heatmap_col_annot_DTC,
-                                                        cluster_rows = TRUE,
-                                                        cluster_cols = TRUE,
-                                                        color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-                                                        show_colnames = TRUE)
-
-ggsave(file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_all.pdf"),
-       plot = ssgsea_mes_adr_ncc_noradr_heatmap,
-        width = 22, height = 12, units = "cm")
-
-# Averaged across replicates
-ssgsea_mes_adr_cellines_avg <- average_replicates(ssgsea_mes_adr_cellines, replicate_groups)
-ssgsea_mes_adr_ncc_noradr_heatmap_avg <- pheatmap::pheatmap(ssgsea_mes_adr_cellines_avg,
-                                                            scale = "row",
-                                                            #annotation_col = heatmap_col_annot_DTC,
-                                                            cluster_rows = TRUE,
-                                                            cluster_cols = TRUE,
-                                                            color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-                                                            show_colnames = TRUE,
-                                                            main = "SSGSEA our RNA-seq terms (averaged replicates)")
-
-ggsave(file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_all_averaged.pdf"),
-       plot = ssgsea_mes_adr_ncc_noradr_heatmap_avg,
-        width = 22, height = 12, units = "cm")
-```
-
-```{r plot_gsva_heatmap}
-ssgsea_mes_adr_ncc_noradr_heatmap
-```
-
-```{r ssgsea_heatmap_by_batch}
-# The two batches differ strongly in overall ssGSEA level, so a single row-scaled
-# heatmap is dominated by the batch effect rather than the MES/ADR contrast.
-# Split the samples by batch and z-score WITHIN each batch so the biology is visible.
-
-# Batch membership: the collapsed "biosample" names carry the _batch1 tag;
-# everything else (rep1/rep2 runs) is the second batch.
-sample_batch <- ifelse(grepl("_batch1$", colnames(ssgsea_mes_adr_cellines)),
-                       "batch1", "batch2")
-
-# Column annotation (cell type / treatment / time) pulled from the dds colData,
-# aligned to the ssGSEA matrix column order.
-col_annot <- as.data.frame(
-  colData(shRNAdds_filt)[colnames(ssgsea_mes_adr_cellines),
-                         c("cell_type", "treatment", "time")]
-)
-
-# Build one heatmap per batch (silent = TRUE so we control drawing/saving).
-batch_heatmaps <- lapply(sort(unique(sample_batch)), function(b) {
-  mat_b <- ssgsea_mes_adr_cellines[, sample_batch == b, drop = FALSE]
-  pheatmap::pheatmap(
-    mat_b,
-    scale = "row",              # z-score within this batch only
-    annotation_col = col_annot,
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-    show_colnames = TRUE,
-    main = paste0("MES/ADR ssGSEA — ", b),
-    silent = TRUE
-  )
-})
-names(batch_heatmaps) <- sort(unique(sample_batch))
-
-# Draw each heatmap into the knitted document.
-for (b in names(batch_heatmaps)) {
-  grid::grid.newpage()
-  grid::grid.draw(batch_heatmaps[[b]]$gtable)
-}
-
-# Save each heatmap to its own PDF.
-for (b in names(batch_heatmaps)) {
-  pdf(file.path(PATHS$results_dir, paste0("ssgsea_mes_adr_heatmap_", b, ".pdf")),
-      width = 8, height = 5)
-  grid::grid.draw(batch_heatmaps[[b]]$gtable)
-  dev.off()
-}
-```
-
-```{r ssgsea_dynamics_prep}
-# Instead of absolute ssGSEA levels (which carry a per-batch / per-cell-line
-# baseline), look at the DYNAMIC: the change over the DMSO -> 24h -> 48h course.
-# Referencing each series to its own DMSO baseline cancels that baseline offset,
-# so CM and SH (and the two batches) become directly comparable.
-
-adr_name <- grep("^Ader", rownames(ssgsea_mes_adr_cellines), value = TRUE)  # "Aderenergic"
-mes_name <- grep("^Mes",  rownames(ssgsea_mes_adr_cellines), value = TRUE)  # "Mesenchymal"
-
-# One row per sample, with its two signature scores and its metadata.
-score_long <- data.frame(
-  sample = colnames(ssgsea_mes_adr_cellines),
+# Handle duplicate gene symbols by keeping the gene with highest mean expression
+mean_expr <- rowMeans(normalized_counts)
+df_temp <- data.frame(
+  ensembl_id = rownames(normalized_counts),
+  gene_symbol = gene_symbols, 
+  mean_expr = mean_expr,
   stringsAsFactors = FALSE
 )
-score_long$ADR <- ssgsea_mes_adr_cellines[adr_name, score_long$sample]
-score_long$MES <- ssgsea_mes_adr_cellines[mes_name, score_long$sample]
 
-# Cell line (CM / SH) and series group (batch1 / rep1 / rep2) from the sample name.
-score_long$cell  <- sub("^(CM|SH)_.*", "\\1", score_long$sample)
-score_long$group <- ifelse(grepl("_batch1$", score_long$sample),
-                           "batch1",
-                           stringr::str_extract(score_long$sample, "rep[12]"))
-# A "series" is one time course: e.g. CM_batch1, CM_rep1, SH_rep2, ...
-score_long$series <- paste(score_long$cell, score_long$group, sep = "_")
-
-# Time as an ordered factor DMSO < 24h < 48h (from the dds colData).
-score_long$time <- factor(
-  as.character(colData(shRNAdds_filt)[score_long$sample, "time"]),
-  levels = c("DMSO", "h24", "h48"),
-  labels = c("DMSO", "24h", "48h")
-)
-
-# Long over signature, then Delta = score - (that series' DMSO score).
-score_long <- score_long %>%
-  tidyr::pivot_longer(cols = c(ADR, MES),
-                      names_to = "signature", values_to = "score") %>%
-  group_by(series, signature) %>%
-  mutate(baseline = score[time == "DMSO"][1],
-         delta    = score - baseline) %>%
+# Remove duplicates by keeping the gene with highest mean expression
+df_temp <- df_temp %>%
+  group_by(gene_symbol) %>%
+  slice_max(mean_expr, n = 1, with_ties = FALSE) %>%
   ungroup()
 
-print(score_long)
-```
+# Filter normalized counts to remove duplicates and set gene symbols as rownames
+normalized_counts <- normalized_counts[df_temp$ensembl_id, ]
+rownames(normalized_counts) <- df_temp$gene_symbol
 
-```{r ssgsea_dynamics_trajectory}
-# (1) Trajectory line plots: Delta-from-DMSO vs time, one line per series,
-#     faceted into MES and ADR panels.
-p_traj <- ggplot(score_long,
-                 aes(x = time, y = delta,
-                     group = series, colour = cell, linetype = group)) +
-  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
-  geom_line(linewidth = 0.8) +
-  geom_point(size = 2) +
-  facet_wrap(~ signature) +
-  labs(title    = "MES / ADR ssGSEA dynamics (Δ from DMSO)",
-       subtitle = "Each series referenced to its own DMSO baseline",
-       x = "Time", y = "Δ ssGSEA score (vs DMSO)",
-       colour = "Cell line", linetype = "Series") +
-  theme_bw()
+# Load gene sets for fGSEA
+message("Loading gene sets...")
+# load gene sets
+gs_hallmark <- hypeR::msigdb_gsets(species = "Homo sapiens", "H", clean = TRUE)
+gs_C2_kegg <- hypeR::msigdb_gsets(species = "Homo sapiens",  "C2", "CP:KEGG_LEGACY", clean = TRUE)
+gs_C2_reactome <- hypeR::msigdb_gsets(species = "Homo sapiens", "C2", "CP:REACTOME", clean = TRUE)
+gs_C5_GOBP <- hypeR::msigdb_gsets(species = "Homo sapiens", "C5", "GO:BP", clean = TRUE)
+gs_C6_onco <- hypeR::msigdb_gsets(species = "Homo sapiens", "C6", clean = TRUE)
+gs_wang_hippo <- list(wang_hippo_set = c("CCN1", "CCN2", "AMOTL2", "ANKRD1", "IGFBP3", "F3", "FJX1", "NUAK2", "LATS2", "CRIM1", "GADD45A",
+                                         "TGFB2", "PTPN14", "NT5E", "FOXF2", "AXL", "DOCK5", "ASAP1", "RBMS3", "MYOF", "ARHGEF17", "CCDC80"))
+gs_c2_PID <- hypeR::msigdb_gsets(species = "Homo sapiens", "C2", "CP:PID", clean = TRUE)
 
-print(p_traj)
-ggsave(file.path(PATHS$results_dir, "ssgsea_mes_adr_trajectory_delta.pdf"),
-       p_traj, width = 22, height = 12, units = "cm")
-```
 
-```{r ssgsea_dynamics_delta_heatmap}
-# (2) Delta-from-DMSO heatmap: rows = signature, columns = series x timepoint
-#     (24h, 48h only; DMSO is the reference so its delta is 0).
-delta_hm_df <- score_long %>%
-  filter(time != "DMSO", !is.na(delta)) %>%
-  mutate(col_id = paste(series, time, sep = "_"))
+#k975_48h_results <- read.xlsx("~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx", sheet = 1)
+k975_48h_results <- openxlsx::read.xlsx("~/neuroblastoma/results/RNA-seq/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx", sheet = 1)
+k975_48h_up <- k975_48h_results %>% dplyr::filter(log2FoldChange > 0) %>% dplyr::pull(gene_symbol)
+k975_48h_down <- k975_48h_results %>% dplyr::filter(log2FoldChange < 0) %>% dplyr::pull(gene_symbol)
 
-delta_wide <- tidyr::pivot_wider(delta_hm_df[, c("signature", "col_id", "delta")],
-                                 names_from = col_id, values_from = delta)
-delta_mat <- as.matrix(delta_wide[, -1])
-rownames(delta_mat) <- delta_wide$signature
-
-# Column annotation + a stable ordering (by cell, then series group, then time).
-col_annot_delta <- delta_hm_df %>% distinct(col_id, cell, group, time)
-col_annot_delta <- data.frame(
-  cell  = col_annot_delta$cell,
-  group = col_annot_delta$group,
-  time  = col_annot_delta$time,
-  row.names = col_annot_delta$col_id
+# Combine gene sets for analysis
+gene_set_list <- list(
+  Hallmark_EMT = gs_hallmark[["genesets"]][["Epithelial Mesenchymal Transition"]],
+  Hallmark_Hippo = gs_hallmark[["genesets"]][["Hippo Signaling"]],
+  GOBP_Hippo_Signaling = gs_C5_GOBP[["genesets"]][["Hippo Signaling"]],
+  REACTOME_Signaling_By_Hippo = gs_C2_reactome[["genesets"]][["Signaling By Hippo"]],
+  C6_onko_Cordenonsi_Yap_Conserved_Signature = gs_C6_onco[["genesets"]][["Cordenonsi Yap Conserved Signature"]],
+  Hippo_Wang = gs_wang_hippo$wang_hippo_set,
+  k975_48h_down = k975_48h_down,
+  k975_48h_up = k975_48h_up
 )
-ord <- rownames(col_annot_delta)[order(col_annot_delta$cell,
-                                       col_annot_delta$group,
-                                       col_annot_delta$time)]
-delta_mat <- delta_mat[, ord, drop = FALSE]
 
-# Diverging colour scale centred on 0 (no row scaling: values are already deltas).
-max_abs <- max(abs(delta_mat), na.rm = TRUE)
-delta_breaks <- seq(-max_abs, max_abs, length.out = 51)
+# Function to calculate log2FC and run fGSEA for a pair of samples
+analyze_sample_pair <- function(ctrl_sample, dox_sample, pair_name, normalized_counts, gene_sets) {
+  message(paste("Analyzing pair:", pair_name))
+  
+  # Get normalized counts for the pair
+  ctrl_counts <- normalized_counts[, ctrl_sample]
+  dox_counts <- normalized_counts[, dox_sample]
+  
+  # Calculate log2FC with pseudocount to avoid division by zero
+  pseudocount <- 1
+  log2fc <- log2((dox_counts + pseudocount) / (ctrl_counts + pseudocount))
+  
+  # Remove genes with NA or infinite values
+  valid_genes <- is.finite(log2fc) & !is.na(log2fc)
+  log2fc <- log2fc[valid_genes]
+  
+  # Add small random jitter to break ties
+  set.seed(42)  # for reproducibility
+  log2fc <- log2fc + runif(length(log2fc), -1e-8, 1e-8)
+  
+  # Sort genes by log2FC (descending order for fGSEA)
+  log2fc_sorted <- sort(log2fc, decreasing = TRUE)
+  
+  # Run fGSEA
+  fgsea_results <- fgsea(
+    pathways = gene_sets,
+    stats = log2fc_sorted,
+    minSize = 15,
+    maxSize = 2500
+  )
+  
+  # Add pair information to results
+  fgsea_results$pair <- pair_name
+  fgsea_results$ctrl_sample <- ctrl_sample
+  fgsea_results$dox_sample <- dox_sample
+  
+  return(list(
+    fgsea_results = fgsea_results,
+    log2fc_ranked = log2fc_sorted,
+    pair_name = pair_name
+  ))
+}
 
-delta_heatmap <- pheatmap::pheatmap(
-  delta_mat,
-  scale = "none",
-  color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-  breaks = delta_breaks,
-  cluster_rows = FALSE,
-  cluster_cols = TRUE,
-  annotation_col = col_annot_delta,
-  main = "Δ ssGSEA from DMSO (24h, 48h)",
-  show_colnames = TRUE,
-  silent = TRUE
-)
-grid::grid.newpage(); grid::grid.draw(delta_heatmap$gtable)
+# Function to create enrichment plots
+create_enrichment_plots <- function(analysis_result, gene_sets, output_dir) {
+  fgsea_res <- analysis_result$fgsea_results
+  log2fc_ranked <- analysis_result$log2fc_ranked
+  pair_name <- analysis_result$pair_name
+  
+  # Create plots for ALL pathways (not just significant ones)
+  all_pathways <- fgsea_res
+  
+  if(nrow(all_pathways) > 0) {
+    for(i in 1:nrow(all_pathways)) {
+      pathway_name <- all_pathways$pathway[i]
+      pathway_genes <- gene_sets[[pathway_name]]
+      
+      if(!is.null(pathway_genes) && length(pathway_genes) > 0) {
+        tryCatch({
+          # Create enrichment plot
+          p <- plotEnrichment(pathway_genes, log2fc_ranked) +
+            labs(
+              title = paste(pair_name, "-", pathway_name),
+              subtitle = paste("NES =", round(all_pathways$NES[i], 3),
+                             "| padj =", format(all_pathways$padj[i], scientific = TRUE, digits = 3))
+            ) +
+            theme_minimal()
+          
+          # Save plot
+          filename <- file.path(output_dir, paste0(pair_name, "_", gsub("[^A-Za-z0-9]", "_", pathway_name), "_enrichment.pdf"))
+          ggsave(filename, p, width = 10, height = 8)
+        }, error = function(e) {
+          message(paste("Warning: Could not create plot for", pathway_name, ":", e$message))
+        })
+      }
+    }
+  } else {
+    message(paste("No pathways found for", pair_name))
+  }
+}
 
-pdf(file.path(PATHS$results_dir, "ssgsea_mes_adr_delta_heatmap.pdf"),
-    width = 8, height = 4)
-grid::grid.draw(delta_heatmap$gtable)
-dev.off()
+# Main analysis workflow
+message("Starting pairwise analysis...")
+
+# Based on typical shRNA experimental design, assuming we have:
+# Samples 1,3,5 = CTRL and Samples 2,4,6 = DOX for LUC, TGFP, YAP respectively
+# This needs to be verified based on actual sample metadata
+
+# Let's first check the actual sample organization
+sample_pairs <- list()
+ctrl_samples <- c()
+dox_samples <- c()
+
+# Try to identify pairs based on sample names and metadata
+# This is a placeholder - adjust based on actual data structure
+if("Group1" %in% colnames(sample_info)) {
+  unique_groups <- unique(sample_info$Group1)
+  
+  for(group in unique_groups) {
+    group_samples <- sample_info[sample_info$Group1 == group, ]
+    
+    # Assuming we have one CTRL and one DOX per group
+    # Adjust this logic based on actual naming convention
+    if(nrow(group_samples) == 2) {
+      # Try to identify which is CTRL vs DOX based on sample names or other metadata
+      sample_names <- rownames(group_samples)
+      
+      # Simple heuristic - adjust as needed
+      ctrl_idx <- grep("ctrl|control|CTRL|CONTROL", sample_names, ignore.case = TRUE)
+      dox_idx <- grep("dox|DOX|treat|TREAT", sample_names, ignore.case = TRUE)
+      
+      if(length(ctrl_idx) == 0) ctrl_idx <- 1  # fallback
+      if(length(dox_idx) == 0) dox_idx <- 2    # fallback
+      
+      sample_pairs[[paste0(group, "_DOX_vs_CTRL")]] <- list(
+        ctrl = sample_names[ctrl_idx[1]],
+        dox = sample_names[dox_idx[1]]
+      )
+    }
+  }
+} else {
+  # Fallback: assume alternating pattern
+  message("Using fallback sample pairing based on position...")
+  sample_names <- colnames(dds_filtered)
+  
+  # Assuming 6 samples: 1,2 = LUC pair; 3,4 = TGFP pair; 5,6 = YAP pair
+  if(length(sample_names) >= 6) {
+    sample_pairs <- list(
+      "LUC_DOX_vs_CTRL" = list(ctrl = sample_names[1], dox = sample_names[2]),
+      "TGFP_DOX_vs_CTRL" = list(ctrl = sample_names[3], dox = sample_names[4]),
+      "YAP_DOX_vs_CTRL" = list(ctrl = sample_names[5], dox = sample_names[6])
+    )
+  }
+}
+
+# Display identified pairs for verification
+message("Identified sample pairs:")
+print(sample_pairs)
+
+# Run analysis for each pair
+all_results <- list()
+combined_fgsea <- data.frame()
+
+for(pair_name in names(sample_pairs)) {
+  pair_info <- sample_pairs[[pair_name]]
+  
+  # Run analysis
+  result <- analyze_sample_pair(
+    ctrl_sample = pair_info$ctrl,
+    dox_sample = pair_info$dox,
+    pair_name = pair_name,
+    normalized_counts = normalized_counts,
+    gene_sets = gene_set_list
+  )
+  
+  all_results[[pair_name]] <- result
+  
+  # Combine results
+  if(nrow(combined_fgsea) == 0) {
+    combined_fgsea <- result$fgsea_results
+  } else {
+    combined_fgsea <- rbind(combined_fgsea, result$fgsea_results)
+  }
+  
+  # Create enrichment plots
+  create_enrichment_plots(result, gene_set_list, PATHS$results_dir)
+  
+  # Save individual results (convert list columns to character for Excel compatibility)
+  fgsea_for_excel <- result$fgsea_results
+  fgsea_for_excel$leadingEdge <- sapply(fgsea_for_excel$leadingEdge, function(x) paste(x, collapse = "; "))
+  
+  openxlsx2::write_xlsx(
+    fgsea_for_excel,
+    file.path(PATHS$results_dir, paste0(pair_name, "_fgsea_results.xlsx"))
+  )
+}
+
+# Save combined results (convert list columns to character for Excel compatibility)
+combined_fgsea_for_excel <- combined_fgsea
+if(nrow(combined_fgsea_for_excel) > 0) {
+  combined_fgsea_for_excel$leadingEdge <- sapply(combined_fgsea_for_excel$leadingEdge, function(x) paste(x, collapse = "; "))
+}
+openxlsx2::write_xlsx(combined_fgsea_for_excel, file.path(PATHS$results_dir, "combined_fgsea_results.xlsx"))
+
+# Create summary visualization
+message("Creating summary visualization...")
+
+# Summary heatmap of NES values
+library(reshape2)
+library(pheatmap)
+
+# Prepare data for heatmap
+heatmap_data <- combined_fgsea %>%
+  select(pathway, pair, NES, padj) %>%
+  filter(padj < 0.05) %>%  # Only significant pathways
+  dcast(pathway ~ pair, value.var = "NES", fill = 0)
+
+if(nrow(heatmap_data) > 1 && ncol(heatmap_data) > 2) {  # Need at least 2 pathways and 2 pairs
+  rownames(heatmap_data) <- heatmap_data$pathway
+  heatmap_data <- heatmap_data[, -1, drop = FALSE]
+  
+  # Determine clustering options based on data dimensions
+  cluster_rows <- nrow(heatmap_data) > 1
+  cluster_cols <- ncol(heatmap_data) > 1
+  
+  # Create heatmap
+  pheatmap(
+    heatmap_data,
+    cluster_rows = cluster_rows,
+    cluster_cols = cluster_cols,
+    color = colorRampPalette(c("blue", "white", "red"))(100),
+    main = "NES Heatmap - Significant Pathways (padj < 0.05)",
+    filename = file.path(PATHS$results_dir, "fgsea_NES_heatmap.pdf"),
+    width = 10,
+    height = 8
+  )
+  message("Heatmap created successfully")
+} else {
+  message("Insufficient data for heatmap generation (need at least 2 significant pathways)")
+}
+
+# Create summary table
+summary_table <- combined_fgsea %>%
+  filter(padj < 0.05) %>%
+  arrange(pair, padj) %>%
+  select(pair, pathway, NES, pval, padj, size)
+
+openxlsx2::write_xlsx(summary_table, file.path(PATHS$results_dir, "significant_pathways_summary.xlsx"))
+
+# GSVA analysis for MES/ADR signatures
+message("Running GSVA analysis for MES/ADR signatures...")
+
+# Load MES/ADR gene signatures from previous RNA-seq analysis
+tryCatch({
+  RNA_SEQ_data <- openxlsx2::read_xlsx(file.path(here::here("neuroblastoma", "results", "RNA-seq"), "cell_type_MES_vs_ADR.xlsx"), sheet = 1)
+  mes_adrn_gene_list <- RNA_SEQ_data %>%
+    mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
+  sig_list_our_data <- list(
+    Adrenergic = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "ADRN"],
+    Mesenchymal = mes_adrn_gene_list$gene_symbol[mes_adrn_gene_list$Term == "MES"]
+  )
+  
+  # Prepare VST counts matrix for GSVA
+  # Need to get VST transformed data
+  dds_for_gsva <- dds_filtered
+  dds_for_gsva <- DESeq(dds_for_gsva)
+  vsd_for_gsva <- vst(dds_for_gsva, blind = TRUE)
+  
+  # Prepare expression matrix with gene symbols
+  vsd_counts_matrix <- assay(vsd_for_gsva)
+  gene_symbols_gsva <- annotation_data$gene_symbol[match(rownames(vsd_counts_matrix), annotation_data$ensembl_id)]
+  gene_symbols_gsva[is.na(gene_symbols_gsva)] <- rownames(vsd_counts_matrix)[is.na(gene_symbols_gsva)]
+  
+  # Handle duplicate gene symbols for GSVA
+  mean_expr_gsva <- rowMeans(vsd_counts_matrix)
+  df_temp_gsva <- data.frame(
+    ensembl_id = rownames(vsd_counts_matrix),
+    gene_symbol = gene_symbols_gsva, 
+    mean_expr = mean_expr_gsva,
+    stringsAsFactors = FALSE
+  )
+  
+  # Remove duplicates by keeping the gene with highest mean expression
+  df_temp_gsva <- df_temp_gsva %>%
+    group_by(gene_symbol) %>%
+    slice_max(mean_expr, n = 1, with_ties = FALSE) %>%
+    ungroup()
+  
+  # Filter expression matrix and set gene symbols as rownames
+  vsd_counts_matrix <- vsd_counts_matrix[df_temp_gsva$ensembl_id, ]
+  rownames(vsd_counts_matrix) <- df_temp_gsva$gene_symbol
+  
+  # Run GSVA/ssGSEA
+  ssgsea_mes_adr <- GSVA::gsva(
+    vsd_counts_matrix,
+    sig_list_our_data,
+    method = "ssgsea",
+    min.sz = 1, 
+    max.sz = Inf, 
+    ssgsea.norm = TRUE, 
+    verbose = TRUE, 
+    parallel.sz = 10
+  )
+  
+  # Create heatmap
+  ssgsea_mes_adr_heatmap <- pheatmap::pheatmap(
+    ssgsea_mes_adr,
+    scale = "row",
+    cluster_rows = TRUE,
+    cluster_cols = FALSE,
+    color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+    show_colnames = TRUE,
+    main = "MES/ADR Signatures - ssGSEA Scores",
+    filename = file.path(PATHS$results_dir, "gsva_mes_adr_signatures_heatmap.pdf"),
+    width = 10,
+    height = 6
+  )
+  
+  # Save GSVA scores as data frame
+  gsva_scores_df <- as.data.frame(t(ssgsea_mes_adr))
+  gsva_scores_df$sample <- rownames(gsva_scores_df)
+  gsva_scores_df$treatment <- sapply(strsplit(gsva_scores_df$sample, "_"), function(x) x[1])
+  gsva_scores_df$condition <- sapply(strsplit(gsva_scores_df$sample, "_"), function(x) x[2])
+  
+  # Save GSVA results
+  openxlsx2::write_xlsx(gsva_scores_df, file.path(PATHS$results_dir, "gsva_mes_adr_scores.xlsx"))
+  
+  # Create summary plot showing MES vs ADR scores by treatment
+  library(tidyr)
+  gsva_long <- gsva_scores_df %>%
+    select(-sample) %>%
+    pivot_longer(cols = c("Adrenergic", "Mesenchymal"), names_to = "signature", values_to = "score")
+  
+  p_gsva <- ggplot(gsva_long, aes(x = paste(treatment, condition, sep = "_"), y = score, fill = signature)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    theme_minimal() +
+    labs(
+      title = "MES/ADR Signature Scores by Treatment",
+      x = "Sample",
+      y = "ssGSEA Score",
+      fill = "Signature"
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  ggsave(
+    filename = file.path(PATHS$results_dir, "gsva_mes_adr_barplot.pdf"),
+    plot = p_gsva,
+    width = 10, height = 6
+  )
+  
+  message("GSVA analysis completed successfully")
+  
+}, error = function(e) {
+  message(paste("Warning: Could not complete GSVA analysis:", e$message))
+  message("This might be due to missing MES/ADR signature file")
+})
+
+message("Analysis complete!")
+message(paste("Results saved to:", PATHS$results_dir))
+message(paste("Number of sample pairs analyzed:", length(sample_pairs)))
+message(paste("Total significant pathways (padj < 0.05):", nrow(summary_table)))
+
 ```
 
 
