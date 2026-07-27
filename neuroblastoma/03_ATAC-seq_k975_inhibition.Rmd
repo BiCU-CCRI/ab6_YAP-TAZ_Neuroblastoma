@@ -1,0 +1,1430 @@
+---
+title: "ATAC-seq addtitional analysis - YAP/TAZ inhibition using K-975"
+author: "Aleksandr Bykov (Enhanced by Claude Code)"
+date: '`r Sys.Date()`'
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 8,
+  dpi = 300
+)
+
+```
+
+
+```{r setup-libraries}
+# Set up the environment ####
+deg_dir <- "~/neuroblastoma/results/ATAC-seq/ATAC-seq_drug_treatment/"
+
+## Loading libraries ####
+library(dplyr)
+library(tidyr)
+library(DESeq2)
+library(ggplot2)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(IRanges)
+library(patchwork)
+import::from(stringr, str_extract, str_detect)
+import::from(GenomicRanges,GRanges)
+import::from(rtracklayer, liftOver, import.chain)
+import::from(openxlsx, addWorksheet, writeData, saveWorkbook)
+import::from(openxlsx2, read_xlsx)
+import::from(.from = TFBSTools, getMatrixSet)
+import::from(chromVAR, addGCBias)
+import::from(.from = RColorBrewer, brewer.pal)
+import::from(.from = "~/neuroblastoma/resources/utilityScripts.R",
+             "generatePCA", 
+             "extract_results_nextflow_output",
+             "meanExprsPerGroup_nextflow",
+             "extract_results_DDS_HIC",
+             "plotVolcano",
+             "get_the_poissoon_p_val")
+import::from(
+  .from = here::here("~/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+  "filterDatasets",
+  .character_only = TRUE
+)
+```
+
+```{r setup-jaspar}
+# BugFix - JASPAR2022 cannot be pulled from the web automatically, so it need to be loaded manually
+download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022.sqlite",
+              destfile = "~/neuroblastoma/resources/JASPAR2022.sqlite")
+JASPAR2022 <-  "~/neuroblastoma/resources/JASPAR2022.sqlite"
+
+```
+
+```{r load-atac-data}
+# Analysis part ###########################################################################
+# Load and prepare ATAC-seq data for drug treatment analysis
+# We use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
+tmp_dir <- "~/neuroblastoma/data/ATACseq/"
+path_to_the_ATAC_counts_data <- file.path(tmp_dir, "consensus_peaks.mLb.clN.rds")
+path_annnotation_ATAC_data <- file.path(tmp_dir, "consensus_peaks.mLb.clN.annotatePeaks.txt")
+ATAC_counts_data <- readRDS(path_to_the_ATAC_counts_data)
+ATAC_annotation_data <- read.csv(path_annnotation_ATAC_data, sep = "\t")
+
+colnames(ATAC_annotation_data)[1] <- "PeakId"
+ATAC_annotation_data <- ATAC_annotation_data %>%
+  mutate(PeakId = factor(PeakId, levels = row.names(ATAC_counts_data))) %>%
+  arrange(PeakId)
+
+#remove Scaffolds chrs
+ATAC_annotation_data <- ATAC_annotation_data[ATAC_annotation_data$Chr %in% c(1:22, "X", "Y"), ]
+ATAC_counts_data <- ATAC_counts_data[rownames(ATAC_counts_data) %in% ATAC_annotation_data$PeakId, ]
+
+#add ranges
+rowRanges(ATAC_counts_data) <- GenomicRanges::GRanges(seqnames = paste0("chr", ATAC_annotation_data$Chr), 
+                                              ranges = IRanges::IRanges(start = ATAC_annotation_data$Start, 
+                                                                        end = ATAC_annotation_data$End
+                                              )
+)
+mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), ATAC_annotation_data)
+```
+
+
+```{r subset-drug-treatment-samples}
+# Subset to drug treatment samples (CM and SH cell lines)
+# Extract metadata for control, 24h, and 48h time points
+samples_to_subset <- c(
+  "CM_control_ATAC_S165169_REP1",
+  "CM_24h_ATAC_S165170_REP1",
+  "CM_48h_ATAC_S165167_REP1",
+  "SH_control_ATAC_S165166_REP1",
+  "SH_24h_ATAC_S165164_REP1",
+  "SH_48h_ATAC_S165165_REP1",
+  "SH_DMSO_ctrl_rep1_REP1",
+  "SH_DMSO_ctrl_rep2_REP1",
+  "SH_24h_rep1_REP1",     
+  "SH_24h_rep2_REP1",     
+  "SH_48h_rep1_REP1",
+  "SH_48h_rep2_REP1",
+  "CM_DMSO_ctrl_rep1_REP1",
+  "CM_DMSO_ctrl_rep2_REP1",
+  "CM_24h_rep1_REP1",
+  "CM_24h_rep2_REP1",
+  "CM_48h_rep1_REP1",
+  "CM_48h_rep2_REP1" 
+)
+
+
+drg_trtm_ATAC <- ATAC_counts_data[, colData(ATAC_counts_data)$sample %in% samples_to_subset]
+
+colData(drg_trtm_ATAC)$cell_line <- as.factor(case_when(
+  str_detect(drg_trtm_ATAC$sample, "^CM") ~ "CLBMa",
+  str_detect(drg_trtm_ATAC$sample, "^SH") ~ "SK_N_SH",
+  .default = colData(drg_trtm_ATAC)$sample
+))
+colData(drg_trtm_ATAC)$time <- as.factor(case_when(
+  str_detect(drg_trtm_ATAC$sample, "24h") ~ "24h",
+  str_detect(drg_trtm_ATAC$sample, "48h") ~ "48h",
+  str_detect(drg_trtm_ATAC$sample, "DMSO") ~ "control",
+  str_detect(drg_trtm_ATAC$sample, "control") ~ "control",
+  .default = colData(drg_trtm_ATAC)$cell_line
+))
+colData(drg_trtm_ATAC)$time <- relevel(colData(drg_trtm_ATAC)$time, ref = "control")
+
+design(drg_trtm_ATAC) <- as.formula("~ cell_line + time")
+
+#drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]]
+
+#
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/neuroblastoma/results/RNA-seq/RNA-seq_MES_vs_ADR/tables/MES_vs_ADR_comprehensive_results.xlsx", sheet = 2)
+RNA_SEQ_data <- RNA_SEQ_data %>%
+  dplyr::mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES")) %>%
+  dplyr::select(gene_symbol, Term)
+mcols(drg_trtm_ATAC)$gene_category_our_RNAseq <- "ND"
+mcols(drg_trtm_ATAC)$gene_category_our_RNAseq <- case_when(
+  mcols(drg_trtm_ATAC)$Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "ADRN", 1] ~ "g_ADRN",
+  mcols(drg_trtm_ATAC)$Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "MES", 1] ~ "g_MES",
+  TRUE ~ mcols(drg_trtm_ATAC)$gene_category_our_RNAseq
+)
+
+# Add metadata - marks peaks that are around 3kb from TSS
+mcols(drg_trtm_ATAC)$is_promoter_3kb <- FALSE
+mcols(drg_trtm_ATAC)$is_promoter_3kb[abs(mcols(drg_trtm_ATAC)$Distance.to.TSS) <= 3000] <- TRUE
+```
+
+```{r differential-analysis}
+# Perform differential accessibility analysis
+# Filter low-count peaks and run DESeq2 normalization
+drg_trtm_ATAC <- filterDatasets(drg_trtm_ATAC,
+                                abs_filt = TRUE,
+                                abs_filt_samples = 2
+)
+
+design(drg_trtm_ATAC) <- as.formula("~ cell_line + time")
+drg_trtm_ATAC <- estimateSizeFactors(drg_trtm_ATAC)
+drg_trtm_ATAC <- DESeq(drg_trtm_ATAC)
+vsd <- vst(drg_trtm_ATAC, blind = F)
+
+
+pca_dar <- generatePCA(transf_object = vsd, 
+                       cond_interest_varPart = c("time", "cell_line"), 
+                       color_variable = "time", 
+                       shape_variable = "cell_line",
+                       ntop_genes = 1000) +
+  ggtitle("Original dataset") 
+```
+
+```{r plot-pca}
+# Generate PCA plot to visualize sample relationships
+pca_dar
+```
+
+```{r extract-dar-results}
+# Extract differential accessibility results for 48h vs control comparison
+resultsNames(drg_trtm_ATAC)
+coeff_name <- "time_48h_vs_control"
+cond_numerator <- "48h"
+cond_denominator <- "control"
+cond_variable <- "time"
+padj_cutoff = 0.05
+log2FC_cutoff = 1
+sample_result <- results(drg_trtm_ATAC, contrast = c(cond_variable, cond_numerator, cond_denominator))
+ATAC_dds_results_48h <- extract_results_nextflow_output(dds_object = drg_trtm_ATAC,
+                                            dds_result = sample_result,
+                                            coeff_name = coeff_name,
+                                            cond_numerator = cond_numerator,
+                                            cond_denominator = cond_denominator,
+                                            cond_variable = cond_variable,
+                                            padj_cutoff = padj_cutoff,
+                                            log2FC_cutoff = log2FC_cutoff)
+# Write the result to the xlsx file
+XLSX_OUT <- openxlsx::createWorkbook()
+openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+openxlsx::addWorksheet(XLSX_OUT, "de_details")
+openxlsx::addWorksheet(XLSX_OUT, "results_all")
+openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results_48h$results_signif, sheet = "results_signif")
+openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results_48h$de_details, sheet = "de_details")
+openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results_48h$results_all, sheet = "results_all")
+openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir,  paste0("DAR_results_time_48h_vs_control.xlsx")), overwrite = T)
+
+
+resultsNames(drg_trtm_ATAC)
+coeff_name <- "time_24h_vs_control"
+cond_numerator <- "24h"
+cond_denominator <- "control"
+cond_variable <- "time"
+padj_cutoff = 0.05
+log2FC_cutoff = 1
+sample_result <- results(drg_trtm_ATAC, contrast = c(cond_variable, cond_numerator, cond_denominator))
+ATAC_dds_results_24h <- extract_results_nextflow_output(dds_object = drg_trtm_ATAC,
+                                            dds_result = sample_result,
+                                            coeff_name = coeff_name,
+                                            cond_numerator = cond_numerator,
+                                            cond_denominator = cond_denominator,
+                                            cond_variable = cond_variable,
+                                            padj_cutoff = padj_cutoff,
+                                            log2FC_cutoff = log2FC_cutoff)
+
+XLSX_OUT <- openxlsx::createWorkbook()
+openxlsx::addWorksheet(XLSX_OUT, "results_signif")
+openxlsx::addWorksheet(XLSX_OUT, "de_details")
+openxlsx::addWorksheet(XLSX_OUT, "results_all")
+openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results_24h$results_signif, sheet = "results_signif")
+openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results_24h$de_details, sheet = "de_details")
+openxlsx::writeData(XLSX_OUT, x = ATAC_dds_results_24h$results_all, sheet = "results_all")
+openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir,  paste0("DAR_results_time_24h_vs_control.xlsx")), overwrite = T)
+```
+
+
+
+```{r generate-heatmaps}
+# Generate heatmaps of differentially accessible regions
+# Focus on peaks associated with MES and ADRN gene signatures
+## Now the same analysis, but for the promoter regions - ± 3000bp around TSSs ####
+ATAC_dds <- drg_trtm_ATAC
+#ATAC_dds <- ATAC_dds[mcols(ATAC_dds)$is_promoter_3kb,]
+ATAC_dds <- estimateSizeFactors(ATAC_dds)
+ATAC_dds <- DESeq(ATAC_dds)
+
+vsd <- vst(ATAC_dds, blind = F)
+
+pca_dar <- generatePCA(transf_object = vsd, 
+                       cond_interest_varPart = c("time", "cell_line"), 
+                       color_variable = "time", 
+                       shape_variable = "cell_line",
+                       ntop_genes = 1000) +
+  ggtitle("3kb Promoters")
+plot(pca_dar)
+#Ok, looks good - we can see that the main PCA/separation is happening because of the phenotype (ADRN or MES)
+
+# extracting results
+resultsNames(ATAC_dds)
+coeff_name <- "time_48h_vs_control"
+cond_numerator <-  "48h"
+cond_denominator <-  "control"
+cond_variable <- "time"
+padj_cutoff = 0.05
+log2FC_cutoff = 1
+
+ATAC_dds_results <- extract_results_nextflow_output(dds_object = ATAC_dds,
+                                        coeff_name = coeff_name,
+                                        cond_numerator = cond_numerator,
+                                        cond_denominator = cond_denominator,
+                                        cond_variable = cond_variable,
+                                        padj_cutoff = padj_cutoff,
+                                        log2FC_cutoff = log2FC_cutoff)
+
+# Making Heatmap
+metadata_heatmap <- as.data.frame(colData(ATAC_dds))
+heatmap_counts <- SummarizedExperiment::assay(vsd)
+rownames(heatmap_counts) <- vsd@rowRanges$PeakId
+
+all_ADR_peaks <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$gene_category_our_RNAseq == "g_ADRN"])
+all_MES_peaks <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$gene_category_our_RNAseq == "g_MES"])
+
+# removed experiment batch effects! ? use experimen+cell_line removed???
+ATAC_signif <- ATAC_dds_results$results_signif
+heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$PeakId, ]
+heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_MES_peaks, ]
+heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_ADR_peaks, ]
+
+annotation_col <- metadata_heatmap %>%
+  dplyr::select(cell_line, time) %>% 
+  dplyr::arrange(time, cell_line)
+heatmap_counts <- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
+
+heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_MES_spec_genes))]
+rownames(heatmap_counts_MES_spec_genes) <- ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_MES_spec_genes), "Gene.Name"]
+
+heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN_spec_genes))]
+rownames(heatmap_counts_ADRN_spec_genes) <- ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_ADRN_spec_genes), "Gene.Name"]
+
+#heatmap_row_annot_MES_spec_genes <- data.frame(gene_name = ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_MES_spec_genes), "Gene.Name"],
+#                                               row.names =  row.names(heatmap_counts_MES_spec_genes))
+
+ensembl2symbol_annot <- ATAC_dds_results$results_all %>%
+  dplyr::select(PeakId, Gene.Name)
+
+color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
+ann_colors = list(
+  time = c( control = "#005f73", `24h` = "#0a9396", `48h` = "#94d2bd"),
+  cell_line = c(CM = "#E9D8A6", SH = "#D9BE6D")
+)
+
+heatmap <- pheatmap::pheatmap(heatmap_counts,
+                              main = "Heatmap of signif. All DARs 48h vs control.",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              show_colnames = FALSE,
+                              show_rownames = FALSE,
+                              cluster_cols = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10) 
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_ATAC.png"), 
+       plot = heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_ATAC.pdf"), 
+       plot = heatmap,
+       width = 18, height = 20, units = "cm")
+
+heatmap <- pheatmap::pheatmap(heatmap_counts_MES_spec_genes,
+                              main = "Heatmap of signif. DAR ADRN vs MES all DARs \n MES-specific genes only (defined by RNA-seq)",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              #annotation_row = heatmap_row_annot_MES_spec_genes,
+                              show_colnames = FALSE,
+                              show_rownames = TRUE,
+                              cluster_cols = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_MES-RNAseq-specific.png"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_MES-RNAseq-specific.pdf"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+
+heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
+                              main = "Heatmap of signif. DAR ADRN vs MES all DARs \n ADRN-specific genes only (defined by RNA-seq)",
+                              scale = "row",
+                              annotation_col = annotation_col,
+                              annotation_colors = ann_colors,
+                              #annotation_row = row_annot_symbols,
+                              show_colnames = FALSE,
+                              show_rownames = TRUE,
+                              cluster_cols = FALSE,
+                              color = color.scheme,
+                              fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_ADRN-RNAseq-specific.png"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, "heatmap_48h_vs_control_all_DARs_ADRN-RNAseq-specific.pdf"), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+```
+
+Here we identify what are the motifs that that present in differentially accessible regions and how they are differ in control (DMSO) vs 24h and 48h samples.
+```{r chromvar-motif-analysis}
+# ChromVAR motif enrichment analysis for drug treatment samples
+# Identify transcription factor motifs that change accessibility over time
+opts <- list()
+opts[["tax_group"]] <- "vertebrates"
+opts[["species"]] <- "9606"
+opts[["collection"]] <- "CORE"
+opts[["all_versions"]] <- FALSE
+motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
+
+# Using different subsets of peaks to check 
+subsets_to_run <- c("ALL")
+
+sbst <-  c("ALL")
+# Filter peaks with low read counts across samples (minimum 5 reads total)
+dim(drg_trtm_ATAC)
+counts_consensus_filt <- drg_trtm_ATAC[rowSums(assay(drg_trtm_ATAC)) > 5, ]
+dim(counts_consensus_filt)
+
+print(paste("procesing: ", sbst ))
+
+# ChromVar package uses GC content to identify background peaks that are likely to be non-functional and exclude them from further analysis. 
+counts_consensus_filt <- chromVAR::addGCBias(counts_consensus_filt, 
+                                             genome = BSgenome.Hsapiens.UCSC.hg38) 
+
+# Having corrected for bias, we can use the matchMotifs function to identify motifs under our ATACseq peaks.
+motif_matches <- motifmatchr::matchMotifs(pwms = motifsToScan, 
+                                          subject = counts_consensus_filt, 
+                                          genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                          out = "matches")
+motif_matches
+
+BiocParallel::register(BiocParallel::MulticoreParam(8, progressbar = FALSE))
+set.seed(42069)
+
+# Run chromVar ----
+#Following the identification of motifs in our peaks, we can perform the summarization of ATACseq signal to motifs using the computeDeviations and the computeVariability functions.
+background_peaks <- chromVAR::getBackgroundPeaks(object = counts_consensus_filt) 
+access_expectation <- chromVAR::computeExpectations(object = counts_consensus_filt)
+chrom_access_deviations <- chromVAR::computeDeviations(object = counts_consensus_filt, 
+                                                       annotations = motif_matches,
+                                                       background_peaks = background_peaks,
+                                                       expectation = access_expectation)
+
+# Generate sample correlation matrix to assess data quality and batch effects
+sample_cor <- chromVAR::getSampleCorrelation(chrom_access_deviations)
+annotation_row_sampleCor <- as.data.frame(SummarizedExperiment::colData(chrom_access_deviations)) %>%
+  dplyr::select(sample)
+pheatmap::pheatmap(as.dist(sample_cor), 
+                   annotation_row = annotation_row_sampleCor, 
+                   clustering_distance_rows = as.dist(1-sample_cor), 
+                   clustering_distance_cols = as.dist(1-sample_cor),
+                   annotation_names_row = TRUE 
+                  ) 
+
+# Perform t-SNE dimensionality reduction to visualize sample clustering
+tsne_results <- chromVAR::deviationsTsne(chrom_access_deviations, 
+                                         threshold = 1.5,
+                                         perplexity = 8, 
+                                         what = "samples",
+                                         shiny = FALSE)
+
+tsne_plots <- chromVAR::plotDeviationsTsne(chrom_access_deviations, 
+                                           tsne_results,
+                                           sample_column = "sample",
+                                           shiny = FALSE)
+
+diff_acc <- chromVAR::differentialDeviations(chrom_access_deviations, 
+                                             groups = "time",
+                                             parametric = FALSE)
+
+motif_annot <- as.data.frame(SummarizedExperiment::rowData(chrom_access_deviations)) %>%
+  tibble::rownames_to_column(var = "motif") %>%
+  dplyr::select(motif, name)
+diff_acc_annot <- diff_acc %>%
+  tibble::rownames_to_column(var = "motif") %>%
+  dplyr::left_join(., motif_annot, by = "motif")
+head(diff_acc_annot) 
+
+diff_var <- chromVAR::differentialVariability(chrom_access_deviations, "time", 
+                                              parametric = FALSE)
+diff_var_annot <- diff_var %>%
+  tibble::rownames_to_column(var = "motif") %>%
+  dplyr::left_join(., motif_annot, by = "motif")
+head(diff_var_annot)
+
+devZscores <- chromVAR::deviationScores(chrom_access_deviations)
+devZscores_df <- tibble::rownames_to_column(as.data.frame(devZscores),
+                                            var = "jaspar_id")
+
+#The function computeVariability returns a data.frame that contains the variability (standard deviation of the z scores computed above
+# across all cell/samples for a set of peaks), bootstrap confidence intervals for that variability (by resampling cells/samples), 
+# and a p-value for the variability being greater than the null hypothesis of 1.
+chrom_access_variability <- chromVAR::computeVariability(chrom_access_deviations)
+chrom_access_variability_plot <- chromVAR::plotVariability(chrom_access_variability,
+                                                           use_plotly = FALSE)
+
+ggsave(chrom_access_variability_plot, 
+       filename = file.path(deg_dir, paste0("ChromVAR_chrom_access_variability_corr_plot_", sbst, ".pdf")))
+
+BiocParallel::register(BiocParallel::SerialParam())
+
+chrom_access_variability_ord <- chrom_access_variability[order(chrom_access_variability$p_value), ]  # ordering based on p-value
+
+#! to store
+chrom_access_variability_ord_results <- chrom_access_variability_ord %>%
+  tibble::rownames_to_column(var="jaspar_id") %>%
+  dplyr::left_join(., devZscores_df, by = "jaspar_id")
+
+message("Saving motif enrichment results")
+ntop <- 50
+topVariable <- chrom_access_variability_ord[1:ntop, ]
+topVariable <- tibble::rownames_to_column(topVariable, var="jaspar_id")
+
+devTop <- topVariable %>%
+  dplyr::left_join(., devZscores_df, by = "jaspar_id")
+
+devTop <- devTop %>% mutate(long_name = paste0(jaspar_id, "_", name))
+
+devToPlot <- devTop %>%
+  dplyr::select(long_name, 
+                CM_control_ATAC_S165169_REP1, #CM_control_ATAC_S165169_REP2,  
+                CM_24h_ATAC_S165170_REP1,  #CM_24h_ATAC_S165170_REP2,
+                CM_48h_ATAC_S165167_REP1, #CM_48h_ATAC_S165167_REP2,
+                SH_control_ATAC_S165166_REP1, #SH_control_ATAC_S165166_REP2,
+                SH_24h_ATAC_S165164_REP1, #SH_24h_ATAC_S165164_REP2,
+                SH_48h_ATAC_S165165_REP1, #SH_48h_ATAC_S165165_REP2
+                ) %>%
+  tibble::column_to_rownames(var = "long_name")
+
+annotCol_forHeatmap <- as.data.frame(colData(drg_trtm_ATAC)) %>%
+  dplyr::select(time)
+# annotCol_forHeatmap_colors <- list(phenotype = c(A = "#525252", M = "#fc4e2a"))
+annotCol_forHeatmap_colors <- list(phenotype = c(`24h` = "#525252",
+                                                 `48h` = "#fc4e2a",
+                                                 control = "green"))
+
+
+color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
+
+heatmap <- pheatmap::pheatmap(as.matrix(devToPlot),
+                              color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+                              border_color = NA,
+                              #color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(100),
+                              scale = "row",
+                              cluster_cols = FALSE,
+                              cluster_rows = TRUE,
+                              show_colnames = TRUE,
+                              show_rownames = TRUE,
+                              annotation_col = annotCol_forHeatmap,
+                              annotation_colors = annotCol_forHeatmap_colors,  
+                              fontsize_row = 9,
+                              fontsize = 9,
+                              main = paste0("Heatmap of signif. ATAC-seq Drug treatment control vs 24h vs 48h. ", sbst, "- used"))
+
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_control_vs_24h_48h_Motifs", sbst, "- used", ".png")), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_control_vs_24h_48h_Motifs", sbst, "- used", ".pdf")), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+
+# Generate separate heatmap for CM cell line only
+devToPlot_CM <- devTop %>%
+  dplyr::select(long_name, 
+                CM_control_ATAC_S165169_REP1, # CM_control_ATAC_S165169_REP2,  
+                CM_24h_ATAC_S165170_REP1, # CM_24h_ATAC_S165170_REP2,
+                CM_48h_ATAC_S165167_REP1, # CM_48h_ATAC_S165167_REP2
+  ) %>%
+  tibble::column_to_rownames(var = "long_name")
+
+heatmap <- pheatmap::pheatmap(as.matrix(devToPlot_CM),
+                              color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+                              border_color = NA,
+                              #color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(100),
+                              scale = "row",
+                              cluster_cols = FALSE,
+                              cluster_rows = TRUE,
+                              show_colnames = TRUE,
+                              show_rownames = TRUE,
+                              annotation_col = annotCol_forHeatmap,
+                              annotation_colors = annotCol_forHeatmap_colors,  
+                              fontsize_row = 9,
+                              fontsize = 9,
+                              main = paste0("Heatmap of signif. CM line ATAC-seq Drug treatment control vs 24h vs 48h. ", sbst, "- used"))
+
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_CM_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".png")), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_CM_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".pdf")), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+
+
+# Generate separate heatmap for SH cell line only
+devToPlot_SH <- devTop %>%
+  dplyr::select(long_name, 
+                SH_control_ATAC_S165166_REP1, # SH_control_ATAC_S165166_REP2,
+                SH_24h_ATAC_S165164_REP1, # SH_24h_ATAC_S165164_REP2,
+                SH_48h_ATAC_S165165_REP1, # SH_48h_ATAC_S165165_REP2
+  ) %>%
+  tibble::column_to_rownames(var = "long_name")
+
+heatmap <- pheatmap::pheatmap(as.matrix(devToPlot_SH),
+                              color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+                              border_color = NA,
+                              #color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(100),
+                              scale = "row",
+                              cluster_cols = FALSE,
+                              cluster_rows = TRUE,
+                              show_colnames = TRUE,
+                              show_rownames = TRUE,
+                              annotation_col = annotCol_forHeatmap,
+                              annotation_colors = annotCol_forHeatmap_colors,  
+                              fontsize_row = 9,
+                              fontsize = 9,
+                              main = paste0("Heatmap of signif. SH line ATAC-seq Drug treatment control vs 24h vs 48h. ", sbst, "- used"))
+
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_SH_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".png")), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_SH_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".pdf")), 
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+```
+
+
+We want to check how TEAD/AP1 motifs are co-localized in the 24h sample. We will test the real data and make the comparison to simultaed data.
+```{r Comparison to simulated data }
+# Compare real vs simulated data to assess enrichment significance
+h24_control_specific_peaks <- ATAC_dds_results_24h$results_signif %>% 
+  dplyr::filter(log2FoldChange < 0) %>% 
+  dplyr::pull(PeakId)
+h24_specific_peaks <- ATAC_dds_results_24h$results_signif %>% 
+  dplyr::filter(log2FoldChange > 0) %>% 
+  dplyr::pull(PeakId)
+
+opts <- list()
+opts[["tax_group"]] <- "vertebrates"
+opts[["species"]] <- "9606"
+opts[["collection"]] <- "CORE"
+opts[["all_versions"]] <- FALSE
+motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
+TEAD_AP1_motifs_to_scan_names <- c("MA0090.3", "MA0808.1", 
+                                 "MA0809.2", "MA1121.1",
+                                 "MA0099.3")
+TEAD_AP1_motifsToScan <- motifsToScan[TEAD_AP1_motifs_to_scan_names,]
+
+# Using different subsets of peaks to check 
+drg_trtm_ATAC
+counts_consensus_filt_control_24h <- drg_trtm_ATAC[drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]] %in% h24_control_specific_peaks, ]
+counts_consensus_filt_24h <- drg_trtm_ATAC[drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]] %in% h24_specific_peaks, ]
+
+# Generate randomized peak sets as background controls
+# Create matched random regions for statistical comparison
+# Load genome
+genome_used <- getBSgenome("BSgenome.Hsapiens.UCSC.hg38")
+seqnames(genome_used) <- sub("^.{1,2}_", "", seqnames(genome_used))
+seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
+seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
+
+# load mask regions 
+blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
+                                              seqnames.field = "V1", 
+                                              start.field = "V2", 
+                                              end.field = "V3")
+
+# Create set of random Peaks for control_24h 
+initial_peak_set <- reduce(counts_consensus_filt_control_24h@rowRanges)
+random_peaks_control_24h <- initial_peak_set
+random_peaks_control_24h@seqnames <- droplevels(random_peaks_control_24h@seqnames)
+random_peaks_control_24h <- regioneR::randomizeRegions(random_peaks_control_24h,
+                                               allow.overlaps = FALSE,
+                                               genome = genome_used,
+                                               per.chromosome = TRUE,
+                                               mask = blacklist_regions)
+random_peaks_control_24h <- as.data.frame(random_peaks_control_24h, 
+                                          row.names = NULL,
+                                          optional = FALSE)
+random_peaks_control_24h$seqnames <- droplevels(random_peaks_control_24h$seqnames)
+random_peaks_control_24h <- makeGRangesFromDataFrame(random_peaks_control_24h)
+
+# Create set of random Peaks for 24h 
+initial_peak_set <- reduce(counts_consensus_filt_24h@rowRanges)
+random_peaks_24h <- initial_peak_set
+random_peaks_24h@seqnames <- droplevels(random_peaks_24h@seqnames)
+random_peaks_24h <- regioneR::randomizeRegions(random_peaks_24h,
+                                               allow.overlaps = FALSE,
+                                               genome = genome_used,
+                                               per.chromosome = TRUE,
+                                               mask = blacklist_regions)
+random_peaks_24h <- as.data.frame(random_peaks_24h, 
+                                  row.names = NULL,
+                                  optional = FALSE)
+random_peaks_24h$seqnames <- droplevels(random_peaks_24h$seqnames)
+random_peaks_24h <- makeGRangesFromDataFrame(random_peaks_24h)
+
+counts_consensus_filt_control_24h <- chromVAR::addGCBias(counts_consensus_filt_control_24h, 
+                                                         genome = BSgenome.Hsapiens.UCSC.hg38) 
+counts_consensus_filt_24h <- chromVAR::addGCBias(counts_consensus_filt_24h, 
+                                                 genome = BSgenome.Hsapiens.UCSC.hg38) 
+
+# find TEAD and AP1 motifs in real control_24h data
+motif_matches_control_24h <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                              subject = counts_consensus_filt_control_24h, 
+                                              genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                              out = "positions")
+control_24h_TEAD <- c(motif_matches_control_24h$MA0090.3, 
+                      motif_matches_control_24h$MA0808.1, 
+                      motif_matches_control_24h$MA0809.2, 
+                      motif_matches_control_24h$MA1121.1)
+control_24h_TEAD <- reduce(control_24h_TEAD)
+control_24h_AP1 <- reduce(motif_matches_control_24h$MA0099.3)
+control_24h_AP1_TEAD_overlaps <- findOverlaps(control_24h_AP1, 
+                                              control_24h_TEAD, 
+                                              ignore.strand = TRUE, 
+                                              maxgap = 50)
+
+# find TEAD and AP1 motifs in simulated MES data
+motif_matches_control_24h_random <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                                     subject = random_peaks_control_24h, 
+                                                     genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                                     out = "positions")
+control_24h_random_TEAD <- c(motif_matches_control_24h_random$MA0090.3, 
+                             motif_matches_control_24h_random$MA0808.1, 
+                             motif_matches_control_24h_random$MA0809.2, 
+                             motif_matches_control_24h_random$MA1121.1)
+control_24h_random_TEAD <- reduce(control_24h_random_TEAD)
+control_24h_random_AP1 <- reduce(motif_matches_control_24h_random$MA0099.3)
+control_24h_random_AP1_TEAD_overlaps <- findOverlaps(control_24h_random_AP1, 
+                                                     control_24h_random_TEAD, 
+                                                     ignore.strand = TRUE, 
+                                                     maxgap = 50)
+
+# find TEAD and AP1 motifs in real 24h data
+motif_matches_24h <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                              subject = counts_consensus_filt_24h, 
+                                              genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                              out = "positions")
+h24_TEAD <- c(motif_matches_24h$MA0090.3, 
+              motif_matches_24h$MA0808.1, 
+              motif_matches_24h$MA0809.2, 
+              motif_matches_24h$MA1121.1)
+h24_TEAD <- reduce(h24_TEAD)
+h24_AP1 <- reduce(motif_matches_24h$MA0099.3)
+h24_AP1_TEAD_overlaps <- findOverlaps(h24_AP1, 
+                                      h24_TEAD, 
+                                      ignore.strand = TRUE, 
+                                      maxgap = 50)
+
+# find TEAD and AP1 motifs in simulated 24h data
+motif_matches_24h_random <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                                     subject = random_peaks_24h, 
+                                                     genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                                     out = "positions")
+h24_random_TEAD <- c(motif_matches_24h_random$MA0090.3, 
+                     motif_matches_24h_random$MA0808.1, 
+                     motif_matches_24h_random$MA0809.2, 
+                     motif_matches_24h_random$MA1121.1)
+h24_random_TEAD <- reduce(h24_random_TEAD)
+h24_random_AP1 <- reduce(motif_matches_24h_random$MA0099.3)
+h24_random_AP1_TEAD_overlaps <- findOverlaps(h24_random_AP1, 
+                                             h24_random_TEAD, 
+                                             ignore.strand = TRUE, 
+                                             maxgap = 50)
+
+
+summary_table_peaks <- data.frame(total_number_of_peaks = c(length(counts_consensus_filt_control_24h), 
+                                                            length(random_peaks_control_24h),
+                                                            length(counts_consensus_filt_24h),
+                                                            length(random_peaks_24h)),
+                                  TEAD_sites = c(length(control_24h_TEAD),
+                                                 length(control_24h_random_TEAD),
+                                                 length(h24_TEAD),
+                                                 length(h24_random_TEAD)),
+                                  AP1_sites = c(length(control_24h_AP1),
+                                                length(control_24h_random_AP1),
+                                                length(h24_AP1),
+                                                length(h24_random_AP1)),
+                                  TEAD_AP1_coloc_sites = c(length(control_24h_AP1_TEAD_overlaps),
+                                                           length(control_24h_random_AP1_TEAD_overlaps),
+                                                           length(h24_AP1_TEAD_overlaps),
+                                                           length(h24_random_AP1_TEAD_overlaps)),
+                                  row.names = c("control_24h", 
+                                                "Simulated control_24h", 
+                                                "h24", 
+                                                "Simulated h24")
+)
+summary_table_peaks
+
+# Perform Fisher's exact tests to assess statistical significance of TEAD/AP1 co-localization
+contingency_table <- matrix(c(length(h24_AP1_TEAD_overlaps), 
+                              length(h24_TEAD) + length(h24_AP1) - length(h24_AP1_TEAD_overlaps), 
+                              length(control_24h_AP1_TEAD_overlaps), 
+                              length(control_24h_TEAD) + length(control_24h_AP1) - length(control_24h_AP1_TEAD_overlaps)), 
+                            nrow = 2, 
+                            byrow = TRUE)
+fisher_results <- fisher.test(contingency_table, alternative = "two.sided")
+fisher_summary_table <- data.table::data.table(comparison = "24h_vs_control_24h",
+                                               pval = fisher_results$p.value,
+                                               odds_ratio = fisher_results$estimate)
+
+# Fisher test comparing real h24 AP1_TEAD peaks vs simulated
+contingency_table_h24_vs_simulated <- matrix(c(length(h24_AP1_TEAD_overlaps), 
+                                               length(h24_TEAD) + length(h24_AP1) - length(h24_AP1_TEAD_overlaps),
+                                               length(h24_random_AP1_TEAD_overlaps), 
+                                               length(h24_random_TEAD) + length(h24_random_AP1) - length(h24_random_AP1_TEAD_overlaps)), 
+                                             nrow = 2, 
+                                             byrow = TRUE)
+row.names(contingency_table_h24_vs_simulated) <- c("h24_peaks", "h24_peaks_random")
+colnames(contingency_table_h24_vs_simulated) <- c("TEAD_AB1_colocalisation_present", "TEAD_AB1_colocalisation_absent")
+contingency_table_h24_vs_simulated
+fisher_results <- fisher.test(contingency_table_h24_vs_simulated, alternative="two.sided")
+fisher_summary_table <- rbind(fisher_summary_table,
+                              data.table::data.table(comparison = "h24_vs_h24sim",
+                                                     pval = fisher_results$p.value,
+                                                     odds_ratio = fisher_results$estimate))
+
+# Fisher test for TEAD peaks
+contingency_table_TEAD <- matrix(c(length(h24_TEAD), 
+                                   length(counts_consensus_filt_24h) - length(h24_TEAD),
+                                   length(control_24h_TEAD), 
+                                   length(counts_consensus_filt_control_24h) - length(control_24h_TEAD)), 
+                                 nrow = 2, 
+                                 byrow = TRUE)
+row.names(contingency_table_TEAD) <- c("h24_peaks", "control_24h_peaks")
+colnames(contingency_table_TEAD) <- c("TEAD_site_present", "TEAD_site_absent")
+contingency_table_TEAD
+fisher.test(contingency_table_TEAD, 
+            alternative = "two.sided")
+chisq.test(contingency_table_TEAD)
+
+# Fisher test for AP1 peaks
+contingency_table_AP1 <- matrix(c(length(h24_AP1), 
+                                  length(counts_consensus_filt_24h) - length(h24_AP1),
+                                  length(control_24h_AP1), 
+                                  length(counts_consensus_filt_control_24h) - length(control_24h_AP1)),
+                                nrow = 2,
+                                byrow = TRUE)
+row.names(contingency_table_AP1) <- c("h24_peaks", "control_24h_peaks")
+colnames(contingency_table_AP1) <- c("AP1_site_present", "AP1_site_absent")
+contingency_table_AP1
+fisher.test(contingency_table_AP1, alternative="two.sided")
+chisq.test(contingency_table_AP1)
+
+```
+
+```{r tead-ap1-analysis-48h}
+# TEAD/AP1 motif co-localization analysis for 48h treatment
+# Repeat analysis for longer treatment timepoint
+drg_trtm_ATAC
+ATAC_dds_results_control_48h <- ATAC_dds_results_48h$results_signif %>% 
+  dplyr::filter(log2FoldChange < 0) %>% 
+  dplyr::pull(PeakId)
+h48_specific_peaks <- ATAC_dds_results_48h$results_signif %>% 
+  dplyr::filter(log2FoldChange > 0) %>% 
+  dplyr::pull(PeakId)
+
+opts <- list()
+opts[["tax_group"]] <- "vertebrates"
+opts[["species"]] <- "9606"
+opts[["collection"]] <- "CORE"
+opts[["all_versions"]] <- FALSE
+motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
+TEAD_AP1_motifsToScan_names <- c("MA0090.3", 
+                                 "MA0808.1", 
+                                 "MA0809.2", 
+                                 "MA1121.1",
+                                 "MA0099.3")
+TEAD_AP1_motifsToScan <- motifsToScan[TEAD_AP1_motifsToScan_names,]
+
+# Using different subsets of peaks to check 
+drg_trtm_ATAC
+counts_consensus_filt_control_48h <- drg_trtm_ATAC[drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]] %in% ATAC_dds_results_control_48h, ]
+counts_consensus_filt_48h <- drg_trtm_ATAC[drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]] %in% h48_specific_peaks, ]
+
+# Create a set of random peaks for 48h 48h and control_48h
+# Load genome
+genome_used <- getBSgenome("BSgenome.Hsapiens.UCSC.hg38")
+seqnames(genome_used) <- sub("^.{1,2}_", "", seqnames(genome_used))
+seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
+seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
+# load mask regions 
+blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
+                                              seqnames.field = "V1", 
+                                              start.field = "V2", 
+                                              end.field = "V3")
+
+# Create set of random Peaks for control_48h 
+initial_peak_set <- reduce(counts_consensus_filt_control_48h@rowRanges)
+random_peaks_control_48h <- initial_peak_set
+random_peaks_control_48h@seqnames <- droplevels(random_peaks_control_48h@seqnames)
+random_peaks_control_48h <- regioneR::randomizeRegions(random_peaks_control_48h,
+                                                   allow.overlaps = FALSE,
+                                                   genome = genome_used,
+                                                   per.chromosome = TRUE,
+                                                   mask = blacklist_regions)
+random_peaks_control_48h <- as.data.frame(random_peaks_control_48h, row.names = NULL, optional = FALSE)
+random_peaks_control_48h$seqnames <- droplevels(random_peaks_control_48h$seqnames)
+random_peaks_control_48h <- makeGRangesFromDataFrame(random_peaks_control_48h)
+
+# Create set of random Peaks for 48h 
+initial_peak_set <- reduce(counts_consensus_filt_48h@rowRanges)
+random_peaks_48h <- initial_peak_set
+random_peaks_48h@seqnames <- droplevels(random_peaks_48h@seqnames)
+random_peaks_48h <- regioneR::randomizeRegions(random_peaks_48h,
+                                               allow.overlaps = FALSE,
+                                               genome = genome_used,
+                                               per.chromosome = TRUE,
+                                               mask = blacklist_regions)
+random_peaks_48h <- as.data.frame(random_peaks_48h, row.names = NULL, optional = FALSE)
+random_peaks_48h$seqnames <- droplevels(random_peaks_48h$seqnames)
+random_peaks_48h <- makeGRangesFromDataFrame(random_peaks_48h)
+
+counts_consensus_filt_control_48h <- chromVAR::addGCBias(counts_consensus_filt_control_48h,
+                                                         genome = BSgenome.Hsapiens.UCSC.hg38) 
+counts_consensus_filt_48h <- chromVAR::addGCBias(counts_consensus_filt_48h,
+                                                 genome = BSgenome.Hsapiens.UCSC.hg38) 
+
+# Having corrected for bias, we can use the matchMotifs function to identify motifs under our ATACseq peaks.
+# Here we supply our RangedSummarizedExperiment of counts in peaks and the genome of interest to the matchMotifs function and use the default out of matches.
+
+# find TEAD and AP1 motifs in real control_48h data
+motif_matches_control_48h <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                                  subject = counts_consensus_filt_control_48h, 
+                                                  genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                                  out = "positions")
+control_48h_TEAD <- c(motif_matches_control_48h$MA0090.3, 
+                      motif_matches_control_48h$MA0808.1, 
+                      motif_matches_control_48h$MA0809.2, 
+                      motif_matches_control_48h$MA1121.1)
+control_48h_TEAD <- reduce(control_48h_TEAD)
+control_48h_AP1 <- reduce(motif_matches_control_48h$MA0099.3)
+control_48h_AP1_TEAD_overlaps <- findOverlaps(control_48h_AP1, 
+                                              control_48h_TEAD, 
+                                              ignore.strand = TRUE, 
+                                              maxgap = 50)
+
+# find TEAD and AP1 motifs in simulated MES data
+motif_matches_control_48h_random <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                                         subject = random_peaks_control_48h, 
+                                                         genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                                         out = "positions")
+control_48h_random_TEAD <- c(motif_matches_control_48h_random$MA0090.3, 
+                             motif_matches_control_48h_random$MA0808.1, 
+                             motif_matches_control_48h_random$MA0809.2, 
+                             motif_matches_control_48h_random$MA1121.1)
+control_48h_random_TEAD <- reduce(control_48h_random_TEAD)
+control_48h_random_AP1 <- reduce(motif_matches_control_48h_random$MA0099.3)
+control_48h_random_AP1_TEAD_overlaps <- findOverlaps(control_48h_random_AP1, 
+                                                     control_48h_random_TEAD, 
+                                                     ignore.strand = TRUE,
+                                                     maxgap = 50)
+
+# find TEAD and AP1 motifs in real 48h data
+motif_matches_48h <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                              subject = counts_consensus_filt_48h, 
+                                              genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                              out = "positions")
+h48_TEAD <- c(motif_matches_48h$MA0090.3, 
+              motif_matches_48h$MA0808.1,
+              motif_matches_48h$MA0809.2, 
+              motif_matches_48h$MA1121.1)
+h48_TEAD <- reduce(h48_TEAD)
+h48_AP1 <- reduce(motif_matches_48h$MA0099.3)
+h48_AP1_TEAD_overlaps <- findOverlaps(h48_AP1,
+                                      h48_TEAD, 
+                                      ignore.strand = TRUE,
+                                      maxgap = 50)
+
+# find TEAD and AP1 motifs in simulated 48h data
+motif_matches_48h_random <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                                     subject = random_peaks_48h, 
+                                                     genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                                     out = "positions")
+h48_random_TEAD <- c(motif_matches_48h_random$MA0090.3, 
+                     motif_matches_48h_random$MA0808.1,
+                     motif_matches_48h_random$MA0809.2, 
+                     motif_matches_48h_random$MA1121.1)
+h48_random_TEAD <- reduce(h48_random_TEAD)
+h48_random_AP1 <- reduce(motif_matches_48h_random$MA0099.3)
+h48_random_AP1_TEAD_overlaps <- findOverlaps(h48_random_AP1, 
+                                             h48_random_TEAD, 
+                                             ignore.strand = TRUE,
+                                             maxgap = 50)
+
+summary_table_peaks <- data.frame(total_number_of_peaks = c(length(counts_consensus_filt_control_48h), 
+                                                            length(random_peaks_control_48h),
+                                                            length(counts_consensus_filt_48h),
+                                                            length(random_peaks_48h)),
+                                  TEAD_sites = c(length(control_48h_TEAD),
+                                                 length(control_48h_random_TEAD),
+                                                 length(h48_TEAD),
+                                                 length(h48_random_TEAD)),
+                                  AP1_sites = c(length(control_48h_AP1),
+                                                length(control_48h_random_AP1),
+                                                length(h48_AP1),
+                                                length(h48_random_AP1)),
+                                  TEAD_AP1_coloc_sites = c(length(control_48h_AP1_TEAD_overlaps),
+                                                           length(control_48h_random_AP1_TEAD_overlaps),
+                                                           length(h48_AP1_TEAD_overlaps),
+                                                           length(h48_random_AP1_TEAD_overlaps)),
+                                  row.names = c("control_48h", "Simulated control_48h", "h48", "Simulated h48")
+)
+summary_table_peaks
+
+
+# Perform Fisher's exact tests for 48h treatment comparison
+contingency_table <- matrix(c(length(h48_AP1_TEAD_overlaps), 
+                              length(h48_TEAD) + length(h48_AP1) - length(h48_AP1_TEAD_overlaps), 
+                              length(control_48h_AP1_TEAD_overlaps), 
+                              length(control_48h_TEAD) + length(control_48h_AP1) - length(control_48h_AP1_TEAD_overlaps)),
+                            nrow = 2, 
+                            byrow = TRUE)
+fisher_results <- fisher.test(contingency_table,
+                              alternative = "two.sided")
+fisher_summary_table <- data.table::data.table(comparison = "48h_vs_control_48h",
+                                               pval = fisher_results$p.value,
+                                               odds_ratio = fisher_results$estimate)
+
+# Fisher test comparing real h48 AP1_TEAD peaks vs simulated
+contingency_table_h48_vs_simulated <- matrix(c(length(h48_AP1_TEAD_overlaps), 
+                                               length(h48_TEAD) + length(h48_AP1) - length(h48_AP1_TEAD_overlaps),
+                                               length(h48_random_AP1_TEAD_overlaps), 
+                                               length(h48_random_TEAD) + length(h48_random_AP1) - length(h48_random_AP1_TEAD_overlaps)), 
+                                             nrow = 2,
+                                             byrow = TRUE)
+row.names(contingency_table_h48_vs_simulated) <- c("h48_peaks", "h48_peaks_random")
+colnames(contingency_table_h48_vs_simulated) <- c("TEAD_AB1_colocalisation_present", "TEAD_AB1_colocalisation_absent")
+contingency_table_h48_vs_simulated
+fisher_results <- fisher.test(contingency_table_h48_vs_simulated,
+                              alternative = "two.sided")
+fisher_summary_table <- rbind(fisher_summary_table,
+                              data.table::data.table(comparison = "h48_vs_h48sim",
+                                                     pval = fisher_results$p.value,
+                                                     odds_ratio = fisher_results$estimate))
+
+# Fisher test for TEAD peaks
+contingency_table_TEAD <- matrix(c(length(h48_TEAD), 
+                                   length(counts_consensus_filt_48h) - length(h48_TEAD),
+                                   length(control_48h_TEAD), 
+                                   length(counts_consensus_filt_control_48h) - length(control_48h_TEAD)), 
+                                 nrow = 2, byrow = TRUE)
+row.names(contingency_table_TEAD) <- c("h48_peaks", "control_48h_peaks")
+colnames(contingency_table_TEAD) <- c("TEAD_site_present", "TEAD_site_absent")
+contingency_table_TEAD
+fisher.test(contingency_table_TEAD, 
+            alternative="two.sided")
+chisq.test(contingency_table_TEAD)
+
+# Fisher test for AP1 peaks
+contingency_table_AP1 <- matrix(c(length(h48_AP1), 
+                                  length(counts_consensus_filt_48h) - length(h48_AP1),
+                                  length(control_48h_AP1), 
+                                  length(counts_consensus_filt_control_48h) - length(control_48h_AP1)), 
+                                nrow = 2,
+                                byrow = TRUE)
+row.names(contingency_table_AP1) <- c("h48_peaks", "control_48h_peaks")
+colnames(contingency_table_AP1) <- c("AP1_site_present", "AP1_site_absent")
+contingency_table_AP1
+fisher.test(contingency_table_AP1, 
+            alternative = "two.sided")
+chisq.test(contingency_table_AP1)
+
+```
+
+```{r gene-set-enrichment-24h, error=TRUE}
+# Gene set enrichment analysis for 24h treatment
+# Test for MES/ADRN signature enrichment in TEAD/AP1 peaks
+
+import::from(
+  .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+  "chipEnrichAndExport"
+)
+locusdef <- "5kb"
+our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+res_dir <- "/home/rstudio/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
+
+drg_trtm_ATAC
+ATAC_dds_results_control <- ATAC_dds_results_24h$results_signif %>% 
+  dplyr::filter(log2FoldChange < 0) %>% 
+  dplyr::pull(PeakId)
+h24_specific_peaks <- ATAC_dds_results_24h$results_signif %>% 
+  dplyr::filter(log2FoldChange > 0) %>% 
+  dplyr::pull(PeakId)
+opts <- list()
+opts[["tax_group"]] <- "vertebrates"
+opts[["species"]] <- "9606"
+opts[["collection"]] <- "CORE"
+opts[["all_versions"]] <- FALSE
+motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
+TEAD_AP1_motifsToScan_names <- c("MA0090.3", 
+                                 "MA0808.1",
+                                 "MA0809.2",
+                                 "MA1121.1",
+                                 "MA0099.3")
+TEAD_AP1_motifsToScan <- motifsToScan[TEAD_AP1_motifsToScan_names,]
+
+# Using different subsets of peaks to check 
+drg_trtm_ATAC
+counts_consensus_filt_control <- drg_trtm_ATAC[drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]] %in% ATAC_dds_results_control, ]
+counts_consensus_filt_24h <- drg_trtm_ATAC[drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]] %in% h24_specific_peaks, ]
+
+motif_matches_control <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                                  subject = counts_consensus_filt_control, 
+                                                  genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                                  out = "positions")
+control_TEAD <- c(motif_matches_control$MA0090.3,
+                  motif_matches_control$MA0808.1,
+                  motif_matches_control$MA0809.2,
+                  motif_matches_control$MA1121.1)
+control_TEAD <- reduce(control_TEAD)
+control_AP1 <- reduce(motif_matches_control$MA0099.3)
+
+
+control_AP1_TEAD_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(control_AP1,
+                                                               control_TEAD,
+                                                               maxgap = 50)
+control_AP1_TEAD_overlaps <- control_AP1_TEAD_overlaps$peaksInMergedPeaks
+control_AP1_TEAD_overlaps <- as.data.frame(control_AP1_TEAD_overlaps)
+
+if(nrow(control_AP1_TEAD_overlaps) != 0){
+  chipEnrichAndExport(peaks = control_AP1_TEAD_overlaps,
+                      peaksName = "control", 
+                      TF_name = "control_AP1_TEAD", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+if(nrow(as.data.frame(control_AP1)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(control_AP1),
+                      peaksName = "control", 
+                      TF_name = "control_AP1", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+if(nrow(as.data.frame(control_TEAD)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(control_TEAD),
+                      peaksName = "control", 
+                      TF_name = "control_TEAD", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+control <- reduce(counts_consensus_filt_control@rowRanges)
+if(nrow(as.data.frame(control)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(control),
+                      peaksName = "control", 
+                      TF_name = "control_Total", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+h24_AP1_TEAD_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(h24_AP1, h24_TEAD, maxgap = 50)
+h24_AP1_TEAD_overlaps <- h24_AP1_TEAD_overlaps$peaksInMergedPeaks
+h24_AP1_TEAD_overlaps <- as.data.frame(h24_AP1_TEAD_overlaps)
+
+if(nrow(as.data.frame(h24_AP1_TEAD_overlaps)) != 0){
+  chipEnrichAndExport(peaks = h24_AP1_TEAD_overlaps,
+                      peaksName = "h24", 
+                      TF_name = "h24_AP1_TEAD", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+#the intersection here doesn't exist. The function returns error. This is why it's commented out.
+# if(nrow(as.data.frame(h24_AP1)) != 0){
+#   chipEnrichAndExport(peaks = as.data.frame(h24_AP1),
+#                       peaksName = "h24", 
+#                       TF_name = "h24_AP1", 
+#                       res_dir = res_dir, 
+#                       genesets = our_rna_seq_terms, 
+#                       genesets_name = "Our_data_",
+#                       locusdef = locusdef
+#   )
+# }
+
+if(nrow(as.data.frame(h24_TEAD)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(h24_TEAD),
+                      peaksName = "h24", 
+                      TF_name = "h24_TEAD", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+h24 <- reduce(counts_consensus_filt_24h@rowRanges)
+if(nrow(as.data.frame(h24)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(h24),
+                      peaksName = "h24", 
+                      TF_name = "h24_Total", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+enrich_results_files <- unlist(list.files(path = res_dir, 
+                                          pattern = "^Enricher_.*(h24|control).*.xlsx", 
+                                          full.names = TRUE))
+summary_table <- data.frame(Protein = NULL,
+                            Data_source = NULL,
+                            Selected_peaks = NULL,
+                            Description = NULL,
+                            P.value = NULL,
+                            FDR = NULL,
+                            Effect = NULL,
+                            Status = NULL,
+                            Gene_set_size = NULL,
+                            Peaks_in_set = NULL,
+                            Odds_ratio = NULL)
+
+pattern <-  ".*(control_Total|control_AP1|control_TEAD|control_AP1_TEAD|h24_Total|h24_AP1|h24_TEAD|h24_AP1_TEAD)_(Our_data|Groen).*(control|h24).*"
+
+for (file_name in enrich_results_files){
+  tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)
+  
+  basename_tmp <- basename(file_name)
+  basename_tmp <- str_extract(basename_tmp, 
+                              pattern, 
+                              group = c(1,2,3))
+  
+  summary_table_tmp <- data.frame(Protein = basename_tmp[1],
+                                  Data_source = basename_tmp[2],
+                                  Selected_peaks = basename_tmp[3],
+                                  Description = tmp$Description,
+                                  P.value = tmp$P.value,
+                                  FDR = tmp$FDR,
+                                  Effect = tmp$Effect,
+                                  Status = tmp$Status,
+                                  Gene_set_size = tmp$N.Geneset.Genes,
+                                  Peaks_in_set = tmp$N.Geneset.Peak.Genes,
+                                  Odds_ratio = tmp$Odds.Ratio)
+  
+  summary_table <- rbind(summary_table,
+                         summary_table_tmp)
+  
+}
+# Summary: No significant enrichment detected in 24h treatment analysis
+summary_table
+```
+
+```{r gene-set-enrichment-48h, error=TRUE}
+# Gene set enrichment analysis for 48h treatment
+# Repeat enrichment analysis for longer treatment timepoint
+import::from(
+  .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+  "chipEnrichAndExport"
+)
+locusdef <- "5kb"
+our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+res_dir <- "/home/rstudio/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
+
+drg_trtm_ATAC
+ATAC_dds_results_control <- ATAC_dds_results_48h$results_signif %>% 
+  dplyr::filter(log2FoldChange < 0) %>% 
+  dplyr::pull(PeakId)
+h48_specific_peaks <- ATAC_dds_results_48h$results_signif %>% 
+  dplyr::filter(log2FoldChange > 0) %>% 
+  dplyr::pull(PeakId)
+opts <- list()
+opts[["tax_group"]] <- "vertebrates"
+opts[["species"]] <- "9606"
+opts[["collection"]] <- "CORE"
+opts[["all_versions"]] <- FALSE
+motifsToScan <- TFBSTools::getMatrixSet(JASPAR2022, opts)
+TEAD_AP1_motifsToScan_names <- c("MA0090.3", 
+                                 "MA0808.1",
+                                 "MA0809.2",
+                                 "MA1121.1",
+                                 "MA0099.3")
+TEAD_AP1_motifsToScan <- motifsToScan[TEAD_AP1_motifsToScan_names,]
+
+# Using different subsets of peaks to check 
+drg_trtm_ATAC
+counts_consensus_filt_control <- drg_trtm_ATAC[drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]] %in% ATAC_dds_results_control, ]
+counts_consensus_filt_48h <- drg_trtm_ATAC[drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]] %in% h48_specific_peaks, ]
+
+motif_matches_control <- motifmatchr::matchMotifs(pwms = TEAD_AP1_motifsToScan, 
+                                                  subject = counts_consensus_filt_control, 
+                                                  genome = BSgenome.Hsapiens.UCSC.hg38, 
+                                                  out = "positions")
+control_TEAD <- c(motif_matches_control$MA0090.3,
+                  motif_matches_control$MA0808.1,
+                  motif_matches_control$MA0809.2,
+                  motif_matches_control$MA1121.1)
+control_TEAD <- reduce(control_TEAD)
+control_AP1 <- reduce(motif_matches_control$MA0099.3)
+
+control_AP1_TEAD_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(control_AP1,
+                                                               control_TEAD,
+                                                               maxgap = 50)
+control_AP1_TEAD_overlaps <- control_AP1_TEAD_overlaps$peaksInMergedPeaks
+control_AP1_TEAD_overlaps <- as.data.frame(control_AP1_TEAD_overlaps)
+
+if(nrow(control_AP1_TEAD_overlaps) != 0){
+  chipEnrichAndExport(peaks = control_AP1_TEAD_overlaps,
+                      peaksName = "control", 
+                      TF_name = "control_AP1_TEAD", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+if(nrow(as.data.frame(control_AP1)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(control_AP1),
+                      peaksName = "control", 
+                      TF_name = "control_AP1", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+if(nrow(as.data.frame(control_TEAD)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(control_TEAD),
+                      peaksName = "control", 
+                      TF_name = "control_TEAD", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+control <- reduce(counts_consensus_filt_control@rowRanges)
+if(nrow(as.data.frame(control)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(control),
+                      peaksName = "control", 
+                      TF_name = "control_Total", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+
+# Analysing 48h
+h48_AP1_TEAD_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(h48_AP1,
+                                                           h48_TEAD,
+                                                           maxgap = 50)
+h48_AP1_TEAD_overlaps <- h48_AP1_TEAD_overlaps$peaksInMergedPeaks
+h48_AP1_TEAD_overlaps <- as.data.frame(h48_AP1_TEAD_overlaps)
+
+# There are no overlaps between peaks, function returns error. The code is commented out.
+# if(nrow(as.data.frame(h48_AP1_TEAD_overlaps)) != 0){
+#   chipEnrichAndExport(peaks = h48_AP1_TEAD_overlaps,
+#                       peaksName = "h48", 
+#                       TF_name = "h48_AP1_TEAD", 
+#                       res_dir = res_dir, 
+#                       genesets = our_rna_seq_terms, 
+#                       genesets_name = "Our_data_",
+#                       locusdef = locusdef
+#   )
+# }
+
+if(nrow(as.data.frame(h48_AP1)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(h48_AP1),
+                      peaksName = "h48", 
+                      TF_name = "h48_AP1", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+if(nrow(as.data.frame(h48_TEAD)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(h48_TEAD),
+                      peaksName = "h48", 
+                      TF_name = "h48_TEAD", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+h48 <- reduce(counts_consensus_filt_48h@rowRanges)
+if(nrow(as.data.frame(h48)) != 0){
+  chipEnrichAndExport(peaks = as.data.frame(h48),
+                      peaksName = "h48", 
+                      TF_name = "h48_Total", 
+                      res_dir = res_dir, 
+                      genesets = our_rna_seq_terms, 
+                      genesets_name = "Our_data_",
+                      locusdef = locusdef
+  )
+}
+
+enrich_results_files <- unlist(list.files(path = res_dir,
+                                          pattern = "^Enricher_.*(h48|control).*.xlsx",
+                                          full.names = TRUE))
+summary_table <- data.frame(Protein = NULL,
+                            Data_source = NULL,
+                            Selected_peaks = NULL,
+                            Description = NULL,
+                            P.value = NULL,
+                            FDR = NULL,
+                            Effect = NULL,
+                            Status = NULL,
+                            Gene_set_size = NULL,
+                            Peaks_in_set = NULL,
+                            Odds_ratio = NULL)
+
+pattern <-  ".*(control_Total|control_AP1|control_TEAD|control_AP1_TEAD|h48_Total|h48_AP1|h48_TEAD|h48_AP1_TEAD)_(Our_data|Groen).*(control|h48).*"
+
+for (file_name in enrich_results_files){
+  tmp <- openxlsx2::wb_to_df(file_name, sheet = 1)
+  
+  basename_tmp <- basename(file_name)
+  basename_tmp <- str_extract(basename_tmp, 
+                              pattern, 
+                              group = c(1,2,3))
+  
+  summary_table_tmp <- data.frame(Protein = basename_tmp[1],
+                                  Data_source = basename_tmp[2],
+                                  Selected_peaks = basename_tmp[3],
+                                  Description = tmp$Description,
+                                  P.value = tmp$P.value,
+                                  FDR = tmp$FDR,
+                                  Effect = tmp$Effect,
+                                  Status = tmp$Status,
+                                  Gene_set_size = tmp$N.Geneset.Genes,
+                                  Peaks_in_set = tmp$N.Geneset.Peak.Genes,
+                                  Odds_ratio = tmp$Odds.Ratio)
+  
+  summary_table <- rbind(summary_table,
+                         summary_table_tmp)
+}
+summary_table
+# Summary: Only control condition shows significant enrichment in 48h analysis
+```
