@@ -259,7 +259,6 @@ pca_dar <- generatePCA(transf_object = vsd,
                        ntop_genes = 1000) +
   ggtitle("3kb Promoters")
 plot(pca_dar)
-#Ok, looks good - we can see that the main PCA/separation is happening because of the phenotype (ADRN or MES)
 
 # extracting results
 resultsNames(ATAC_dds)
@@ -312,7 +311,7 @@ ensembl2symbol_annot <- ATAC_dds_results$results_all %>%
 color.scheme <- colorRampPalette(c("navy", "white", "firebrick3"))(50)
 ann_colors = list(
   time = c( control = "#005f73", `24h` = "#0a9396", `48h` = "#94d2bd"),
-  cell_line = c(CM = "#E9D8A6", SH = "#D9BE6D")
+  cell_line = c(CLBMa = "#E9D8A6", SK_N_SH = "#D9BE6D")
 )
 
 heatmap <- pheatmap::pheatmap(heatmap_counts,
@@ -491,13 +490,25 @@ devTop <- devTop %>% mutate(long_name = paste0(jaspar_id, "_", name))
 
 devToPlot <- devTop %>%
   dplyr::select(long_name, 
-                CM_control_ATAC_S165169_REP1, #CM_control_ATAC_S165169_REP2,  
-                CM_24h_ATAC_S165170_REP1,  #CM_24h_ATAC_S165170_REP2,
-                CM_48h_ATAC_S165167_REP1, #CM_48h_ATAC_S165167_REP2,
-                SH_control_ATAC_S165166_REP1, #SH_control_ATAC_S165166_REP2,
-                SH_24h_ATAC_S165164_REP1, #SH_24h_ATAC_S165164_REP2,
-                SH_48h_ATAC_S165165_REP1, #SH_48h_ATAC_S165165_REP2
-                ) %>%
+                CM_control_ATAC_S165169_REP1,
+                CM_24h_ATAC_S165170_REP1,
+                CM_48h_ATAC_S165167_REP1,
+                SH_control_ATAC_S165166_REP1,
+                SH_24h_ATAC_S165164_REP1,
+                SH_48h_ATAC_S165165_REP1,
+                SH_DMSO_ctrl_rep1_REP1,
+                SH_DMSO_ctrl_rep2_REP1,
+                SH_24h_rep1_REP1,     
+                SH_24h_rep2_REP1,     
+                SH_48h_rep1_REP1,
+                SH_48h_rep2_REP1,
+                CM_DMSO_ctrl_rep1_REP1,
+                CM_DMSO_ctrl_rep2_REP1,
+                CM_24h_rep1_REP1,
+                CM_24h_rep2_REP1,
+                CM_48h_rep1_REP1,
+                CM_48h_rep2_REP1 
+  ) %>%
   tibble::column_to_rownames(var = "long_name")
 
 annotCol_forHeatmap <- as.data.frame(colData(drg_trtm_ATAC)) %>%
@@ -535,9 +546,15 @@ ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_control
 # Generate separate heatmap for CM cell line only
 devToPlot_CM <- devTop %>%
   dplyr::select(long_name, 
-                CM_control_ATAC_S165169_REP1, # CM_control_ATAC_S165169_REP2,  
-                CM_24h_ATAC_S165170_REP1, # CM_24h_ATAC_S165170_REP2,
-                CM_48h_ATAC_S165167_REP1, # CM_48h_ATAC_S165167_REP2
+                CM_control_ATAC_S165169_REP1,
+                CM_DMSO_ctrl_rep1_REP1,
+                CM_DMSO_ctrl_rep2_REP1,
+                CM_24h_ATAC_S165170_REP1,
+                CM_24h_rep1_REP1,
+                CM_24h_rep2_REP1,
+                CM_48h_ATAC_S165167_REP1,
+                CM_48h_rep1_REP1,
+                CM_48h_rep2_REP1 
   ) %>%
   tibble::column_to_rownames(var = "long_name")
 
@@ -632,7 +649,7 @@ seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
 seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
 
 # load mask regions 
-blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions <- read.delim("~/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
 blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
                                               seqnames.field = "V1", 
                                               start.field = "V2", 
