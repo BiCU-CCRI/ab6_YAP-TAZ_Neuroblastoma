@@ -25,8 +25,8 @@ knitr::opts_chunk$set(
 
 ```{r setup-libraries}
 # Set up the environment ####
-deg_dir <- "~/neuroblastoma/results/ATAC-seq/ATAC-seq_drug_treatment/"
-
+deg_dir <- "~/neuroblastoma/results/ATAC-seq/ATAC-seq_drug_treatment_no_batch_variable/"
+if(!dir.exists(deg_dir)){dir.create(deg_dir)}
 ## Loading libraries ####
 library(dplyr)
 library(tidyr)
@@ -144,7 +144,7 @@ colData(drg_trtm_ATAC)$batch <- as.factor(dplyr::if_else(
 ))
 
 # Variable of interest (time) stays last; batch and cell_line are adjusted for.
-design(drg_trtm_ATAC) <- as.formula("~ batch + cell_line + time")
+design(drg_trtm_ATAC) <- as.formula("~ cell_line + time")
 
 #drg_trtm_ATAC@rowRanges@elementMetadata@listData[["PeakId"]]
 
@@ -173,7 +173,7 @@ drg_trtm_ATAC <- filterDatasets(drg_trtm_ATAC,
                                 abs_filt_samples = 2
 )
 
-design(drg_trtm_ATAC) <- as.formula("~ batch + cell_line + time")
+design(drg_trtm_ATAC) <- as.formula("~ cell_line + time")
 #design(drg_trtm_ATAC) <- as.formula("~ batch + time")
 drg_trtm_ATAC <- DESeq(drg_trtm_ATAC)
 vsd <- vst(drg_trtm_ATAC, blind = F)
@@ -333,7 +333,7 @@ openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir,  paste0("DAR_results_time_24
 ATAC_dds <- drg_trtm_ATAC
 #ATAC_dds <- ATAC_dds[mcols(ATAC_dds)$is_promoter_3kb,]
 
-# Uncoment only for analysis of promoters
+# Uncoment only for promoter regions
 # ATAC_dds <- DESeq(ATAC_dds)
 # 
 # vsd <- vst(ATAC_dds, blind = F)
@@ -353,23 +353,24 @@ ATAC_dds <- drg_trtm_ATAC
 #   ggtitle("3kb Promoters")
 # plot(pca_dar)
 
-# extracting results
-resultsNames(ATAC_dds)
-coeff_name <- "time_48h_vs_control"
-cond_numerator <-  "48h"
-cond_denominator <-  "control"
-cond_variable <- "time"
-padj_cutoff = 0.05
-log2FC_cutoff = 1
+# # extracting results
+# resultsNames(ATAC_dds)
+# coeff_name <- "time_48h_vs_control"
+# cond_numerator <-  "48h"
+# cond_denominator <-  "control"
+# cond_variable <- "time"
+# padj_cutoff = 0.05
+# log2FC_cutoff = 1
+# 
+# ATAC_dds_results <- extract_results_nextflow_output(dds_object = ATAC_dds,
+#                                         coeff_name = coeff_name,
+#                                         cond_numerator = cond_numerator,
+#                                         cond_denominator = cond_denominator,
+#                                         cond_variable = cond_variable,
+#                                         padj_cutoff = padj_cutoff,
+#                                         log2FC_cutoff = log2FC_cutoff)
 
-ATAC_dds_results <- extract_results_nextflow_output(dds_object = ATAC_dds,
-                                        coeff_name = coeff_name,
-                                        cond_numerator = cond_numerator,
-                                        cond_denominator = cond_denominator,
-                                        cond_variable = cond_variable,
-                                        padj_cutoff = padj_cutoff,
-                                        log2FC_cutoff = log2FC_cutoff)
-
+ATAC_dds_results <- ATAC_dds_results_48h
 # Making Heatmap
 metadata_heatmap <- as.data.frame(colData(ATAC_dds))
 heatmap_counts <- SummarizedExperiment::assay(vsd)
@@ -413,7 +414,7 @@ heatmap <- pheatmap::pheatmap(heatmap_counts,
                               annotation_col = annotation_col,
                               annotation_colors = ann_colors,
                               show_colnames = FALSE,
-                              show_rownames = TRUE,
+                              show_rownames = FALSE,
                               cluster_cols = FALSE,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) 

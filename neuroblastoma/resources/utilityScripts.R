@@ -82,6 +82,24 @@ generatePCA <- function(transf_object=NULL, cond_interest_varPart=NULL, color_va
   
 }
 
+generatePCA_pc23 <- function(transf_object=NULL, cond_interest_varPart=NULL, color_variable=NULL, shape_variable=NULL, ntop_genes=500){
+  
+  library(DESeq2)
+  library(ggplot2)
+  
+  #transf_object_counts <- assay(transf_object)
+  #ntop_genes=nrow(transf_object_counts) 
+  pcaData <- DESeq2::plotPCA(transf_object, intgroup=cond_interest_varPart, returnData=TRUE, ntop=ntop_genes, pcsToUse=2:3) 
+  
+  percentVar <- round(100 * attr(pcaData, "percentVar"))
+  
+  ggplot(pcaData, aes(PC2, PC3, color=!!sym(color_variable), shape=!!sym(shape_variable))) +
+    geom_point(size=3) +
+    xlab(paste0("PC2: ",percentVar[1],"% variance")) +
+    ylab(paste0("PC3: ",percentVar[2],"% variance")) + #+ coord_fixed()
+    theme_bw() 
+  
+}
 
 meanExprsPerGroup <- function(dds_object=NULL, 
                               #condition_test=NULL,
