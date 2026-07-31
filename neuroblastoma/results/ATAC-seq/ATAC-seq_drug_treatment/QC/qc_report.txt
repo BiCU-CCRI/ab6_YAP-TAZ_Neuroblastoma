@@ -1,0 +1,157 @@
+========================================================= 
+SAMPLE / DESIGN TABLE 
+========================================================= 
+, ,  = legacy
+
+         
+          control 24h 48h
+  CLBMa         1   1   1
+  SK_N_SH       1   1   1
+
+, ,  = new
+
+         
+          control 24h 48h
+  CLBMa         2   2   2
+  SK_N_SH       2   2   2
+
+
+========================================================= 
+PER-SAMPLE DEPTH & SIGNAL CONCENTRATION 
+  libsize        = total reads in consensus peaks 
+  top1pct_frac   = fraction of signal in top 1% peaks (high = concentrated/good) 
+  frac_zero_peaks= fraction of peaks with 0 counts (high = sparse/noisy) 
+========================================================= 
+                       sample cell_line    time  batch  libsize top1pct_frac
+ CM_control_ATAC_S165169_REP1     CLBMa control legacy 10484316    0.2386923
+     CM_24h_ATAC_S165170_REP1     CLBMa     24h legacy  9120395    0.2477306
+     CM_48h_ATAC_S165167_REP1     CLBMa     48h legacy 12621609    0.2307554
+       CM_DMSO_ctrl_rep1_REP1     CLBMa control    new 12850799    0.2309479
+       CM_DMSO_ctrl_rep2_REP1     CLBMa control    new 15887826    0.2151716
+             CM_24h_rep2_REP1     CLBMa     24h    new 17901285    0.2209826
+             CM_24h_rep1_REP1     CLBMa     24h    new 17997146    0.2297761
+             CM_48h_rep1_REP1     CLBMa     48h    new  9267249    0.2320626
+             CM_48h_rep2_REP1     CLBMa     48h    new 21754023    0.2166782
+ SH_control_ATAC_S165166_REP1   SK_N_SH control legacy 11685817    0.2389539
+     SH_24h_ATAC_S165164_REP1   SK_N_SH     24h legacy  7998589    0.2429291
+     SH_48h_ATAC_S165165_REP1   SK_N_SH     48h legacy 14489133    0.2478725
+       SH_DMSO_ctrl_rep1_REP1   SK_N_SH control    new 16591846    0.2459286
+       SH_DMSO_ctrl_rep2_REP1   SK_N_SH control    new 18072614    0.2526949
+             SH_24h_rep1_REP1   SK_N_SH     24h    new 11981365    0.2374289
+             SH_24h_rep2_REP1   SK_N_SH     24h    new 17077787    0.2550271
+             SH_48h_rep2_REP1   SK_N_SH     48h    new 11787021    0.2513354
+             SH_48h_rep1_REP1   SK_N_SH     48h    new 13645160    0.2428043
+ frac_zero_peaks
+      0.16515286
+      0.19567451
+      0.10931210
+      0.24317708
+      0.11423171
+      0.14413841
+      0.15437058
+      0.32087712
+      0.12152076
+      0.10679532
+      0.14361187
+      0.12384107
+      0.14092612
+      0.13041889
+      0.11346941
+      0.09747477
+      0.22354774
+      0.11635949
+
+Peaks kept after filter (fpm>1 in >=2 samples): 205661 of 508983 
+
+DESeq2 size factors (median-of-ratios). Extreme values => composition problem: 
+                       sample sizeFactor cell_line  batch
+     SH_24h_ATAC_S165164_REP1      0.630   SK_N_SH legacy
+             CM_48h_rep1_REP1      0.678     CLBMa    new
+     CM_24h_ATAC_S165170_REP1      0.700     CLBMa legacy
+ CM_control_ATAC_S165169_REP1      0.809     CLBMa legacy
+             SH_48h_rep2_REP1      0.836   SK_N_SH    new
+             SH_24h_rep1_REP1      0.901   SK_N_SH    new
+       CM_DMSO_ctrl_rep1_REP1      0.929     CLBMa    new
+ SH_control_ATAC_S165166_REP1      0.935   SK_N_SH legacy
+     CM_48h_ATAC_S165167_REP1      0.996     CLBMa legacy
+             SH_48h_rep1_REP1      1.000   SK_N_SH    new
+     SH_48h_ATAC_S165165_REP1      1.109   SK_N_SH legacy
+       SH_DMSO_ctrl_rep1_REP1      1.223   SK_N_SH    new
+       CM_DMSO_ctrl_rep2_REP1      1.230     CLBMa    new
+             SH_24h_rep2_REP1      1.272   SK_N_SH    new
+             CM_24h_rep1_REP1      1.334     CLBMa    new
+       SH_DMSO_ctrl_rep2_REP1      1.334   SK_N_SH    new
+             CM_24h_rep2_REP1      1.345     CLBMa    new
+             CM_48h_rep2_REP1      1.660     CLBMa    new
+
+========================================================= 
+NEAREST NEIGHBOUR BY CORRELATION (top 2000 variable peaks) 
+If a CM sample's nearest neighbour is an SH sample -> swap/contamination flag 
+========================================================= 
+                       sample cell_line    time  batch
+ CM_control_ATAC_S165169_REP1     CLBMa control legacy
+     CM_24h_ATAC_S165170_REP1     CLBMa     24h legacy
+     CM_48h_ATAC_S165167_REP1     CLBMa     48h legacy
+       CM_DMSO_ctrl_rep1_REP1     CLBMa control    new
+       CM_DMSO_ctrl_rep2_REP1     CLBMa control    new
+             CM_24h_rep2_REP1     CLBMa     24h    new
+             CM_24h_rep1_REP1     CLBMa     24h    new
+             CM_48h_rep1_REP1     CLBMa     48h    new
+             CM_48h_rep2_REP1     CLBMa     48h    new
+ SH_control_ATAC_S165166_REP1   SK_N_SH control legacy
+     SH_24h_ATAC_S165164_REP1   SK_N_SH     24h legacy
+     SH_48h_ATAC_S165165_REP1   SK_N_SH     48h legacy
+       SH_DMSO_ctrl_rep1_REP1   SK_N_SH control    new
+       SH_DMSO_ctrl_rep2_REP1   SK_N_SH control    new
+             SH_24h_rep1_REP1   SK_N_SH     24h    new
+             SH_24h_rep2_REP1   SK_N_SH     24h    new
+             SH_48h_rep2_REP1   SK_N_SH     48h    new
+             SH_48h_rep1_REP1   SK_N_SH     48h    new
+            nearest_neighbour nn_expected_same_line
+     CM_24h_ATAC_S165170_REP1                  TRUE
+     CM_48h_ATAC_S165167_REP1                  TRUE
+     CM_24h_ATAC_S165170_REP1                  TRUE
+             CM_24h_rep1_REP1                  TRUE
+             CM_48h_rep2_REP1                  TRUE
+             CM_48h_rep2_REP1                  TRUE
+       CM_DMSO_ctrl_rep1_REP1                  TRUE
+             CM_24h_rep1_REP1                  TRUE
+             CM_24h_rep2_REP1                  TRUE
+     SH_48h_ATAC_S165165_REP1                  TRUE
+     SH_48h_ATAC_S165165_REP1                  TRUE
+ SH_control_ATAC_S165166_REP1                  TRUE
+       SH_DMSO_ctrl_rep2_REP1                  TRUE
+       SH_DMSO_ctrl_rep1_REP1                  TRUE
+             SH_24h_rep2_REP1                  TRUE
+             SH_48h_rep1_REP1                  TRUE
+             SH_24h_rep2_REP1                  TRUE
+             SH_24h_rep2_REP1                  TRUE
+
+========================================================= 
+REPLICATE CORRELATION within each cell_line x time x batch group 
+Low values in CM-new groups => noisy/irreproducible libraries 
+========================================================= 
+  CLBMa_48h_new                reps=2  mean_r=0.921 
+  CLBMa_control_new            reps=2  mean_r=0.919 
+  CLBMa_24h_new                reps=2  mean_r=0.923 
+  SK_N_SH_48h_new              reps=2  mean_r=0.961 
+  SK_N_SH_24h_new              reps=2  mean_r=0.966 
+  SK_N_SH_control_new          reps=2  mean_r=0.972 
+
+========================================================= 
+CM-ONLY DESeq2 (design ~ batch + time) -- does ANY signal survive 
+when SH is removed and CM is modelled on its own? 
+========================================================= 
+  CLBMa  48h vs control:  padj<0.05 = 1 ; padj<0.05 & |LFC|>1 = 1 ; min padj = 2.53e-02 
+  CLBMa  24h vs control:  padj<0.05 = 0 ; padj<0.05 & |LFC|>1 = 0 ; min padj = 5.01e-01 
+  CLBMa dispersion (median gene-est): 0.014 
+  SK_N_SH  48h vs control:  padj<0.05 = 16048 ; padj<0.05 & |LFC|>1 = 8275 ; min padj = 1.32e-17 
+  SK_N_SH  24h vs control:  padj<0.05 = 4342 ; padj<0.05 & |LFC|>1 = 1624 ; min padj = 3.84e-18 
+  SK_N_SH dispersion (median gene-est): 0.000 
+
+Pooled model (~batch+cell_line+time) dispersion for comparison: 
+  median gene-est dispersion (pooled): 0.069 
+  pooled 48h vs control: padj<0.05 = 2804 ; &|LFC|>1 = 1202 ; min padj = 2.30e-08 
+  pooled 24h vs control: padj<0.05 = 612 ; &|LFC|>1 = 199 ; min padj = 2.88e-10 
+
+Done. Outputs in: /home/abykov/neuroblastoma/results/ATAC-seq/ATAC-seq_drug_treatment/QC 

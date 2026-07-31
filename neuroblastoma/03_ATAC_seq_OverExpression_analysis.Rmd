@@ -40,7 +40,7 @@ import::from(openxlsx2, read_xlsx)
 import::from(.from = TFBSTools, getMatrixSet)
 import::from(chromVAR, addGCBias)
 import::from(.from = RColorBrewer, brewer.pal)
-import::from(.from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+import::from(.from = "~/neuroblastoma/resources/utilityScripts.R",
              "generatePCA", 
              "extract_results_nextflow_output",
              "meanExprsPerGroup_nextflow",
@@ -48,7 +48,7 @@ import::from(.from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
              "plotVolcano",
              "get_the_poissoon_p_val")
 import::from(
-  .from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+  .from = here::here("~/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
   "filterDatasets",
   .character_only = TRUE
 )
@@ -61,7 +61,8 @@ download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022
 JASPAR2022 <-  "/home/rstudio/.cache/R/JASPAR2022.sqlite"
 
 # Set up the environment ####
-deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_OE/"
+deg_dir <- "~/neuroblastoma/results/ATAC-seq/ATAC-seq_OE/"
+if(!dir.exists(deg_dir)){dir.create(deg_dir)}
 ```
 
 ```{r load-atac-data}
