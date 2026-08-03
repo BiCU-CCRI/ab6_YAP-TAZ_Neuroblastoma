@@ -11,14 +11,14 @@ environment(pv.countGreylistEdited) <- asNamespace("DiffBind")
 assignInNamespace("pv.countGreylist", pv.countGreylistEdited, ns = "DiffBind")
 
 # set up the environment
-if(!dir.exists("/home/rstudio/.cache/R/ExperimentHub")) {dir.create("/home/rstudio/.cache/R/ExperimentHub")}
+#if(!dir.exists("/home/rstudio/.cache/R/ExperimentHub")) {dir.create("/home/rstudio/.cache/R/ExperimentHub")}
 
 ```
 
 ```{r library loading, include=FALSE}
 #### Loading libraries ####
 import::from(
-  .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+  .from = "~/neuroblastoma/resources/utilityScripts.R",
   "generatePCA",
   "extract_results_DDS",
   "meanExprsPerGroup",
@@ -65,8 +65,8 @@ futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
 # Defile locus for chipenrich
 locusdef <-  "5kb"
 # Defile result directory
-res_dir <- "/home/rstudio/workspace/neuroblastoma/results/CnR/"
-res_dir_k975 <- "/home/rstudio/workspace/neuroblastoma/results/CnR/k975/"
+res_dir <- "~/neuroblastoma/results/CnR/"
+res_dir_k975 <- "~/neuroblastoma/results/CnR/k975/"
 ```
 
 
@@ -88,37 +88,41 @@ mart <- biomaRt::useMart(
 
 ```{r, include = FALSE}
 # unzip datafiles and load them
-system("unzip --qo ~/workspace/neuroblastoma/data/CnR/peaks.zip -d ~/workspace/neuroblastoma/data/CnR/peaks/")
+# system("unzip --qo ~/workspace/neuroblastoma/data/CnR/peaks.zip -d ~/workspace/neuroblastoma/data/CnR/peaks/")
+# 
+# system("zip -F ~/workspace/neuroblastoma/data/CnR/consensus_peaks.zip --out ~/workspace/neuroblastoma/data/CnR/consensus_peaks_u.zip")
+# system("unzip --qo ~/workspace/neuroblastoma/data/CnR/consensus_peaks_u.zip -d ~/workspace/neuroblastoma/data/CnR/")
+# system("rm ~/workspace/neuroblastoma/data/CnR/consensus_peaks_u.zip")
 
-system("zip -F ~/workspace/neuroblastoma/data/CnR/consensus_peaks.zip --out ~/workspace/neuroblastoma/data/CnR/consensus_peaks_u.zip")
-system("unzip --qo ~/workspace/neuroblastoma/data/CnR/consensus_peaks_u.zip -d ~/workspace/neuroblastoma/data/CnR/")
-system("rm ~/workspace/neuroblastoma/data/CnR/consensus_peaks_u.zip")
-
-data_folder <- "/home/rstudio/workspace/neuroblastoma/data/CnR"
+data_folder <- "~/neuroblastoma/data/CnR"
 
 files <- unlist(list.files(path = file.path(data_folder, "consensus_peaks"), pattern = "dba", full.names = TRUE))
 sample_names <- stringr::str_extract(string = files, 
                                      pattern = ".*(dba_)(.*).RData", group = 2)
 DBobj_list <- list()
-# DBobj_list_cons <- list()
+DBobj_list_cons <- list()
+
+# load processed data
+#DBobj_list <- readRDS("~/neuroblastoma/results/CnR/DBobj_list.RDS")
+
 for (target_prot in unique(sample_names)) {
   print(paste("File", target_prot, "exists, loading ..."))
-  fl_path <- file.path(data_folder, paste0("consensus_peaks/dba_", target_prot))
-  dfbobj <- dba.load(fl_path, dir = "", pre = "")
+  fl_path <- paste0("home/abykov/neuroblastoma/data/CnR/consensus_peaks/dba_", target_prot)
+  dfbobj <- dba.load(fl_path, dir = "", pre = "", ext = "RData")
   DBobj_list[[target_prot]] <- dfbobj
 #  DBobj_list_cons[[target_prot]] <- dba.peakset(dfbobj, bRetrieve = TRUE)
 }
 
 # # Load all peaks from .narrowPeaks files
-folder_path <- "~/workspace/neuroblastoma/data/CnR/peaks/"
+folder_path <- "~/neuroblastoma/data/CnR/consensus_peaks/"
 files <- unlist(list.files(path = folder_path, pattern = "(CLB-Ma|SK-N-SH).*.narrowPeak$", full.names = TRUE))
 summits <- unlist(list.files(path = folder_path, pattern = "(CLB-Ma|SK-N-SH).*.macs2_summits.bed$", full.names = TRUE))
 
 # assemble the samples object
-samples <- data.frame(list(SampleID = str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)_(.*)_R(\\d)")))
+samples <- data.frame(list(SampleID = str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M|ADR|MES)(_|-)(.*)_R(\\d)")))
 samples$Tissue <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)")
-samples$Factor <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)_(.*)_R", group = 3)
-samples$Condition <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M)", group = 2)
+samples$Factor <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M|ADR|MES)(-|_)(.*)_R", group = 4)
+samples$Condition <- str_extract(files, pattern = "(CLB-Ma|SK-N-SH)-(A|M|ADR|MES)", group = 2)
 samples$Replicate <- str_extract(files, pattern = "_R(\\d)", group = 1)
 samples$Peaks <- files
 samples$PeakCaller <- "narrow"
@@ -199,42 +203,47 @@ Running enrichment analysis using chipenrich package on custom Terms, created fr
 ```{r Enrichment analysis, include=FALSE}
 ##### Running enrichment analysis using the chipenrich package ##########
 # turn RNA-seq results to Terms table
-mes_adrn_gene_list <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", 
+
+mes_adrn_gene_list <- createTermsTable(path_to_RNAseq_xlsx_table = "~/neuroblastoma/results/RNA-seq/RNA-seq_MES_vs_ADR/tables/MES_vs_ADR_comprehensive_results.xlsx", 
                                        name_for_negative_values = "ADRN",
                                        name_for_positive_values = "MES",
-                                       mart = mart
+                                       mart = mart,
+                                       sheet = 2
 )
 write.table(
   x = mes_adrn_gene_list,
-  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv",
+  file = "~/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv",
   sep = "\t",
   row.names = F,
   quote = F
 )
 
 # Create a term from K975 experiment 24h
-RNA_K975_SEQ_data_24h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_24h_vs_control.xlsx",
+RNA_K975_SEQ_data_24h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/neuroblastoma/results/RNA-seq/RNA-seq_yap_taz_inhibition/cell_type_24h_vs_control.xlsx",
                                           name_for_negative_values = "K975_24h_down",
                                           name_for_positive_values = "K975_24h_up",
-                                          mart = mart
+                                          mart = mart,
+                                          sheet = 1
+                                          
 )
 write.table(
   x = RNA_K975_SEQ_data_24h,
-  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv",
+  file = "~/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv",
   sep = "\t",
   row.names = F,
   quote = F
 )
 
 # Create a term from K975 experiment 48h
-RNA_K975_SEQ_data_48h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/workspace/neuroblastoma/results/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx",
+RNA_K975_SEQ_data_48h <- createTermsTable(path_to_RNAseq_xlsx_table = "~/neuroblastoma/results/RNA-seq/RNA-seq_yap_taz_inhibition/cell_type_48h_vs_control.xlsx",
                                           name_for_negative_values = "K975_48h_down",
                                           name_for_positive_values = "K975_48h_up",
-                                          mart = mart
+                                          mart = mart,
+                                          sheet = 1
 )
 write.table(
   x = RNA_K975_SEQ_data_48h,
-  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_48h.tsv",
+  file = "~/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_48h.tsv",
   sep = "\t",
   row.names = F,
   quote = F
@@ -252,17 +261,17 @@ RNA_K975_SEQ_data_24h_48h <- rbind(
 )
 write.table(
   x = RNA_K975_SEQ_data_24h_48h,
-  file = "~/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h_48h.tsv",
+  file = "~/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h_48h.tsv",
   sep = "\t",
   row.names = F,
   quote = F
 )
 
 
-our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
-our_rna_seq_terms_k975_24h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv"
-our_rna_seq_terms_k975_48h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_48h.tsv"
-our_rna_seq_terms_k975_24h_48h <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h_48h.tsv"
+our_rna_seq_terms <- "~/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+our_rna_seq_terms_k975_24h <- "~/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h.tsv"
+our_rna_seq_terms_k975_48h <- "~/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_48h.tsv"
+our_rna_seq_terms_k975_24h_48h <- "~/neuroblastoma/resources/mes_adrn_GS_frm_k975_RNA_seq_24h_48h.tsv"
 
 rna_seq_terms_list <- list(
   rna_seq_terms = list(name = "Our_data_", path = our_rna_seq_terms),
@@ -271,6 +280,9 @@ rna_seq_terms_list <- list(
   k975_24h_48h = list(name = "Our_k975_24h_48h_data_", path = our_rna_seq_terms_k975_24h_48h)
 )
 
+
+debug(chipEnrichAndExport)
+debug(subsetPeaksInSamples)
 
 for(TF_name in names(DBobj_list)){
   #TF_name <- "YAP"  
@@ -635,7 +647,7 @@ seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
 seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
 
 # load mask regions 
-blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions <- read.delim("~/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
 blacklist_regions$V1 <- sub("^chr", "", blacklist_regions$V1)
 blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
                                               seqnames.field = "V1", 
