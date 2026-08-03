@@ -516,12 +516,13 @@ gseaplot3 <- function (x, geneSetID, title = "", color = "green", base_size = 11
 createTermsTable <- function(path_to_RNAseq_xlsx_table, 
                              name_for_negative_values,
                              name_for_positive_values,
-                             mart = mart){
+                             mart = mart,
+                             sheet = 1){
   require(openxlsx2)
   require(dplyr)
   require(biomaRt)
   
-  RNA_SEQ_data <- openxlsx2::read_xlsx(path_to_RNAseq_xlsx_table, sheet = 1)
+  RNA_SEQ_data <- openxlsx2::read_xlsx(path_to_RNAseq_xlsx_table, sheet = sheet)
   
   terms_gene_list <- RNA_SEQ_data %>%
     mutate(Term = if_else(log2FoldChange < 0, 

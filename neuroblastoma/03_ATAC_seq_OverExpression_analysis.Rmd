@@ -57,8 +57,8 @@ import::from(
 ```{r setup-environment}
 # BugFix - JASPAR2022 cannot be pulled from the web automatically, so it need to be loaded manually
 download.file(url = "https://jaspar2022.genereg.net/download/database/JASPAR2022.sqlite",
-              destfile = "/home/rstudio/.cache/R/JASPAR2022.sqlite")
-JASPAR2022 <-  "/home/rstudio/.cache/R/JASPAR2022.sqlite"
+              destfile = "~/neuroblastoma/resources/JASPAR2022.sqlite")
+JASPAR2022 <-  "~/neuroblastoma/resources/JASPAR2022.sqlite"
 
 # Set up the environment ####
 deg_dir <- "~/neuroblastoma/results/ATAC-seq/ATAC-seq_OE/"
@@ -69,7 +69,7 @@ if(!dir.exists(deg_dir)){dir.create(deg_dir)}
 # Analysis part ###########################################################################
 # Load and prepare ATAC-seq data
 # We use only filtered consensus peaks. And combined annotation from genecode, homer and reg.
-tmp_dir <- "~/workspace/neuroblastoma/data/ATACseq/new/"
+tmp_dir <- "~/neuroblastoma/data/ATACseq/"
 path_to_the_ATAC_counts_data <- file.path(tmp_dir, "consensus_peaks.mLb.clN.rds")
 path_annnotation_ATAC_data <- file.path(tmp_dir, "consensus_peaks.mLb.clN.annotatePeaks.txt")
 ATAC_counts_data <- readRDS(path_to_the_ATAC_counts_data)
@@ -80,59 +80,157 @@ ATAC_annotation_data <- ATAC_annotation_data %>%
   mutate(PeakId = factor(PeakId, levels = row.names(ATAC_counts_data))) %>%
   arrange(PeakId)
 
-# remove Scaffolds chromosomes
+#remove Scaffolds chrs
 ATAC_annotation_data <- ATAC_annotation_data[ATAC_annotation_data$Chr %in% c(1:22, "X", "Y"), ]
 ATAC_counts_data <- ATAC_counts_data[rownames(ATAC_counts_data) %in% ATAC_annotation_data$PeakId, ]
 
-# Add ranges
+#add ranges
 rowRanges(ATAC_counts_data) <- GenomicRanges::GRanges(seqnames = paste0("chr", ATAC_annotation_data$Chr), 
-                                                      ranges = IRanges::IRanges(start = ATAC_annotation_data$Start, 
-                                                                                end = ATAC_annotation_data$End))
-mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), 
-                                     ATAC_annotation_data)
+                                              ranges = IRanges::IRanges(start = ATAC_annotation_data$Start, 
+                                                                        end = ATAC_annotation_data$End
+                                              )
+)
+mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), ATAC_annotation_data)
 ```
 
 
 ```{r subset-overexpression-samples}
 # Subset to overexpression samples and control knockdown samples
 # Extract sample information and create metadata for differential analysis
-samples_to_subset <- colData(ATAC_counts_data)$sample
-samples_to_subset <- samples_to_subset[grep(samples_to_subset, 
-                                            pattern = "^(OE_WWTR1_)|(SH_A_)|(SH_M_).*" )]
+samples_to_subset <- c(
+  "SH_A_ATAC_S131296_REP1",
+  "SK_N_SH_ADR_rep1_REP1",
+  "SK_N_SH_ADR_rep2_REP1",
+  "SH_M_ATAC_S131295_REP1",
+  "SK_N_SH_MES_rep1_REP1",
+  "SK_N_SH_MES_rep2_REP1",
+  
+  "OE_WWTR1_DMSO_ATAC_S165172_REP1",
+  "OE_WWTR1_DMSO_rep1_REP1",
+  "OE_WWTR1_DMSO_rep3_REP1",
+  
+  "OE_WWTR1_dox_TDI_ATAC_S165175_REP1",
+  "OE_WWTR1_dox_TDI_rep1_REP1",
+  "OE_WWTR1_dox_TDI_rep3_REP1",
+  
+  "OE_WWTR1_dox_ATAC_S165177_REP1",
+  "OE_WWTR1_dox_rep1_REP1",
+  "OE_WWTR1_dox_rep_3_REP1",
+  
+  "OE_WWTR1_TDI_ATAC_S165176_REP1",
+  "OE_WWTR1_TDI_rep1_REP1",
+  "OE_WWTR1_TDI_rep3_REP1"
+) 
+  
+OE_ATAC <- ATAC_counts_data[,samples_to_subset]
 
-OE_ATAC <- ATAC_counts_data[, colData(ATAC_counts_data)$sample %in% samples_to_subset]
+OE_ATAC$experiment <- as.factor(case_when(
+  OE_ATAC$sample %in%  c(
+    "SH_A_ATAC_S131296_REP1",
+    "SK_N_SH_ADR_rep1_REP1",
+    "SK_N_SH_ADR_rep2_REP1",
+    "SH_M_ATAC_S131295_REP1",
+    "SK_N_SH_MES_rep1_REP1",
+    "SK_N_SH_MES_rep2_REP1") ~ "old",
+  OE_ATAC$sample %in%  c(
+    "OE_WWTR1_DMSO_ATAC_S165172_REP1",
+    "OE_WWTR1_DMSO_rep1_REP1",
+    "OE_WWTR1_DMSO_rep3_REP1",
+    "OE_WWTR1_dox_TDI_ATAC_S165175_REP1",
+    "OE_WWTR1_dox_TDI_rep1_REP1",
+    "OE_WWTR1_dox_TDI_rep3_REP1",
+    "OE_WWTR1_dox_ATAC_S165177_REP1",
+    "OE_WWTR1_dox_rep1_REP1",
+    "OE_WWTR1_dox_rep_3_REP1",
+    "OE_WWTR1_TDI_ATAC_S165176_REP1",
+    "OE_WWTR1_TDI_rep1_REP1",
+    "OE_WWTR1_TDI_rep3_REP1") ~ "new",
+))
+  
+OE_ATAC$genotype <- as.factor(case_when(
+  OE_ATAC$sample %in%  c(
+    "SH_A_ATAC_S131296_REP1",
+    "SK_N_SH_ADR_rep1_REP1",
+    "SK_N_SH_ADR_rep2_REP1") ~ "SH_ADR",
+  OE_ATAC$sample %in%  c(
+    "OE_WWTR1_DMSO_ATAC_S165172_REP1",
+    "OE_WWTR1_DMSO_rep1_REP1",
+    "OE_WWTR1_DMSO_rep3_REP1",
+    "OE_WWTR1_dox_TDI_ATAC_S165175_REP1",
+    "OE_WWTR1_dox_TDI_rep1_REP1",
+    "OE_WWTR1_dox_TDI_rep3_REP1",
+    "OE_WWTR1_dox_ATAC_S165177_REP1",
+    "OE_WWTR1_dox_rep1_REP1",
+    "OE_WWTR1_dox_rep_3_REP1",
+    "OE_WWTR1_TDI_ATAC_S165176_REP1",
+    "OE_WWTR1_TDI_rep1_REP1",
+    "OE_WWTR1_TDI_rep3_REP1") ~ "WWTR1",
+  OE_ATAC$sample %in%  c(
+    "SH_M_ATAC_S131295_REP1",
+    "SK_N_SH_MES_rep1_REP1",
+    "SK_N_SH_MES_rep2_REP1") ~ "SH_M",
+))
 
-parsed <- as.data.frame(
-  str_match(
-    OE_ATAC$sample,
-    "^OE_([^_]+)_((?:[^_]+_)*[^_]+)_ATAC_.*_(REP\\d+)$"
-  )
-)
-parsed$experiment <- "new"
-parsed <- parsed %>% filter(!is.na(V1))
-parsed <- rbind(parsed, c("SH_M_ATAC_S131295_REP1", "SH_M", "NO", "REP1", "old"))
-parsed <- rbind(parsed, c("SH_A_ATAC_S131296_REP1", "SH_A", "NO", "REP1", "old"))
+OE_ATAC$genotype <- as.factor(case_when(
+  OE_ATAC$sample %in%  c(
+    "SH_A_ATAC_S131296_REP1",
+    "SK_N_SH_ADR_rep1_REP1",
+    "SK_N_SH_ADR_rep2_REP1") ~ "SH_ADR",
+  OE_ATAC$sample %in%  c(
+    "OE_WWTR1_DMSO_ATAC_S165172_REP1",
+    "OE_WWTR1_DMSO_rep1_REP1",
+    "OE_WWTR1_DMSO_rep3_REP1",
+    "OE_WWTR1_dox_TDI_ATAC_S165175_REP1",
+    "OE_WWTR1_dox_TDI_rep1_REP1",
+    "OE_WWTR1_dox_TDI_rep3_REP1",
+    "OE_WWTR1_dox_ATAC_S165177_REP1",
+    "OE_WWTR1_dox_rep1_REP1",
+    "OE_WWTR1_dox_rep_3_REP1",
+    "OE_WWTR1_TDI_ATAC_S165176_REP1",
+    "OE_WWTR1_TDI_rep1_REP1",
+    "OE_WWTR1_TDI_rep3_REP1") ~ "WWTR1",
+  OE_ATAC$sample %in%  c(
+    "SH_M_ATAC_S131295_REP1",
+    "SK_N_SH_MES_rep1_REP1",
+    "SK_N_SH_MES_rep2_REP1") ~ "SH_M",
+))
 
-# Create a tidy data frame
-parsed_df <- data.frame(
-  genotype  = parsed[, 2],
-  treatment = parsed[, 3],
-  replicate = parsed[, 4],
-  experiment = parsed[, 5],
-  stringsAsFactors = TRUE
-)
+OE_ATAC$treatment <- as.factor(case_when(
+  OE_ATAC$sample %in%  c(
+    "SH_A_ATAC_S131296_REP1",
+    "SK_N_SH_ADR_rep1_REP1",
+    "SK_N_SH_ADR_rep2_REP1",
+    "SH_M_ATAC_S131295_REP1",
+    "SK_N_SH_MES_rep1_REP1",
+    "SK_N_SH_MES_rep2_REP1"
+    ) ~ "NO",
+  OE_ATAC$sample %in%  c(
+    "OE_WWTR1_DMSO_ATAC_S165172_REP1",
+    "OE_WWTR1_DMSO_rep1_REP1",
+    "OE_WWTR1_DMSO_rep3_REP1") ~ "DMSO",
+  OE_ATAC$sample %in%  c(
+    "OE_WWTR1_dox_TDI_ATAC_S165175_REP1",
+    "OE_WWTR1_dox_TDI_rep1_REP1",
+    "OE_WWTR1_dox_TDI_rep3_REP1") ~ "dox_TDI",
+  OE_ATAC$sample %in%  c(
+    "OE_WWTR1_dox_ATAC_S165177_REP1",
+    "OE_WWTR1_dox_rep1_REP1",
+    "OE_WWTR1_dox_rep_3_REP1") ~ "dox",
+  OE_ATAC$sample %in%  c(
+    "OE_WWTR1_TDI_ATAC_S165176_REP1",
+    "OE_WWTR1_TDI_rep1_REP1",
+    "OE_WWTR1_TDI_rep3_REP1"
+    ) ~ "TDI"
+))
 
-colData(OE_ATAC) <- cbind(colData(OE_ATAC), parsed_df)
-colData(OE_ATAC)$genotype <- factor(colData(OE_ATAC)$genotype, levels = c("WWTR1", "SH_M", "SH_A"))
-colData(OE_ATAC)$treatment <- factor(colData(OE_ATAC)$treatment )
 design(OE_ATAC) <- as.formula("~ treatment")
 
 #OE_ATAC@rowRanges@elementMetadata@listData[["PeakId"]]
 
-RNA_SEQ_data <- openxlsx2::read_xlsx("~/workspace/neuroblastoma/results/RNA-seq/cell_type_MES_vs_ADR.xlsx", sheet = 1)
+RNA_SEQ_data <- openxlsx2::read_xlsx("~/neuroblastoma/results/RNA-seq/RNA-seq_MES_vs_ADR/tables/MES_vs_ADR_comprehensive_results.xlsx", sheet = 2)
 RNA_SEQ_data <- RNA_SEQ_data %>%
-  mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES")) %>%
-  select(gene_symbol, Term)
+  dplyr::mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES")) %>%
+  dplyr::select(gene_symbol, Term)
 mcols(OE_ATAC)$gene_category_our_RNAseq <- "ND"
 mcols(OE_ATAC)$gene_category_our_RNAseq <- case_when(
   mcols(OE_ATAC)$Gene.Name %in% RNA_SEQ_data[RNA_SEQ_data$Term == "ADRN", 1] ~ "g_ADRN",
@@ -158,7 +256,7 @@ vsd <- vst(OE_ATAC, blind = F)
 # Perform differential accessibility analysis and generate PCA plots
 # First filter low-count peaks, then run DESeq2 normalization and transformation
 # remove replicate 2
-pca_dar <- generatePCA(transf_object = vsd[, vsd$replicate == "REP1"], 
+pca_dar <- generatePCA(transf_object = vsd, 
                        cond_interest_varPart = c("treatment", "genotype"), 
                        color_variable = "treatment", 
                        shape_variable = "genotype",
@@ -167,7 +265,7 @@ pca_dar <- generatePCA(transf_object = vsd[, vsd$replicate == "REP1"],
 pca_dar
 
 # Batch correction
-transf_batch_NObatch_experiment <- vsd[, vsd$replicate == "REP1"]
+transf_batch_NObatch_experiment <- vsd
 transf_batch_NObatch_experiment_count <- limma::removeBatchEffect(
   SummarizedExperiment::assay(transf_batch_NObatch_experiment),
   transf_batch_NObatch_experiment$experiment)
@@ -235,7 +333,7 @@ pheatmap::pheatmap(as.dist(sample_cor),
                    annotation_row = annotation_row_sampleCor, 
                    clustering_distance_rows = as.dist(1-sample_cor), 
                    clustering_distance_cols = as.dist(1-sample_cor),  
-                   annotation_names_row = TRUE) 
+                   annotation_names_row = TRUE, annotation_names_col = TRUE) 
 
 # Perform t-SNE dimensionality reduction for sample clustering visualization
 tsne_results <- chromVAR::deviationsTsne(chrom_access_deviations, 
@@ -304,12 +402,25 @@ devTop <- devTop %>% mutate(long_name = paste0(jaspar_id, "_", name))
 
 devToPlot <- devTop %>%
   dplyr::select(long_name, 
-                OE_WWTR1_DMSO_ATAC_S165172_REP1,
-                OE_WWTR1_TDI_ATAC_S165176_REP1,
-                OE_WWTR1_dox_ATAC_S165177_REP1,
-                OE_WWTR1_dox_TDI_ATAC_S165175_REP1,
+                SH_A_ATAC_S131296_REP1,
+                SK_N_SH_ADR_rep1_REP1,
+                SK_N_SH_ADR_rep2_REP1,
                 SH_M_ATAC_S131295_REP1,
-                SH_A_ATAC_S131296_REP1) %>%
+                SK_N_SH_MES_rep1_REP1,
+                SK_N_SH_MES_rep2_REP1,
+                OE_WWTR1_DMSO_ATAC_S165172_REP1,
+                OE_WWTR1_DMSO_rep1_REP1,
+                OE_WWTR1_DMSO_rep3_REP1,
+                OE_WWTR1_dox_TDI_ATAC_S165175_REP1,
+                OE_WWTR1_dox_TDI_rep1_REP1,
+                OE_WWTR1_dox_TDI_rep3_REP1,
+                OE_WWTR1_dox_ATAC_S165177_REP1,
+                OE_WWTR1_dox_rep1_REP1,
+                OE_WWTR1_dox_rep_3_REP1,
+                OE_WWTR1_TDI_ATAC_S165176_REP1,
+                OE_WWTR1_TDI_rep1_REP1,
+                OE_WWTR1_TDI_rep3_REP1
+                ) %>%
   tibble::column_to_rownames(var = "long_name")
 
 annotCol_forHeatmap <- as.data.frame(colData(OE_ATAC)) %>%
@@ -349,9 +460,17 @@ ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_OE_DMSO_TDI_dox_T
 devToPlot <- devTop %>%
   dplyr::select(long_name, 
                 OE_WWTR1_DMSO_ATAC_S165172_REP1,
-                OE_WWTR1_TDI_ATAC_S165176_REP1,
-                OE_WWTR1_dox_ATAC_S165177_REP1,
+                OE_WWTR1_DMSO_rep1_REP1,
+                OE_WWTR1_DMSO_rep3_REP1,
                 OE_WWTR1_dox_TDI_ATAC_S165175_REP1,
+                OE_WWTR1_dox_TDI_rep1_REP1,
+                OE_WWTR1_dox_TDI_rep3_REP1,
+                OE_WWTR1_dox_ATAC_S165177_REP1,
+                OE_WWTR1_dox_rep1_REP1,
+                OE_WWTR1_dox_rep_3_REP1,
+                OE_WWTR1_TDI_ATAC_S165176_REP1,
+                OE_WWTR1_TDI_rep1_REP1,
+                OE_WWTR1_TDI_rep3_REP1
   ) %>%
   tibble::column_to_rownames(var = "long_name")
 
