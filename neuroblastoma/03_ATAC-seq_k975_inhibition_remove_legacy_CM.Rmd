@@ -99,9 +99,9 @@ mcols(ATAC_counts_data) <- DataFrame(mcols(ATAC_counts_data), ATAC_annotation_da
 # Subset to drug treatment samples (CM and SH cell lines)
 # Extract metadata for control, 24h, and 48h time points
 samples_to_subset <- c(
-"CM_control_ATAC_S165169_REP1",
-"CM_24h_ATAC_S165170_REP1",
-"CM_48h_ATAC_S165167_REP1",
+  "CM_control_ATAC_S165169_REP1",
+  "CM_24h_ATAC_S165170_REP1",
+  "CM_48h_ATAC_S165167_REP1",
   "SH_control_ATAC_S165166_REP1",
   "SH_24h_ATAC_S165164_REP1",
   "SH_48h_ATAC_S165165_REP1",
@@ -513,7 +513,7 @@ chrom_access_variability_ord_results <- chrom_access_variability_ord %>%
   dplyr::left_join(., devZscores_df, by = "jaspar_id")
 
 message("Saving motif enrichment results")
-ntop <- 50
+ntop <- 100
 topVariable <- chrom_access_variability_ord[1:ntop, ]
 topVariable <- tibble::rownames_to_column(topVariable, var="jaspar_id")
 
@@ -572,10 +572,10 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot),
 
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_control_vs_24h_48h_Motifs", sbst, "- used", ".png")), 
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_control_vs_24h_48h_Motifs", sbst, "- used", ".pdf")), 
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 
 # Generate separate heatmap for CM cell line only
 devToPlot_CM <- devTop %>%
@@ -609,10 +609,10 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot_CM),
 
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_CM_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".png")), 
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_CM_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".pdf")), 
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 
 
 # Generate separate heatmap for SH cell line only
@@ -647,10 +647,10 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot_SH),
 
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_SH_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".png")), 
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_SH_line_drug_treatment_control_vs_24h_48h_Motifs_", sbst, "- used", ".pdf")),
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 
 
 # Generate heatmap with averaged replicates: 6 columns (control/24h/48h x CM/SH)
@@ -696,10 +696,10 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot_avg),
 
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_averaged_replicates_Motifs_", sbst, "- used", ".png")),
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_averaged_replicates_Motifs_", sbst, "- used", ".pdf")),
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 
 
 # Generate heatmap averaged over replicates AND cell lines: 3 columns (control/24h/48h)
@@ -743,10 +743,10 @@ heatmap <- pheatmap::pheatmap(as.matrix(devToPlot_time_avg),
 
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_averaged_replicates_celllines_Motifs_", sbst, "- used", ".png")),
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_averaged_replicates_celllines_Motifs_", sbst, "- used", ".pdf")),
        plot=heatmap,
-       width = 18, height = 20, units = "cm")
+       width = 18, height = 40, units = "cm")
 
 
 
@@ -853,6 +853,31 @@ ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_selecte
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_selected_motifs_averaged_replicates_celllines_", sbst, "- used", ".pdf")),
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+
+# All-replicates heatmap: curated motifs (see motifs_to_visualise) across every
+# individual sample column (same samples/order as devToPlot), no averaging.
+devSel_all <- devSel[, colnames(devToPlot), drop = FALSE]
+
+heatmap <- pheatmap::pheatmap(as.matrix(devSel_all),
+                              color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+                              border_color = NA,
+                              scale = "row",
+                              cluster_cols = FALSE,
+                              cluster_rows = TRUE,
+                              show_colnames = TRUE,
+                              show_rownames = TRUE,
+                              annotation_col = annotCol_forHeatmap,
+                              annotation_colors = annotCol_forHeatmap_colors,
+                              fontsize_row = 9,
+                              fontsize = 9,
+                              main = paste0("Heatmap of selected motifs ATAC-seq Drug treatment (all replicates). ", sbst, "- used"))
+
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_selected_motifs_all_replicates_", sbst, "- used", ".png")),
+       plot=heatmap,
+       width = 18, height = 20, units = "cm")
+ggsave(filename = file.path(deg_dir, paste0("heatmap_ATAC_drug_treatment_selected_motifs_all_replicates_", sbst, "- used", ".pdf")),
        plot=heatmap,
        width = 18, height = 20, units = "cm")
 ```
