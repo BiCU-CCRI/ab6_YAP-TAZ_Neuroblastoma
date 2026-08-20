@@ -32,6 +32,7 @@ import::from(
   "LolipopEnrichmentPlot"
 )
 library(dplyr)
+library(profileplyr)
 library(DESeq2)
 library(ggplot2)
 library(stringr)
@@ -139,8 +140,24 @@ for (target_prot in unique(samples$Factor)) {
   DBobj_list_cons[[target_prot]] <- dba.peakset(dfbobj, bRetrieve = TRUE)
 }
 
-# Added on 18.08.25 - remove all non-canonical chromosomes
+# Added on 18.08.25 - remove all non-canonical chromosomes.
+# Scaffolds (e.g. GL000205.2, KI270713.1) are not present in the BSgenome object
+# used later, which makes regioneR::randomizeRegions(per.chromosome = TRUE) fail.
+# Restrict every consensus peakset to the standard chromosomes (1-22, X, Y) and
+# also drop MT: mitochondrial peaks are CUT&RUN artifacts, and per.chromosome
+# randomization cannot reposition a multi-kb peak inside the ~16.5 kb MT
+# chromosome once the blacklist mask is applied ("not possible to create a valid
+# random region set after 5 retries").
+# pruning.mode = "coarse" is required: it drops ranges on the removed seqlevels
+# (the default "error" would abort because such ranges exist).
+DBobj_list_cons <- lapply(DBobj_list_cons, function(gr) {
+  gr <- GenomeInfoDb::keepStandardChromosomes(gr,
+                                              species = "Homo_sapiens",
+                                              pruning.mode = "coarse")
+  GenomeInfoDb::dropSeqlevels(gr, "MT", pruning.mode = "coarse")
+})
 
+saveRDS(DBobj_list_cons, "~/neuroblastoma/results/CnR/DBobj_list_cons.RDS")
 ```
 
 Check feature distribution for H3K27ac, H3K4me1, Jun, TAZ, YAP. 
@@ -163,7 +180,8 @@ for (factor in names(DBobj_list_cons)){
 ```
 
 ```{r Plot the peak annotation plot}
-plotAnnoBar(peakAnnoList)
+plot <- plotAnnoBar(peakAnnoList)
+ggsave(filename = file.path(res_dir, "all_peaks_peakAnnoList.pdf"), plot)
 ```
 
 ```{r Check overlap between YAP TAZ and Jun peaks, include=FALSE}
@@ -281,8 +299,8 @@ rna_seq_terms_list <- list(
 )
 
 
-debug(chipEnrichAndExport)
-debug(subsetPeaksInSamples)
+#undebug(chipEnrichAndExport)
+#undebug(subsetPeaksInSamples)
 
 for(TF_name in names(DBobj_list)){
   #TF_name <- "YAP"  
@@ -370,34 +388,36 @@ if (length(YAP_p_ADR$start) == 0 | length(TAZ_p_ADR$start) == 0){
   YAP_TAZ_ADR <- as.data.frame(ol$mergedPeaks)
 }
 
-ol <- ChIPpeakAnno::findOverlapsOfPeaks(GRanges(YAP_TAZ_ADR), GRanges(JUN_p_ADR))
-YAP_TAZ_JUN_ADR <- as.data.frame(ol$mergedPeaks)
-
-for(rna_seq_term in rna_seq_terms_list){
-  chipEnrichAndExport(peaks = YAP_TAZ_ADR,
-                      peaksName = "ADRN",
-                      TF_name = "yap-taz",
-                      res_dir = res_dir,
-                      genesets = rna_seq_term$path,
-                      genesets_name = rna_seq_term$name,
-                      locusdef = locusdef
-  )
-}
-
-# there is only 1 peaks in YAP_TAZ_JUN_ADR intersection - so this step can be skipped there cannot be any enreachment with 1 peak.
-if (length(YAP_TAZ_JUN_ADR$seqnames) > 1){
+if (length(YAP_TAZ_ADR$start) != 0){
+  ol <- ChIPpeakAnno::findOverlapsOfPeaks(GRanges(YAP_TAZ_ADR), GRanges(JUN_p_ADR))
+  YAP_TAZ_JUN_ADR <- as.data.frame(ol$mergedPeaks)
+  
   for(rna_seq_term in rna_seq_terms_list){
-    chipEnrichAndExport(peaks = YAP_TAZ_JUN_ADR,
+    chipEnrichAndExport(peaks = YAP_TAZ_ADR,
                         peaksName = "ADRN",
-                        TF_name = "yap-taz-jun",
+                        TF_name = "yap-taz",
                         res_dir = res_dir,
                         genesets = rna_seq_term$path,
                         genesets_name = rna_seq_term$name,
                         locusdef = locusdef
     )
   }
+  
+  
+  # there is only 1 peaks in YAP_TAZ_JUN_ADR intersection - so this step can be skipped there cannot be any enreachment with 1 peak.
+  if (length(YAP_TAZ_JUN_ADR$seqnames) > 1){
+    for(rna_seq_term in rna_seq_terms_list){
+      chipEnrichAndExport(peaks = YAP_TAZ_JUN_ADR,
+                          peaksName = "ADRN",
+                          TF_name = "yap-taz-jun",
+                          res_dir = res_dir,
+                          genesets = rna_seq_term$path,
+                          genesets_name = rna_seq_term$name,
+                          locusdef = locusdef
+      )
+    }
+  }
 }
-
 ```
 
 ```{r Visualisation of the enrichment data, echo=FALSE}
@@ -566,7 +586,9 @@ for (factor in names(DBobj_list_to_annotate)){
 
 
 ```{r plot feature distribution in yap taz jun yap_taz yap_taz_jun peaks}
-plotAnnoBar(peakAnnoList)
+plot <- plotAnnoBar(peakAnnoList)
+ggsave(filename = file.path(res_dir, "all_peaks_promoters_peakAnnoList_yap_taz_yaptaz.pdf"), plot)
+
 ```
 
 Check how peaks of different TFs and their combination distributed across Active/Poised enhancers, active/inactive Promoters
@@ -725,9 +747,9 @@ p <- ggplot(piechart_randomised) +
 plot(p)
 
 # save for IGV
-rtracklayer::export.bed(object = random_Peaks,  "~/workspace/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV_randomized.bed")
-rtracklayer::export.bed(object = YAP_TAZ_JUN_peaks_list$Jun_Peaks, "~/workspace/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV.bed")
-rtracklayer::export.bed(object = promoter, "~/workspace/neuroblastoma/temp_results/BEDs/Promoters_for_IGV.bed")
+rtracklayer::export.bed(object = random_Peaks,  "~/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV_randomized.bed")
+rtracklayer::export.bed(object = YAP_TAZ_JUN_peaks_list$Jun_Peaks, "~/neuroblastoma/temp_results/BEDs/JUN_peaks_for_IGV.bed")
+rtracklayer::export.bed(object = promoter, "~/neuroblastoma/temp_results/BEDs/Promoters_for_IGV.bed")
 
 x = GenomicDistributions::calcChromBinsRef(makeGRangesFromDataFrame(as.data.frame(YAP_TAZ_JUN_peaks_list$Jun_Peaks) %>% mutate(seqnames = paste0("chr", seqnames))), "hg38")
 GenomicDistributions::plotChromBins(x)
@@ -819,7 +841,7 @@ for (target_prot in names(DBobj_list)) {
     as.data.frame(repUP)[, 1:3] %>%
       dplyr::select(seqnames, start, end) %>%
       mutate(seqnames = paste0("chr", seqnames), chain = "."),
-    file = paste0("~/workspace/neuroblastoma/results/CnR/", target_prot, "_consenus_peaks_UP.bed"),
+    file = paste0("~/neuroblastoma/results/CnR/", target_prot, "_consenus_peaks_UP.bed"),
     sep = "\t",
     row.names = T,
     col.names = F,
@@ -830,7 +852,7 @@ for (target_prot in names(DBobj_list)) {
     as.data.frame(repDWN)[, 1:3] %>%
       dplyr::select(seqnames, start, end) %>%
       mutate(seqnames = paste0("chr", seqnames), chain = "."),
-    file = paste0("~/workspace/neuroblastoma/results/CnR/", target_prot, "_consenus_peaks_DWN.bed"),
+    file = paste0("~/neuroblastoma/results/CnR/", target_prot, "_consenus_peaks_DWN.bed"),
     sep = "\t",
     row.names = T,
     col.names = F,
@@ -857,55 +879,103 @@ TODO - implement pulling the BAM files once they are published and fix this part
 ```{r eval=FALSE, include=FALSE}
 #############
 # Peak profiles
-# Fix the BAM paths in the original DBobj
+#
+# NOTE ON BAM PATHS: dba.plotProfile() reads the BAM files whose absolute paths
+# are stored inside each DBA object (dfbobj$class["bamRead", ] /
+# ["bamControl", ]). Those point at the original alignment directory
+# (/nobackup/.../02_alignment/bowtie2/target/markdup/*.bam). This chunk must be
+# run in an environment where those BAMs are reachable. If they are not, every
+# BiocParallel worker fails with "failed to open SAM/BAM file", which DiffBind
+# reports as the opaque "BiocParallel errors" wrapper. To point at BAMs in a
+# different location, rewrite the paths before profiling, e.g.:
+#   dfbobj$class["bamRead", ]    <- sub("<old_dir>", "<new_dir>", dfbobj$class["bamRead", ])
+#   dfbobj$class["bamControl", ] <- sub("<old_dir>", "<new_dir>", dfbobj$class["bamControl", ])
 
-pdf(file = file.path(res_dir, "/h3k27ac-h3k4me1-jun-taz-yap.pdf"), width = 12, height = 6)
-for (dfbobj in DBobj_list) {
-  str_to_be_replaced <- "/home/rstudio/workspace/neuroblastoma/data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/02_alignment/markdup/"
-  str_replacement <- "/home/rstudio/workspace/neuroblastoma/data/CnR/BAMs/"
-  dfbobj$class["bamRead",] <- dfbobj$class["bamRead",] %>% 
-    str_replace_all(string = .,
-                    pattern = str_to_be_replaced, 
-                    replacement = str_replacement)
-  dfbobj$class["bamControl",] <- dfbobj$class["bamControl",] %>% 
-    str_replace_all(string = .,
-                    pattern = str_to_be_replaced, 
-                    replacement = str_replacement)
-  # str_to_be_replaced <- "/home/rstudio/workspace/neuroblastoma/data_soren/Cut_and_run_ppln_427_263/output_CMT_normalisation/04_called_peaks/macs2/"
-  # str_replacement <- "/home/rstudio/workspace/neuroblastoma/data/CnR/peaks/"
-  # dfbobj$samples$Peaks <- dfbobj$samples$Peaks %>% 
-  #   str_replace_all(string = .,
-  #                   pattern = str_to_be_replaced, 
-  #                   replacement = str_replacement)
-  #dfbobj <- DBobj_list[[1]]
+# --- Debugging toggle ---------------------------------------------------------
+# dba.plotProfile() farms each sample out to BiocParallel workers, which masks
+# the real per-worker error behind an opaque "BiocParallel errors" wrapper.
+# Uncomment the line below to run serially and surface the true message
+# (slow, use only for debugging):
+# BiocParallel::register(BiocParallel::SerialParam(stop.on.error = TRUE))
+
+# --- Sanitize sites before profiling ------------------------------------------
+# dba.plotProfile() does not profile peaks as-is: it extends each site's center
+# by a fixed flank (distanceUp/distanceDown) to build the profile window. Peaks
+# sitting at a chromosome start/end make that window run off the chromosome,
+# producing a negative-width range and the profileplyr error:
+#   "each range must have an end that is greater or equal to its start minus one".
+# dba.report() GRanges also carry no seqlengths, so profileplyr cannot trim the
+# window to chromosome bounds. Attach real hg38 lengths and drop any peak whose
+# +/- flank window would fall off either chromosome end.
+.hg38_si <- GenomeInfoDb::seqinfo(BSgenome.Hsapiens.UCSC.hg38::BSgenome.Hsapiens.UCSC.hg38)
+
+sanitize_sites <- function(gr, flank = 5000) {
+  if (length(gr) == 0) return(gr)
+  GenomeInfoDb::seqlevelsStyle(gr) <- "UCSC"                      # "1" -> "chr1"
+  gr <- GenomeInfoDb::keepStandardChromosomes(gr, pruning.mode = "coarse")
+  common <- intersect(GenomeInfoDb::seqlevels(gr), GenomeInfoDb::seqlevels(.hg38_si))
+  gr <- GenomeInfoDb::keepSeqlevels(gr, common, pruning.mode = "coarse")
+  GenomeInfoDb::seqlengths(gr) <- GenomeInfoDb::seqlengths(.hg38_si)[common]
+  len <- GenomeInfoDb::seqlengths(gr)[as.character(GenomeInfoDb::seqnames(gr))]
+  gr[start(gr) - flank >= 1 & end(gr) + flank <= len]
+}
+
+# One PDF per target protein, named by the factor, so each file is
+# self-identifying (instead of one combined PDF with unlabeled pages). The
+# factor name is also passed as the heatmap column title.
+for (target_prot in names(DBobj_list)) {
+  #target_prot <- "H3K27ac"
+  dfbobj <- DBobj_list[[target_prot]]
+
   rep <- dba.report(dfbobj, contrast = 2)
-  
+
   repUP <- rep[rep$Fold > 2, ]
   repDWN <- rep[rep$Fold < -1, ]
-  
+
   repUP <- repUP[order(repUP$Fold, decreasing = TRUE), ]
   repDWN <- repDWN[order(repDWN$Fold, decreasing = FALSE), ]
-  
+
+  # Attach hg38 seqlengths and drop peaks whose profile window falls off a
+  # chromosome end (see sanitize_sites() above) before building the profiles.
+  rep    <- sanitize_sites(rep)
+  seqlevelsStyle(rep) <- "Ensembl"
+
+  repUP  <- sanitize_sites(repUP)
+  seqlevelsStyle(repUP) <- "Ensembl"
+
+  repDWN <- sanitize_sites(repDWN)
+  seqlevelsStyle(repDWN) <- "Ensembl"
+
   repList <- GRangesList(
     UP = repUP,
     DWN = repDWN
   )
-  
+
   rep <- rep[abs(rep$Fold) > 2, ]
-  
-  if (length(repList$DWN) !=0){
+
+  # Data is sanitized above, so the profileplyr width error is gone and we can
+  # run in parallel again (serial mode is only needed to unmask worker errors).
+  if (length(repList$DWN) != 0) {
     profiles <- dba.plotProfile(dfbobj,
                                 merge = c(DBA_TISSUE, DBA_REPLICATE),
                                 contrast = 2,
                                 sites = repList)
-  }else{
+  } else {
     profiles <- dba.plotProfile(dfbobj,
                                 merge = c(DBA_TISSUE, DBA_REPLICATE),
                                 contrast = 2,
                                 sites = rep)
   }
-  print(paste("this is ", unique(dfbobj[["samples"]][["Factor"]])))
-  dba.plotProfile(profiles)
+
+  print(paste("this is ", target_prot))
+
+  # Draw into a dedicated, factor-named PDF. Label the heatmap with the factor
+  # name; fall back to a plain draw if the title passthrough is not accepted.
+  out_pdf <- file.path(res_dir, paste0("profile_", target_prot, ".pdf"))
+  pdf(file = out_pdf, width = 12, height = 6)
+  drawn <- tryCatch({ dba.plotProfile(profiles, column_title = target_prot); TRUE },
+                    error = function(e) FALSE)
+  if (!drawn) dba.plotProfile(profiles)
+  dev.off()
 }
-dev.off()
 ```
