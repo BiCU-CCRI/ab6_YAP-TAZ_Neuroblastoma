@@ -333,7 +333,11 @@ k975dds <- dds[,
                   "SH_48h_rep1_1",
                   "SH_DMSO_ctrl_rep2_1",
                   "SH_24h_rep2_1",
-                  "SH_48h_rep2_1"
+                  "SH_48h_rep2_1",
+                  
+                  "CM_24h_rep3",
+                  "CM_48h_rep3",
+                  "CM_DMSO_ctrl_rep3"
                 )]
 
 colData(k975dds)$biosample <- dplyr::case_when(
@@ -373,7 +377,10 @@ k975dds$cell_line <- as.factor(
                               "CM_48h_rep1_1",
                               "CM_control_batch1",
                               "CM_DMSO_ctrl_rep1_1",
-                              "CM_DMSO_ctrl_rep2_1") ~ "CLBMa",
+                              "CM_DMSO_ctrl_rep2_1",
+                              "CM_24h_rep3",
+                              "CM_48h_rep3",
+                              "CM_DMSO_ctrl_rep3") ~ "CLBMa",
     colnames(k975dds) %in% c("SH_24h_batch1",
                               "SH_24h_rep1_1",
                               "SH_24h_rep2_1",
@@ -394,18 +401,21 @@ k975dds$time <- as.factor(
                               "CM_24h_rep2_1",
                               "SH_24h_batch1",
                               "SH_24h_rep1_1",
-                              "SH_24h_rep2_1") ~ "h24",
+                              "SH_24h_rep2_1",
+                              "CM_24h_rep3") ~ "h24",
     colnames(k975dds) %in% c("CM_48h_batch1",
                               "CM_48h_rep1_1",
                               "SH_48h_batch1",
                               "SH_48h_rep1_1",
-                              "SH_48h_rep2_1") ~ "h48",
+                              "SH_48h_rep2_1",
+                              "CM_48h_rep3") ~ "h48",
      colnames(k975dds) %in% c("CM_control_batch1",
                               "CM_DMSO_ctrl_rep1_1",
                               "CM_DMSO_ctrl_rep2_1",
                               "SH_control_batch1",
                               "SH_DMSO_ctrl_rep1_1",
-                              "SH_DMSO_ctrl_rep2_1") ~ "DMSO",
+                              "SH_DMSO_ctrl_rep2_1",
+                              "CM_DMSO_ctrl_rep3") ~ "DMSO",
  .default = colnames(k975dds)
   )
 )
@@ -422,13 +432,16 @@ k975dds$treatment <- as.factor(
                               "CM_48h_rep1_1",
                               "SH_48h_batch1",
                               "SH_48h_rep1_1",
-                              "SH_48h_rep2_1") ~ "treated",
+                              "SH_48h_rep2_1",
+                              "CM_24h_rep3",
+                              "CM_48h_rep3") ~ "treated",
      colnames(k975dds) %in% c("CM_control_batch1",
                               "CM_DMSO_ctrl_rep1_1",
                               "CM_DMSO_ctrl_rep2_1",
                               "SH_control_batch1",
                               "SH_DMSO_ctrl_rep1_1",
-                              "SH_DMSO_ctrl_rep2_1") ~ "DMSO",
+                              "SH_DMSO_ctrl_rep2_1",
+                              "CM_DMSO_ctrl_rep3") ~ "DMSO",
  .default = colnames(k975dds)
   )
 )
@@ -456,7 +469,11 @@ k975dds$batch <- as.factor(
       "SH_24h_rep2_1",
       "SH_48h_rep2_1",
       "CM_DMSO_ctrl_rep2_1",
-      "SH_DMSO_ctrl_rep2_1"
+      "SH_DMSO_ctrl_rep2_1",
+      # rep3: RNA prepared together with rep2 (same replicate), sequenced separately
+      "CM_24h_rep3",
+      "CM_48h_rep3",
+      "CM_DMSO_ctrl_rep3"
     ) ~ "batch3",
     .default = colnames(k975dds)
   )
@@ -824,9 +841,9 @@ ssgsea_mes_adr_cellines <- GSVA::gsva(our_data_param,
 
 # Replicate groups to average (CM_48h has only 2 replicates)
 replicate_groups <- list(
-  CM_24h     = c("CM_24h_batch1",     "CM_24h_rep1_1",       "CM_24h_rep2_1"),
-  CM_48h     = c("CM_48h_batch1",     "CM_48h_rep1_1"),
-  CM_control = c("CM_control_batch1", "CM_DMSO_ctrl_rep1_1", "CM_DMSO_ctrl_rep2_1"),
+  CM_24h     = c("CM_24h_batch1",     "CM_24h_rep1_1",       "CM_24h_rep2_1",       "CM_24h_rep3"),
+  CM_48h     = c("CM_48h_batch1",     "CM_48h_rep1_1",       "CM_48h_rep3"),
+  CM_control = c("CM_control_batch1", "CM_DMSO_ctrl_rep1_1", "CM_DMSO_ctrl_rep2_1", "CM_DMSO_ctrl_rep3"),
   SH_24h     = c("SH_24h_batch1",     "SH_24h_rep1_1",       "SH_24h_rep2_1"),
   SH_48h     = c("SH_48h_batch1",     "SH_48h_rep1_1",       "SH_48h_rep2_1"),
   SH_control = c("SH_control_batch1", "SH_DMSO_ctrl_rep1_1", "SH_DMSO_ctrl_rep2_1")
@@ -874,12 +891,12 @@ ssgsea_mes_adr_cellines_MES <- as.data.frame(ssgsea_mes_adr_cellines)
 ssgsea_mes_adr_cellines_MES <- ssgsea_mes_adr_cellines_MES["Mesenchymal", 
                                                            c(
   "CM_control_batch1",
-  "CM_DMSO_ctrl_rep1_1", "CM_DMSO_ctrl_rep2_1",
-  "CM_24h_batch1",     
-  "CM_24h_rep1_1",       "CM_24h_rep2_1",
-  "CM_48h_batch1",     
-  "CM_48h_rep1_1",
-  "SH_control_batch1", 
+  "CM_DMSO_ctrl_rep1_1", "CM_DMSO_ctrl_rep2_1", "CM_DMSO_ctrl_rep3",
+  "CM_24h_batch1",
+  "CM_24h_rep1_1",       "CM_24h_rep2_1",       "CM_24h_rep3",
+  "CM_48h_batch1",
+  "CM_48h_rep1_1",       "CM_48h_rep3",
+  "SH_control_batch1",
   "SH_DMSO_ctrl_rep1_1", "SH_DMSO_ctrl_rep2_1",
   "SH_24h_batch1",
   "SH_24h_rep1_1",       "SH_24h_rep2_1",
@@ -925,7 +942,7 @@ ssgsea_mes_adr_ncc_noradr_heatmap_ave_MES <- pheatmap::pheatmap(ssgsea_mes_adr_c
                                                         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
                                                         show_colnames = TRUE)
 
-ggsave(file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_all.pdf"),
+ggsave(file.path(PATHS$results_dir, "ssgsea_mes_adr_heatmap_all_averaged_only_MES.pdf"),
        plot = ssgsea_mes_adr_ncc_noradr_heatmap_ave_MES,
         width = 22, height = 12, units = "cm")
 ```
@@ -999,7 +1016,7 @@ score_long$MES <- ssgsea_mes_adr_cellines[mes_name, score_long$sample]
 score_long$cell  <- sub("^(CM|SH)_.*", "\\1", score_long$sample)
 score_long$group <- ifelse(grepl("_batch1$", score_long$sample),
                            "batch1",
-                           stringr::str_extract(score_long$sample, "rep[12]"))
+                           stringr::str_extract(score_long$sample, "rep[0-9]"))
 # A "series" is one time course: e.g. CM_batch1, CM_rep1, SH_rep2, ...
 score_long$series <- paste(score_long$cell, score_long$group, sep = "_")
 
@@ -1078,17 +1095,20 @@ delta_mat <-  delta_mat["MES",
   "CM_batch1_DMSO",
   "CM_rep2_DMSO",
   "CM_rep1_DMSO",
+  "CM_rep3_DMSO",
   "SH_batch1_DMSO",
   "SH_rep1_DMSO",
   "SH_rep2_DMSO",
   "CM_batch1_24h",
   "CM_rep1_24h",
   "CM_rep2_24h",
+  "CM_rep3_24h",
   "SH_batch1_24h",
   "SH_rep1_24h",
   "SH_rep2_24h",
   "CM_batch1_48h",
   "CM_rep1_48h",
+  "CM_rep3_48h",
   "SH_batch1_48h",
   "SH_rep1_48h",
   "SH_rep2_48h"
