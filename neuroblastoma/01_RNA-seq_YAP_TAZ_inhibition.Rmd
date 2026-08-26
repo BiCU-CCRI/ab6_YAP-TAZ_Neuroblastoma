@@ -536,7 +536,7 @@ resultsNames(k975dds)
 deg_results <- generateResults(
   dds_object = k975dds,
   coeff_name = "time_h24_vs_DMSO",
-  cond_numerator = "24h",
+  cond_numerator = "h24",
   cond_denominator = "DMSO",
   cond_variable = "time",
   ensemblAnnot = annotationData,
