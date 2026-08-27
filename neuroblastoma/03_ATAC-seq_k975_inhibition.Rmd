@@ -1625,10 +1625,10 @@ if (nrow(motif_scores) == 0) {
 We want to check how TEAD/AP1 motifs are co-localized in the 24h sample. We will test the real data and make the comparison to simultaed data.
 ```{r Comparison to simulated data }
 # Compare real vs simulated data to assess enrichment significance
-h24_control_specific_peaks <- ATAC_dds_results_24h$results_signif %>% 
+h24_control_specific_peaks <- ATAC_dds_results_24h %>% 
   dplyr::filter(log2FoldChange < 0) %>% 
   dplyr::pull(PeakId)
-h24_specific_peaks <- ATAC_dds_results_24h$results_signif %>% 
+h24_specific_peaks <- ATAC_dds_results_24h %>% 
   dplyr::filter(log2FoldChange > 0) %>% 
   dplyr::pull(PeakId)
 
@@ -1847,10 +1847,10 @@ chisq.test(contingency_table_AP1)
 # TEAD/AP1 motif co-localization analysis for 48h treatment
 # Repeat analysis for longer treatment timepoint
 drg_trtm_ATAC
-ATAC_dds_results_control_48h <- ATAC_dds_results_48h$results_signif %>% 
+ATAC_dds_results_control_48h <- ATAC_dds_results_48h %>% 
   dplyr::filter(log2FoldChange < 0) %>% 
   dplyr::pull(PeakId)
-h48_specific_peaks <- ATAC_dds_results_48h$results_signif %>% 
+h48_specific_peaks <- ATAC_dds_results_48h %>% 
   dplyr::filter(log2FoldChange > 0) %>% 
   dplyr::pull(PeakId)
 
@@ -1879,7 +1879,7 @@ seqnames(genome_used) <- sub("^.{1,2}_", "", seqnames(genome_used))
 seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
 seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
 # load mask regions 
-blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions <- read.delim("~/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
 blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
                                               seqnames.field = "V1", 
                                               start.field = "V2", 
@@ -2068,7 +2068,7 @@ chisq.test(contingency_table_AP1)
 # Test for MES/ADRN signature enrichment in TEAD/AP1 peaks
 
 import::from(
-  .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+  .from = "~/neuroblastoma/resources/utilityScripts.R",
   "chipEnrichAndExport"
 )
 locusdef <- "5kb"
@@ -2076,10 +2076,10 @@ our_rna_seq_terms <- path.expand("~/neuroblastoma/resources/mes_adrn_GS_frm_RNA_
 res_dir <- path.expand("~/neuroblastoma/results/ATAC-seq/ATAC-seq_drug_treatment/")
 
 drg_trtm_ATAC
-ATAC_dds_results_control <- ATAC_dds_results_24h$results_signif %>% 
+ATAC_dds_results_control <- ATAC_dds_results_24h %>% 
   dplyr::filter(log2FoldChange < 0) %>% 
   dplyr::pull(PeakId)
-h24_specific_peaks <- ATAC_dds_results_24h$results_signif %>% 
+h24_specific_peaks <- ATAC_dds_results_24h %>% 
   dplyr::filter(log2FoldChange > 0) %>% 
   dplyr::pull(PeakId)
 opts <- list()

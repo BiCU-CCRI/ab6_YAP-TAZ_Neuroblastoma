@@ -381,15 +381,12 @@ rownames(heatmap_counts) <- vsd@rowRanges$PeakId
 
 all_ADR_peaks <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$gene_category_our_RNAseq == "g_ADRN"])
 all_MES_peaks <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$gene_category_our_RNAseq == "g_MES"])
-#debug
-#all_MES_peaks_MAML2 <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$Gene.Name == "MAML2"])
 
 # removed experiment batch effects! ? use experimen+cell_line removed???
 ATAC_signif <- ATAC_dds_results$results_signif
 heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$PeakId, ]
 heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_MES_peaks, ]
 heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_ADR_peaks, ]
-#heatmap_counts_MAML_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_MES_peaks_MAML2, ]
 
 annotation_col <- metadata_heatmap %>%
   dplyr::select(cell_line, time) %>% 
@@ -459,7 +456,7 @@ heatmap <- pheatmap::pheatmap(heatmap_counts_ADRN_spec_genes,
                               annotation_colors = ann_colors,
                               #annotation_row = row_annot_symbols,
                               show_colnames = FALSE,
-                              show_rownames = FALSE,
+                              show_rownames = TRUE,
                               cluster_cols = FALSE,
                               color = color.scheme,
                               fontsize = 10, fontsize_row = 10) #height=10, cellwidth = 11, cellheight = 11

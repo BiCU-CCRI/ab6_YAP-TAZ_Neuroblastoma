@@ -391,7 +391,7 @@ chrom_access_variability_ord_results <- chrom_access_variability_ord %>%
   dplyr::left_join(., devZscores_df, by = "jaspar_id")
 
 message("Saving motif enrichment results")
-ntop <- 50
+ntop <- 100
 topVariable <- chrom_access_variability_ord[1:ntop, ]
 topVariable <- tibble::rownames_to_column(topVariable, var="jaspar_id")
 

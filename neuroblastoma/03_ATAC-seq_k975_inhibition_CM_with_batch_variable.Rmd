@@ -1039,7 +1039,7 @@ seqnames(genome_used) <- sub("^.{1,2}_", "", seqnames(genome_used))
 seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
 seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
 # load mask regions 
-blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions <- read.delim("~/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
 blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
                                               seqnames.field = "V1", 
                                               start.field = "V2", 
@@ -1228,12 +1228,12 @@ chisq.test(contingency_table_AP1)
 # Test for MES/ADRN signature enrichment in TEAD/AP1 peaks
 
 import::from(
-  .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+  .from = "~/neuroblastoma/resources/utilityScripts.R",
   "chipEnrichAndExport"
 )
 locusdef <- "5kb"
-our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
-res_dir <- "/home/rstudio/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
+our_rna_seq_terms <- "~/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+res_dir <- "~/neuroblastoma/results/ATAC-seq_drug_treatment/"
 
 drg_trtm_ATAC
 ATAC_dds_results_control <- ATAC_dds_results_24h$results_signif %>% 
