@@ -26,6 +26,7 @@ knitr::opts_chunk$set(
 ```{r setup-libraries}
 # Set up the environment ####
 deg_dir <- "~/neuroblastoma/results/ATAC-seq/ATAC-seq_drug_treatment_remove_legacy_CM/"
+
 if(!dir.exists(deg_dir)){dir.create(deg_dir)}
 ## Loading libraries ####
 library(dplyr)
@@ -264,6 +265,44 @@ openxlsx::saveWorkbook(XLSX_OUT, file.path(deg_dir,  paste0("DAR_results_time_24
 ```
 
 
+```{r export-bed-files}
+# Export differentially accessible peaks (24h and 48h vs control) and the
+# consensus peak set as BED files for downstream tools (IGV, bedtools, GREAT...).
+
+# Helper: turn a DAR results table into a GRanges and write it as a BED file.
+# The HOMER annotation coordinates (Chr/Start/End) are 1-based; rtracklayer::export
+# writes proper 0-based BED starts automatically. log2FoldChange is stored as the
+# BED score so up/down peaks stay distinguishable in genome browsers.
+export_dars_to_bed <- function(dar_results, bed_path) {
+  dar_results <- dar_results[!is.na(dar_results$Chr) & !is.na(dar_results$Start) & !is.na(dar_results$End), ]
+  dar_gr <- GenomicRanges::GRanges(
+    seqnames = ifelse(grepl("^chr", dar_results$Chr), dar_results$Chr, paste0("chr", dar_results$Chr)),
+    ranges   = IRanges::IRanges(start = dar_results$Start, end = dar_results$End),
+    strand   = ifelse(dar_results$Strand %in% c("+", "-"), dar_results$Strand, "*")
+  )
+  names(dar_gr)     <- dar_results$PeakId
+  dar_gr$name       <- dar_results$PeakId
+  dar_gr$score      <- dar_results$log2FoldChange
+  rtracklayer::export.bed(dar_gr, con = bed_path)
+  invisible(dar_gr)
+}
+
+# Significant DARs (padj < 0.05 & |log2FC| > 1, as filtered above)
+export_dars_to_bed(ATAC_dds_results_48h$results_signif,
+                   file.path(deg_dir, "DAR_peaks_time_48h_vs_control.bed"))
+export_dars_to_bed(ATAC_dds_results_24h$results_signif,
+                   file.path(deg_dir, "DAR_peaks_time_24h_vs_control.bed"))
+
+# Consensus peaks used in the differential analysis (post count-filtering)
+consensus_gr <- SummarizedExperiment::rowRanges(drg_trtm_ATAC)
+names(consensus_gr)   <- mcols(drg_trtm_ATAC)$PeakId
+consensus_gr$name     <- mcols(drg_trtm_ATAC)$PeakId
+mcols(consensus_gr)   <- mcols(consensus_gr)[, "name", drop = FALSE]
+rtracklayer::export.bed(consensus_gr,
+                        con = file.path(deg_dir, "consensus_peaks.bed"))
+```
+
+
 
 ```{r generate-heatmaps}
 # Generate heatmaps of differentially accessible regions
@@ -331,10 +370,13 @@ annotation_col <- metadata_heatmap %>%
 heatmap_counts <- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
 
 heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_MES_spec_genes))]
-rownames(heatmap_counts_MES_spec_genes) <- ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_MES_spec_genes), "Gene.Name"]
+# Map PeakId -> Gene.Name by matching on PeakId so labels follow the matrix row
+# order. Do NOT use `ATAC_signif[PeakId %in% rownames, "Gene.Name"]`: that returns
+# names in ATAC_signif's padj order, which scrambles labels vs the peak-ordered rows.
+rownames(heatmap_counts_MES_spec_genes) <- ATAC_signif$Gene.Name[match(rownames(heatmap_counts_MES_spec_genes), ATAC_signif$PeakId)]
 
 heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN_spec_genes))]
-rownames(heatmap_counts_ADRN_spec_genes) <- ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_ADRN_spec_genes), "Gene.Name"]
+rownames(heatmap_counts_ADRN_spec_genes) <- ATAC_signif$Gene.Name[match(rownames(heatmap_counts_ADRN_spec_genes), ATAC_signif$PeakId)]
 
 #heatmap_row_annot_MES_spec_genes <- data.frame(gene_name = ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_MES_spec_genes), "Gene.Name"],
 #                                               row.names =  row.names(heatmap_counts_MES_spec_genes))
@@ -1200,7 +1242,7 @@ seqnames(genome_used) <- sub("^.{1,2}_", "", seqnames(genome_used))
 seqnames(genome_used) <- sub("v", ".", seqnames(genome_used))
 seqnames(genome_used) <- sub("^M", "MT", seqnames(genome_used))
 # load mask regions 
-blacklist_regions <- read.delim("~/workspace/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
+blacklist_regions <- read.delim("~/neuroblastoma/resources/hg38-blacklist.v2.bed", header = FALSE)
 blacklist_regions <- makeGRangesFromDataFrame(blacklist_regions, 
                                               seqnames.field = "V1", 
                                               start.field = "V2", 
@@ -1389,12 +1431,12 @@ chisq.test(contingency_table_AP1)
 # Test for MES/ADRN signature enrichment in TEAD/AP1 peaks
 
 import::from(
-  .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+  .from = "~/neuroblastoma/resources/utilityScripts.R",
   "chipEnrichAndExport"
 )
 locusdef <- "5kb"
-our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
-res_dir <- "/home/rstudio/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
+our_rna_seq_terms <- "~/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+res_dir <- "~/neuroblastoma/results/ATAC-seq_drug_treatment/"
 
 drg_trtm_ATAC
 ATAC_dds_results_control <- ATAC_dds_results_24h$results_signif %>% 
@@ -1583,12 +1625,12 @@ summary_table
 # Gene set enrichment analysis for 48h treatment
 # Repeat enrichment analysis for longer treatment timepoint
 import::from(
-  .from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
+  .from = "~/neuroblastoma/resources/utilityScripts.R",
   "chipEnrichAndExport"
 )
 locusdef <- "5kb"
-our_rna_seq_terms <- "/home/rstudio/workspace/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
-res_dir <- "/home/rstudio/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
+our_rna_seq_terms <- "/home/rstudio/neuroblastoma/resources/mes_adrn_GS_frm_RNA_seq.tsv"
+res_dir <- "/home/rstudio/neuroblastoma/results/ATAC-seq_drug_treatment/"
 
 drg_trtm_ATAC
 ATAC_dds_results_control <- ATAC_dds_results_48h$results_signif %>% 

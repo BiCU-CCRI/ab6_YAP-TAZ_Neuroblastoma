@@ -381,12 +381,15 @@ rownames(heatmap_counts) <- vsd@rowRanges$PeakId
 
 all_ADR_peaks <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$gene_category_our_RNAseq == "g_ADRN"])
 all_MES_peaks <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$gene_category_our_RNAseq == "g_MES"])
+#debug
+#all_MES_peaks_MAML2 <- c(mcols(drg_trtm_ATAC)$PeakId[mcols(drg_trtm_ATAC)$Gene.Name == "MAML2"])
 
 # removed experiment batch effects! ? use experimen+cell_line removed???
 ATAC_signif <- ATAC_dds_results$results_signif
 heatmap_counts <- heatmap_counts[rownames(heatmap_counts) %in% ATAC_dds_results$results_signif$PeakId, ]
 heatmap_counts_MES_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_MES_peaks, ]
 heatmap_counts_ADRN_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_ADR_peaks, ]
+#heatmap_counts_MAML_spec_genes <- heatmap_counts[rownames(heatmap_counts) %in% all_MES_peaks_MAML2, ]
 
 annotation_col <- metadata_heatmap %>%
   dplyr::select(cell_line, time) %>% 
@@ -394,10 +397,13 @@ annotation_col <- metadata_heatmap %>%
 heatmap_counts <- heatmap_counts[, match(rownames(annotation_col), colnames(heatmap_counts))]
 
 heatmap_counts_MES_spec_genes <- heatmap_counts_MES_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_MES_spec_genes))]
-rownames(heatmap_counts_MES_spec_genes) <- ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_MES_spec_genes), "Gene.Name"]
+# Map PeakId -> Gene.Name by matching on PeakId so labels follow the matrix row
+# order. Do NOT use `ATAC_signif[PeakId %in% rownames, "Gene.Name"]`: that returns
+# names in ATAC_signif's padj order, which scrambles labels vs the peak-ordered rows.
+rownames(heatmap_counts_MES_spec_genes) <- ATAC_signif$Gene.Name[match(rownames(heatmap_counts_MES_spec_genes), ATAC_signif$PeakId)]
 
 heatmap_counts_ADRN_spec_genes <- heatmap_counts_ADRN_spec_genes[, match(rownames(annotation_col), colnames(heatmap_counts_ADRN_spec_genes))]
-rownames(heatmap_counts_ADRN_spec_genes) <- ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_ADRN_spec_genes), "Gene.Name"]
+rownames(heatmap_counts_ADRN_spec_genes) <- ATAC_signif$Gene.Name[match(rownames(heatmap_counts_ADRN_spec_genes), ATAC_signif$PeakId)]
 
 #heatmap_row_annot_MES_spec_genes <- data.frame(gene_name = ATAC_signif[ATAC_signif$PeakId %in% row.names(heatmap_counts_MES_spec_genes), "Gene.Name"],
 #                                               row.names =  row.names(heatmap_counts_MES_spec_genes))
