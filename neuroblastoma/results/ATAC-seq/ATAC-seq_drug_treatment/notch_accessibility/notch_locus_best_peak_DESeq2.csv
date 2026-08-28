@@ -1,0 +1,7 @@
+"gene","contrast","n_tested_peaks","n_signif_peaks","best_PeakId","best_log2FC","best_padj","best_annotation"
+"MAML2","24h_vs_control",64,0,"Interval_88786",-0.672,0.0163,"intron (ENSG00000184384, intro"
+"MAML2","48h_vs_control",72,0,"Interval_88786",-0.94,0.000215,"intron (ENSG00000184384, intro"
+"NOTCH1","24h_vs_control",4,0,"Interval_491600",-0.021,1,"TTS (ENSG00000148400)"
+"NOTCH1","48h_vs_control",6,0,"Interval_491605",-0.085,0.642,"promoter-TSS (ENSG00000148400)"
+"NOTCH2","24h_vs_control",9,0,"Interval_22375",-0.031,0.768,"promoter-TSS (ENSG00000134250)"
+"NOTCH2","48h_vs_control",11,0,"Interval_22381",-0.287,0.248,"intron (ENSG00000134250, intro"

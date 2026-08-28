@@ -1,0 +1,32 @@
+================================================================
+ Extended MES super-enhancer accessibility comparison
+ Generated: 2026-08-26 11:21:07.619647
+================================================================
+
+Design: 2 region sets x 3 sample subsets = 6 experiments.
+  Region sets : new (/home/abykov/neuroblastoma/temp_results/BEDs/CLB_SKN_M_u.bed), old (/nobackup/lab_ccri_bicu/internal/abykov/projects/ab6_soeren_neuroblastoma/adaptation_for_cemm/ab6_YAP-TAZ_Neuroblastoma/neuroblastoma_backup202607/temp_results/BEDs/CLB_SKN_M_u.bed)
+  Sample sets : all18 (18), legacy S165 (6), new_batch (12)
+  Completed   : 6 of 6 experiments
+
+Per-experiment / per-cell-line summary
+(SEs changed >1.5-fold vs control; median log2FC over all SEs):
+
+  [new regions | all18 | CLB_Ma ] n=337  24h: -3/+2 (med -0.047)  48h: -1/+2 (med +0.075)
+  [new regions | all18 | SK_N_SH] n=337  24h: -4/+0 (med -0.188)  48h: -3/+0 (med -0.010)
+  [old regions | all18 | CLB_Ma ] n=192  24h: -3/+0 (med -0.054)  48h: -0/+0 (med +0.063)
+  [old regions | all18 | SK_N_SH] n=192  24h: -5/+1 (med -0.237)  48h: -3/+1 (med -0.045)
+  [new regions | legacy | CLB_Ma ] n=337  24h: -3/+16 (med +0.183)  48h: -24/+1 (med -0.238)
+  [new regions | legacy | SK_N_SH] n=337  24h: -4/+4 (med -0.013)  48h: -7/+0 (med -0.079)
+  [old regions | legacy | CLB_Ma ] n=192  24h: -3/+7 (med +0.180)  48h: -12/+0 (med -0.239)
+  [old regions | legacy | SK_N_SH] n=192  24h: -7/+3 (med -0.095)  48h: -4/+0 (med -0.105)
+  [new regions | new_batch | CLB_Ma ] n=337  24h: -10/+2 (med -0.183)  48h: -0/+6 (med +0.199)
+  [new regions | new_batch | SK_N_SH] n=337  24h: -13/+0 (med -0.281)  48h: -2/+2 (med +0.020)
+  [old regions | new_batch | CLB_Ma ] n=192  24h: -5/+0 (med -0.176)  48h: -0/+3 (med +0.189)
+  [old regions | new_batch | SK_N_SH] n=192  24h: -11/+1 (med -0.295)  48h: -3/+1 (med -0.004)
+
+Per-experiment outputs (heatmap, boxplots, detailed + top50 tables) are under:
+  /home/abykov/neuroblastoma/results/ATAC-seq/ATAC-seq_drug_treatment/MES_SE_extended_comparisons/<region>_regions__<samples>_samples/
+Combined tables:
+  extended_SE_comparisons_combined_summary.csv
+  extended_SE_comparisons_combined_detailed.csv
+================================================================

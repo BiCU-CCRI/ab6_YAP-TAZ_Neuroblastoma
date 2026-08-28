@@ -1,0 +1,10 @@
+"sample","batch","time","libsize","gini","frac_top1","frac_zero"
+"CM_24h_ATAC_S165170_REP1","legacy","24h",9120395,0.8164,0.2477,0.1957
+"CM_48h_ATAC_S165167_REP1","legacy","48h",12621609,0.7944,0.2308,0.1093
+"CM_control_ATAC_S165169_REP1","legacy","control",10484316,0.8102,0.2387,0.1652
+"CM_24h_rep1_REP1","new_rep1","24h",17997146,0.8305,0.2298,0.1544
+"CM_48h_rep1_REP1","new_rep1","48h",9267249,0.8358,0.2321,0.3209
+"CM_DMSO_ctrl_rep1_REP1","new_rep1","control",12850799,0.8362,0.2309,0.2432
+"CM_24h_rep2_REP1","new_rep2","24h",17901285,0.8214,0.221,0.1441
+"CM_48h_rep2_REP1","new_rep2","48h",21754023,0.8186,0.2167,0.1215
+"CM_DMSO_ctrl_rep2_REP1","new_rep2","control",15887826,0.8065,0.2152,0.1142

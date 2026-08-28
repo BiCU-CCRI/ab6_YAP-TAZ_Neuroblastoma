@@ -1,0 +1,3 @@
+"cell_line","total_ses","decreased_24h","increased_24h","decreased_48h","increased_48h","median_fc_24h","median_fc_48h","mean_control_accessibility"
+"CLB_Ma",337,3,16,24,1,0.182766640444659,-0.238187130319632,0.181848189018939
+"SK_N_SH",337,4,4,7,0,-0.0126347467258704,-0.0789070295197192,0.173215547617127
