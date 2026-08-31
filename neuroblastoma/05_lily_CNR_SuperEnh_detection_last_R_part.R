@@ -786,9 +786,9 @@ mes_adrn_gene_list <- list(
 
 # GSEA
 # REFACTOR!!!!!
-CLB_SKN_A_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
-CLB_SKN_M_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
-CLB_SKN_AM_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
+CLB_SKN_A_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_A_u_homer_annot.csv", sep = "\t")
+CLB_SKN_M_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_u_homer_annot.csv", sep = "\t")
+CLB_SKN_AM_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_u_homer_annot.csv", sep = "\t")
 
 CLB_SKN_A_SEs_annot <- hypeR::hypeR(signature = CLB_SKN_A_SEs_annot_raw$Gene.Name, 
                                     genesets = mes_adrn_gene_list, 
@@ -866,9 +866,9 @@ mes_adrn_gene_list <- list(
 
 # GSEA
 # REFACTOR!!!!!
-CLB_SKN_A_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
-CLB_SKN_M_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
-CLB_SKN_AM_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
+CLB_SKN_A_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_A_u_homer_annot.csv", sep = "\t")
+CLB_SKN_M_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_u_homer_annot.csv", sep = "\t")
+CLB_SKN_AM_SEs_annot_raw <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_u_homer_annot.csv", sep = "\t")
 
 CLB_SKN_A_SEs_annot <- hypeR::hypeR(signature = CLB_SKN_A_SEs_annot_raw$Gene.Name, 
                                     genesets = mes_adrn_gene_list, 

@@ -14,3 +14,13 @@ perl ${homer_dir}/bin/annotatePeaks.pl \
 
 perl ${homer_dir}/bin/annotatePeaks.pl \
  ~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_chr.bed hg38 > ~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv
+
+# annotate the _u - super unique SEs
+perl ${homer_dir}/bin/annotatePeaks.pl \
+~/neuroblastoma/temp_results/BEDs/CLB_SKN_A_u_chr.bed hg38 > ~/neuroblastoma/temp_results/BEDs/CLB_SKN_A_u_homer_annot.csv
+
+perl ${homer_dir}/bin/annotatePeaks.pl \
+ ~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_u_chr.bed hg38 > ~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_u_homer_annot.csv
+
+perl ${homer_dir}/bin/annotatePeaks.pl \
+ ~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_u_chr.bed hg38 > ~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_u_homer_annot.csv
