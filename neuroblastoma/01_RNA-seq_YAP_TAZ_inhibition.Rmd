@@ -1136,3 +1136,246 @@ pdf(file.path(PATHS$results_dir, "ssgsea_mes_adr_delta_heatmap.pdf"),
 delta_heatmap
 dev.off()
 ```
+
+```{r target_gene_boxplots}
+# Boxplots of normalized (batch-corrected VST) expression for the YAP/TAZ and AP-1
+# target genes, comparing DMSO -> 24h -> 48h within each cell line separately.
+#
+# Statistics come from DESeq2 (negative-binomial GLM), NOT a t-test on the VST values.
+# The existing deg_results (design ~ cell_line + time) gives the time effect POOLED
+# across both cell lines and has no 24h-vs-48h contrast, so it cannot annotate per-cell-
+# line panels. We therefore refit with a combined cell_line x time factor and extract the
+# six within-cell-line pairwise contrasts. The boxplots still SHOW the batch-corrected VST
+# values (for display); the p-values come from the count model.
+
+genes_boxplot <- c("YAP1", "WWTR1", "JUN", "FOSL1", "FOSL2", "CCN2", "ANKRD1", "NOTCH1", "NOTCH2", "MAML2")
+
+# Map gene symbols to the ensembl ids used as rownames of the expression matrix.
+gene_ids <- annotationData$ensembl_id[match(genes_boxplot, annotationData$gene_symbol)]
+names(gene_ids) <- genes_boxplot
+stopifnot(!any(is.na(gene_ids)))
+
+# --- Display values: batch-corrected VST (same matrix used for the heatmaps) ----------
+expr_mat <- SummarizedExperiment::assay(transf_batch_NObatch_experiment)
+
+meta <- as.data.frame(colData(k975dds)[, c("cell_line", "time")])
+meta$sample <- rownames(meta)
+
+expr_long <- lapply(genes_boxplot, function(g) {
+  data.frame(
+    sample = colnames(expr_mat),
+    gene   = g,
+    expr   = expr_mat[gene_ids[[g]], ],
+    stringsAsFactors = FALSE
+  )
+}) %>%
+  dplyr::bind_rows() %>%
+  dplyr::left_join(meta, by = "sample")
+
+expr_long$time <- factor(expr_long$time,
+                         levels = c("DMSO", "h24", "h48"),
+                         labels = c("DMSO", "24h", "48h"))
+expr_long$gene <- factor(expr_long$gene, levels = genes_boxplot)
+
+# --- Stats: refit DESeq2 with a combined cell_line x time factor ----------------------
+dds_group <- k975dds
+dds_group$group <- factor(paste(dds_group$cell_line, dds_group$time, sep = "_"))
+design(dds_group) <- ~ batch + group   # keep batch control; group carries cell_line & time
+dds_group <- DESeq2::DESeq(dds_group)
+
+# padj for our genes for one within-cell-line contrast (numerator vs denominator group).
+get_padj <- function(num, den) {
+  res <- DESeq2::results(dds_group, contrast = c("group", num, den))
+  as.numeric(res[gene_ids, "padj"])   # ordered as genes_boxplot
+}
+
+# The six within-cell-line pairwise comparisons.
+stat_spec <- data.frame(
+  cell_line = c("CLBMa", "CLBMa", "CLBMa", "SK_N_SH", "SK_N_SH", "SK_N_SH"),
+  group1    = c("DMSO",  "DMSO",  "24h",   "DMSO",    "DMSO",    "24h"),
+  group2    = c("24h",   "48h",   "48h",   "24h",     "48h",     "48h"),
+  num       = c("CLBMa_h24", "CLBMa_h48", "CLBMa_h48",
+                "SK_N_SH_h24", "SK_N_SH_h48", "SK_N_SH_h48"),
+  den       = c("CLBMa_DMSO", "CLBMa_DMSO", "CLBMa_h24",
+                "SK_N_SH_DMSO", "SK_N_SH_DMSO", "SK_N_SH_h24"),
+  stringsAsFactors = FALSE
+)
+
+stat_df <- dplyr::bind_rows(lapply(seq_len(nrow(stat_spec)), function(i) {
+  s <- stat_spec[i, ]
+  data.frame(
+    cell_line = s$cell_line,
+    gene      = genes_boxplot,
+    group1    = s$group1,
+    group2    = s$group2,
+    padj      = get_padj(s$num, s$den),
+    stringsAsFactors = FALSE
+  )
+}))
+
+# Stagger bracket heights per (cell_line, gene) using each panel's own y-range.
+y_ranges <- expr_long %>%
+  dplyr::group_by(cell_line, gene) %>%
+  dplyr::summarise(ymax = max(expr), step = (max(expr) - min(expr)) * 0.14,
+                   .groups = "drop")
+
+stat_df <- stat_df %>%
+  dplyr::group_by(cell_line, gene) %>%
+  dplyr::mutate(rank = dplyr::row_number()) %>%
+  dplyr::ungroup() %>%
+  dplyr::left_join(y_ranges, by = c("cell_line", "gene")) %>%
+  dplyr::mutate(
+    y.position = ymax + step * rank,
+    gene       = factor(gene, levels = genes_boxplot),
+    label      = ifelse(is.na(padj), "ns",
+                        ifelse(padj < 0.05, formatC(padj, format = "e", digits = 1), "ns"))
+  )
+
+# --- Export the expression values behind the DESeq2-annotated boxplots ----------------
+# (a) the DESeq2 model's normalized counts for these genes/samples (the "new model"
+#     expression), and (b) the per-cell-line padj stats table used for the brackets.
+norm_counts <- DESeq2::counts(dds_group, normalized = TRUE)[gene_ids, , drop = FALSE]
+rownames(norm_counts) <- genes_boxplot
+norm_long <- data.frame(gene = genes_boxplot, norm_counts, check.names = FALSE) %>%
+  tidyr::pivot_longer(-gene, names_to = "sample", values_to = "norm_count") %>%
+  dplyr::left_join(meta, by = "sample") %>%
+  dplyr::arrange(gene, cell_line, time, sample)
+
+readr::write_csv(norm_long,
+                 file.path(PATHS$results_dir, "target_gene_expression_DESeq2_normalized_counts.csv"))
+readr::write_csv(dplyr::select(stat_df, cell_line, gene, group1, group2, padj),
+                 file.path(PATHS$results_dir, "target_gene_stats_DESeq2_padj.csv"))
+
+time_colors <- c(DMSO = "#E9D8A6", "24h" = "#D9BE6D", "48h" = "#d6ac2f")
+
+make_target_boxplot <- function(df, stats_df, cell_line_label) {
+  ggplot(df, aes(x = time, y = expr)) +
+    geom_boxplot(aes(fill = time), outlier.shape = NA, alpha = 0.8) +
+    geom_jitter(width = 0.15, size = 1.4, colour = "grey20") +
+    facet_wrap(~ gene, scales = "free_y", nrow = 1) +
+    ggpubr::stat_pvalue_manual(stats_df, label = "label",
+                               xmin = "group1", xmax = "group2",
+                               y.position = "y.position",
+                               tip.length = 0.01, size = 2.8) +
+    scale_fill_manual(values = time_colors) +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.18))) +
+    labs(title = paste0("Target gene expression — ", cell_line_label),
+         subtitle = "Batch-corrected VST (display); DESeq2 padj (Benjamini-Hochberg)",
+         x = NULL, y = "Normalized expression (VST)", fill = "Time") +
+    theme_bw() +
+    theme(legend.position = "none")
+}
+
+# One figure per cell line.
+for (cl in levels(factor(expr_long$cell_line))) {
+  df_cl   <- dplyr::filter(expr_long, cell_line == cl)
+  stat_cl <- dplyr::filter(stat_df, cell_line == cl)
+  p_cl <- make_target_boxplot(df_cl, stat_cl, cl)
+  print(p_cl)
+  ggsave(file.path(PATHS$results_dir, paste0("target_gene_boxplots_", cl, ".pdf")),
+         plot = p_cl, width = 35, height = 12, units = "cm")
+}
+```
+
+```{r target_gene_boxplots_ttest}
+# Simpler alternative to the DESeq2-based figure above: pairwise t-tests computed
+# DIRECTLY on the batch-corrected VST values that are plotted. Less rigorous than the
+# count-model stats (ignores the negative-binomial dispersion model, and n is small per
+# group), but kept as a quick visual sanity check. Reuses expr_long from the chunk above.
+#
+# The design is PAIRED: each replicate series (batch1 / rep1 / rep2 / rep3) is one time
+# course DMSO -> 24h -> 48h of the same cells, so the tests are paired t-tests on the
+# within-series differences. ggpubr::stat_compare_means(paired = TRUE) would pair samples
+# by row order and break on the incomplete series (CLBMa has no 48h in rep2, SK_N_SH has
+# no rep3), so the tests are computed explicitly here — matching samples on the series id
+# and dropping series that lack one of the two time points — and drawn with
+# stat_pvalue_manual, as in the DESeq2 chunk above.
+
+# Series ("one time course") id, same convention as the ssGSEA dynamics chunk.
+expr_long <- expr_long %>%
+  dplyr::mutate(
+    series = paste(sub("^(CM|SH)_.*", "\\1", sample),
+                   ifelse(grepl("_batch1$", sample), "batch1",
+                          stringr::str_extract(sample, "rep[0-9]")),
+                   sep = "_")
+  )
+
+# Export the VST expression values plotted in BOTH boxplot sets (the boxes/points are the
+# same batch-corrected VST values in the DESeq2 and the t-test figures).
+readr::write_csv(
+  expr_long %>% dplyr::arrange(gene, cell_line, time, sample),
+  file.path(PATHS$results_dir, "target_gene_expression_VST.csv")
+)
+
+time_comparisons <- list(c("DMSO", "24h"), c("DMSO", "48h"), c("24h", "48h"))
+
+# Paired t-test of one gene, one cell line, one pair of time points: the two values of a
+# series are matched, series without both time points are dropped.
+paired_ttest <- function(df, g1, g2) {
+  wide <- df %>%
+    dplyr::filter(time %in% c(g1, g2)) %>%
+    dplyr::select(series, time, expr) %>%
+    tidyr::pivot_wider(names_from = time, values_from = expr) %>%
+    tidyr::drop_na(dplyr::all_of(c(g1, g2)))
+  d <- wide[[g2]] - wide[[g1]]
+  p <- if (length(d) < 2 || stats::sd(d) == 0) {
+    NA_real_
+  } else {
+    stats::t.test(wide[[g2]], wide[[g1]], paired = TRUE)$p.value
+  }
+  data.frame(group1 = g1, group2 = g2, n_pairs = length(d), p = p)
+}
+
+ttest_df <- dplyr::bind_rows(lapply(levels(factor(expr_long$cell_line)), function(cl) {
+  dplyr::bind_rows(lapply(genes_boxplot, function(g) {
+    df_g <- dplyr::filter(expr_long, cell_line == cl, gene == g)
+    dplyr::bind_rows(lapply(time_comparisons, function(cmp) {
+      cbind(cell_line = cl, gene = g, paired_ttest(df_g, cmp[1], cmp[2]))
+    }))
+  }))
+}))
+
+# Same bracket staggering / label formatting as the DESeq2 figure (y_ranges from above).
+ttest_df <- ttest_df %>%
+  dplyr::group_by(cell_line, gene) %>%
+  dplyr::mutate(rank = dplyr::row_number()) %>%
+  dplyr::ungroup() %>%
+  dplyr::left_join(y_ranges, by = c("cell_line", "gene")) %>%
+  dplyr::mutate(
+    y.position = ymax + step * rank,
+    gene       = factor(gene, levels = genes_boxplot),
+    label      = ifelse(is.na(p), "ns",
+                        ifelse(p < 0.05, formatC(p, format = "e", digits = 1), "ns"))
+  )
+
+readr::write_csv(dplyr::select(ttest_df, cell_line, gene, group1, group2, n_pairs, p),
+                 file.path(PATHS$results_dir, "target_gene_stats_paired_ttest_VST.csv"))
+
+make_target_boxplot_ttest <- function(df, stats_df, cell_line_label) {
+  ggplot(df, aes(x = time, y = expr)) +
+    geom_boxplot(aes(fill = time), outlier.shape = NA, alpha = 0.8) +
+    geom_jitter(width = 0.15, size = 1.4, colour = "grey20") +
+    facet_wrap(~ gene, scales = "free_y", nrow = 1) +
+    ggpubr::stat_pvalue_manual(stats_df, label = "label",
+                               xmin = "group1", xmax = "group2",
+                               y.position = "y.position",
+                               tip.length = 0.01, size = 2.8) +
+    scale_fill_manual(values = time_colors) +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.18))) +
+    labs(title = paste0("Target gene expression — ", cell_line_label),
+         subtitle = "Batch-corrected VST; paired t-tests on VST values (paired by replicate series)",
+         x = NULL, y = "Normalized expression (VST)", fill = "Time") +
+    theme_bw() +
+    theme(legend.position = "none")
+}
+
+# One figure per cell line (paired t-test version).
+for (cl in levels(factor(expr_long$cell_line))) {
+  df_cl   <- dplyr::filter(expr_long, cell_line == cl)
+  stat_cl <- dplyr::filter(ttest_df, cell_line == cl)
+  p_cl <- make_target_boxplot_ttest(df_cl, stat_cl, cl)
+  print(p_cl)
+  ggsave(file.path(PATHS$results_dir, paste0("target_gene_boxplots_ttest_", cl, ".pdf")),
+         plot = p_cl, width = 35, height = 12, units = "cm")
+}
+```
