@@ -32,8 +32,8 @@ suppressPackageStartupMessages({
 
 # Configuration
 PATHS <- list(
-  data_dir = "~/neuroblastoma/data/RNA-seq",
-  results_dir = "~/neuroblastoma/results/RNAseq/RNA-seq_shRNA_pairwise",
+  data_dir = "~/neuroblastoma/data/RNAseq",
+  results_dir = "~/neuroblastoma/results/RNA-seq/RNA-seq_shRNA_pairwise",
   resources_dir = "~/neuroblastoma/resources")
 
 # Create results directory
@@ -42,9 +42,10 @@ if(!dir.exists(PATHS$results_dir)) dir.create(PATHS$results_dir, recursive = TRU
 # Load utility functions
 source("~/neuroblastoma/resources/UtilityScriptsRNA-seq.R")
 
-# Load annotation data
+# load annotation
+path_folder_rna_seq_data <- "~/neuroblastoma/data/RNAseq"
 annotation_data <- read.table(
-  file = file.path(PATHS$data_dir, "rnaseq_deseq_global_annotation_gene.tsv"),
+  file = file.path(path_folder_rna_seq_data, "rnaseq_deseq_global_annotation_gene.tsv"),
   sep = "\t",
   header = TRUE
 )
@@ -374,7 +375,7 @@ message("Running GSVA analysis for MES/ADR signatures...")
 
 # Load MES/ADR gene signatures from previous RNA-seq analysis
 tryCatch({
-  RNA_SEQ_data <- openxlsx2::read_xlsx(file.path(here::here("neuroblastoma", "results", "RNA-seq"), "cell_type_MES_vs_ADR.xlsx"), sheet = 1)
+  RNA_SEQ_data <- openxlsx2::read_xlsx("~/neuroblastoma/results/RNA-seq/RNA-seq_MES_vs_ADR/tables/MES_vs_ADR_comprehensive_results.xlsx", sheet = 2)
   mes_adrn_gene_list <- RNA_SEQ_data %>%
     mutate(Term = if_else(log2FoldChange < 0, "ADRN", "MES"))
   sig_list_our_data <- list(
@@ -412,16 +413,19 @@ tryCatch({
   vsd_counts_matrix <- vsd_counts_matrix[df_temp_gsva$ensembl_id, ]
   rownames(vsd_counts_matrix) <- df_temp_gsva$gene_symbol
   
-  # Run GSVA/ssGSEA
-  ssgsea_mes_adr <- GSVA::gsva(
+  
+  # Run GSVA/ssGSEA (GSVA >= 1.50 parameter-object API)
+  vsd_counts_matrix <- as.matrix(vsd_counts_matrix)
+  our_data_param <- GSVA::ssgseaParam(
     vsd_counts_matrix,
     sig_list_our_data,
-    method = "ssgsea",
-    min.sz = 1, 
-    max.sz = Inf, 
-    ssgsea.norm = TRUE, 
-    verbose = TRUE, 
-    parallel.sz = 10
+    minSize = 1, maxSize = Inf,
+    normalize = TRUE
+  )
+  ssgsea_mes_adr <- GSVA::gsva(
+    our_data_param,
+    verbose = TRUE,
+    BPPARAM = BiocParallel::MulticoreParam(10)
   )
   
   # Create heatmap

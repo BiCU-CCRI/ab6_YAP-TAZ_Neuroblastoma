@@ -392,7 +392,7 @@ for(gene_set_to_plot_name in names(gene_set_list)){
   # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
   gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
   
-  title_values <- fgseaRes_TDI_vs_DMSO %>% filter(pathway == gene_set_to_plot_name) %>% select(pathway, NES, padj)
+  title_values <- fgseaRes_TDI_vs_DMSO %>% filter(pathway == gene_set_to_plot_name) %>% dplyr::select(pathway, NES, padj)
   p <- plotEnrichment(pathway = gene_set_to_plot, stats = deg_results_TDI_vs_DMSO_ranked) + 
     labs(title = paste(title_values$pathway, "\n",
                        "NES =", title_values$NES, "\n",
@@ -430,7 +430,7 @@ for(gene_set_to_plot_name in names(gene_set_list)){
   # gene_set_to_plot_name <- "Cordenonsi_Yap_Conserved_Signature"
   gene_set_to_plot <- gene_set_list[[gene_set_to_plot_name]]
   
-  title_values <- fgseaRes_doxTDI_vs_dox %>% filter(pathway == gene_set_to_plot_name) %>% select(pathway, NES, padj)
+  title_values <- fgseaRes_doxTDI_vs_dox %>% filter(pathway == gene_set_to_plot_name) %>% dplyr::select(pathway, NES, padj)
   p <- plotEnrichment(pathway = gene_set_to_plot, stats = deg_results_doxTDI_vs_dox_ranked) + 
     labs(title = paste(title_values$pathway, "\n",
                        "NES =", title_values$NES, "\n",

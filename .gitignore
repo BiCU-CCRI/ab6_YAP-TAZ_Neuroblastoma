@@ -23,3 +23,8 @@ R/
 dot_backups/
 .local/
 deleteme/
+neuroblastoma/results/CnR/DBobj_list.RDS
+neuroblastoma/resources/genome_chromosomes_GRCh38.102/*
+.mamba/
+
+.local_backup
