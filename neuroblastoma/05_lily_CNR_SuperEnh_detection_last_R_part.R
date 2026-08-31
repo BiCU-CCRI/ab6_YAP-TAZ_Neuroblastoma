@@ -621,6 +621,9 @@ library(rstatix)
 rownames(tmp) <- tmp$id
 annRow <-  data.frame(group = tmp$group)
 row.names(annRow) <- tmp$id
+
+
+# NOTE - use this one in the paper
 pheatmap.type(tmp[ ,1:3], 
               annRow = annRow, 
               type = "group",
@@ -649,6 +652,7 @@ stat.test <- tmp_long %>%
   add_significance("p.adj")
 stat.test <- stat.test %>% add_xy_position(x = "group")
 
+# NOTE - use this one in the paper
 ggboxplot(tmp_long ,
           x = "group",
           y = "enrich_score",
@@ -659,6 +663,7 @@ ggboxplot(tmp_long ,
   stat_pvalue_manual(stat.test, label = "p.adj") +
   rotate_x_text(angle = 45)
 
+# NOTE - use this one in the paper
 ggboxplot(tmp_long ,
           x = "group",
           y = "enrich_score",
@@ -670,12 +675,9 @@ ggboxplot(tmp_long ,
   rotate_x_text(angle = 45)
 
 
-+
-
-+ # Add pairwise comparisons p-value
-  stat_compare_means()
 
 
+# NOTE - use this one in the paper
 ggplot(tmp_long) +
   aes(x = TF, y = enrich_score, fill = group) +
   geom_boxplot() +
