@@ -1,9 +1,9 @@
 ---
-title: "ATAC-seq addtitional analysis - YAP/TAZ inhibition using K-975"
+title: "ATAC-seq addtitional analysis - YAP/TAZ inhibition using K-975 (Super Enhancers)"
 author: "Aleksandr Bykov (Enhanced by Claude Code)"
 date: '`r Sys.Date()`'
 output:
-  html_document: 
+  html_document:
     toc: true
     toc_float: true
     code_folding: hide
@@ -24,7 +24,15 @@ knitr::opts_chunk$set(
 
 ```{r setup-libraries}
 # Set up the environment ####
-deg_dir <- "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/"
+# Updated-repository paths: the project lives under ~/neuroblastoma and results
+# are organised under results/ATAC-seq/. deg_dir must match 03_ATAC-seq_k975_inhibition.Rmd
+# so the DAR_results_*.xlsx written there are found here.
+# path.expand() is required: deg_dir feeds file paths handed to bash via system2()
+# (see the MES-SE scoring chunk). shQuote() single-quotes the path, and bash does
+# NOT expand a literal "~" inside single quotes, so an un-expanded tilde would make
+# the script write into a stray "~" directory instead of here.
+deg_dir <- path.expand("~/neuroblastoma/results/ATAC-seq/ATAC-seq_drug_treatment")
+if (!dir.exists(deg_dir)) dir.create(deg_dir, recursive = TRUE)
 
 ## Loading libraries ####
 library(dplyr)
@@ -33,64 +41,71 @@ library(DESeq2)
 library(ggplot2)
 library(IRanges)
 library(patchwork)
+library(pheatmap)
+library(ggpubr)
+library(GenomicRanges)
 import::from(stringr, str_extract, str_detect)
-import::from(GenomicRanges,GRanges)
+import::from(GenomicRanges, GRanges)
 import::from(openxlsx, addWorksheet, writeData, saveWorkbook)
 import::from(openxlsx2, read_xlsx)
 import::from(.from = RColorBrewer, brewer.pal)
-import::from(.from = "~/workspace/neuroblastoma/resources/utilityScripts.R",
-             "generatePCA", 
+import::from(.from = "~/neuroblastoma/resources/utilityScripts.R",
+             "generatePCA",
              "extract_results_nextflow_output",
              "meanExprsPerGroup_nextflow",
              "extract_results_DDS_HIC",
              "plotVolcano",
              "get_the_poissoon_p_val")
 import::from(
-  .from = here::here("~/workspace/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
+  .from = here::here("~/neuroblastoma/resources/UtilityScriptsRNA-seq.R"),
   "filterDatasets",
   .character_only = TRUE
 )
+
+# Location of the nf-core/atacseq merged-library bigWigs (raw data, kept outside
+# the repo). Used by the super-enhancer accessibility scoring below.
+bigwig_dir <- "/nobackup/lab_ccri_bicu/internal/abykov/projects/ab6_soeren_neuroblastoma/adaptation_for_cemm/raw_data/ATAC-seq/outdir/bwa/merged_library/bigwig"
 ```
 
 
 
-```{r load-atac-data results and SEs from previous analysis}
-
-ATAC_dds_results_48h <- read_xlsx(file.path(deg_dir,  paste0("DAR_results_time_48h_vs_control.xlsx")), sheet = "results_signif")
-ATAC_dds_results_24h <- read_xlsx(file.path(deg_dir,  paste0("DAR_results_time_24h_vs_control.xlsx")), sheet = "results_signif")
-
+```{r load-atac-data-results-and-SEs}
+# Load DAR results (produced by 03_ATAC-seq_k975_inhibition.Rmd) and the
+# super enhancers determined in 05_Lily_CNR_SuperEnhancer_detection.
+ATAC_dds_results_48h <- read_xlsx(file.path(deg_dir, paste0("DAR_results_time_48h_vs_control.xlsx")), sheet = "results_signif")
+ATAC_dds_results_24h <- read_xlsx(file.path(deg_dir, paste0("DAR_results_time_24h_vs_control.xlsx")), sheet = "results_signif")
 
 # Load SEs that were determined in 05_Lily_CNR_SuperEnhancer_detection.
-CLB_SKN_A_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
-CLB_SKN_M_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
-CLB_SKN_AM_SEs_annot <- read.csv("~/workspace/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
+CLB_SKN_A_SEs_annot  <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_A_homer_annot.csv", sep = "\t")
+CLB_SKN_M_SEs_annot  <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_homer_annot.csv", sep = "\t")
+CLB_SKN_AM_SEs_annot <- read.csv("~/neuroblastoma/temp_results/BEDs/CLB_SKN_AM_homer_annot.csv", sep = "\t")
 ```
 
 
-```{r Filter regions that present only in SEs}
+```{r filter-regions-that-present-only-in-SEs}
 # Convert DESeq2 results into GRanges, that can be used for finding overlap with SEs
-ATAC_dds_results_24h_grange <- GRanges(seqnames = paste0("chr", ATAC_dds_results_24h$Chr), 
+ATAC_dds_results_24h_grange <- GRanges(seqnames = paste0("chr", ATAC_dds_results_24h$Chr),
                                        ranges = IRanges(
                                          start = ATAC_dds_results_24h$Start,
                                          end = ATAC_dds_results_24h$End),
                                        mcols = ATAC_dds_results_24h[, c(1,6:29)]
                                        )
-ATAC_dds_results_48h_grange <- GRanges(seqnames = paste0("chr", ATAC_dds_results_48h$Chr), 
+ATAC_dds_results_48h_grange <- GRanges(seqnames = paste0("chr", ATAC_dds_results_48h$Chr),
                                        ranges = IRanges(
                                          start = ATAC_dds_results_48h$Start,
                                          end = ATAC_dds_results_48h$End),
                                        mcols =  ATAC_dds_results_48h[, c(1,6:29)])
 
 # Convert SEs BEDs into GRanges
-CLB_SKN_M_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_M_SEs_annot$Chr, 
+CLB_SKN_M_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_M_SEs_annot$Chr,
                                       ranges = IRanges(
                                         start = CLB_SKN_M_SEs_annot$Start,
                                         end = CLB_SKN_M_SEs_annot$End))
-CLB_SKN_A_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_A_SEs_annot$Chr, 
+CLB_SKN_A_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_A_SEs_annot$Chr,
                                       ranges = IRanges(
                                         start = CLB_SKN_A_SEs_annot$Start,
                                         end = CLB_SKN_A_SEs_annot$End))
-CLB_SKN_AM_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_AM_SEs_annot$Chr, 
+CLB_SKN_AM_SEs_annot_grange <- GRanges(seqnames = CLB_SKN_AM_SEs_annot$Chr,
                                        ranges = IRanges(
                                          start = CLB_SKN_AM_SEs_annot$Start,
                                          end = CLB_SKN_AM_SEs_annot$End))
@@ -102,11 +117,9 @@ ATAC_24h_AM_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_24h_g
 ATAC_24h_M_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_24h_grange,
                                                           CLB_SKN_M_SEs_annot_grange,
                                                           maxgap = 50)
-write.csv(ATAC_24h_M_overlaps$overlappingPeaks, 
-          file = "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/ATAC_24h_MES_SEs_overlaps.tsv",
-          sep = "\t", 
-          row.names = TRUE,
-          col.names = TRUE)
+write.csv(ATAC_24h_M_overlaps$overlappingPeaks,
+          file = file.path(deg_dir, "ATAC_24h_MES_SEs_overlaps.tsv"),
+          row.names = TRUE)
 ATAC_24h_A_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_24h_grange,
                                                           CLB_SKN_A_SEs_annot_grange,
                                                           maxgap = 50)
@@ -119,12 +132,810 @@ ATAC_48h_AM_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_48h_g
 ATAC_48h_M_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_48h_grange,
                                                           CLB_SKN_M_SEs_annot_grange,
                                                           maxgap = 50)
-write.csv(ATAC_48h_M_overlaps$overlappingPeaks, 
-          file = "~/workspace/neuroblastoma/results/ATAC-seq_drug_treatment/ATAC_48h_MES_SEs_overlaps.tsv",
-          sep = "\t", 
-          row.names = TRUE,
-          col.names = TRUE)
+write.csv(ATAC_48h_M_overlaps$overlappingPeaks,
+          file = file.path(deg_dir, "ATAC_48h_MES_SEs_overlaps.tsv"),
+          row.names = TRUE)
 ATAC_48h_A_overlaps <- ChIPpeakAnno::findOverlapsOfPeaks(ATAC_dds_results_48h_grange,
                                                           CLB_SKN_A_SEs_annot_grange,
                                                           maxgap = 50)
+```
+
+
+# MES super enhancer accessibility after K-975 treatment
+
+Here we quantify ATAC-seq accessibility at the MES super enhancers over the K-975
+time course (control vs 24h vs 48h) in the CM (CLB-Ma) and SH (SK-N-SH) cell lines.
+Accessibility is scored directly from the nf-core/atacseq merged-library bigWigs
+with `deeptools multiBigwigSummary` over the MES SE regions, then summarised in R.
+(Adapted from `k975_ATACseq_compare_MES_SEs.R`.)
+
+```{r MES-SE-accessibility-scoring}
+# --- Score bigWig accessibility over the MES super enhancers -----------------
+# Delegates the scoring to resources/multiBigWigSummary.sh (custom single-run
+# mode: `multiBigWigSummary.sh <BED> <OUT_TAB> <bigWig...>`), which wraps
+# deeptools multiBigwigSummary and points at the conda env that has it on PATH.
+# We restrict the run to the 18 drug-treatment ATAC samples and the MES SE regions.
+
+score_dir <- file.path(deg_dir, "MES_SE_accessibility")
+if (!dir.exists(score_dir)) dir.create(score_dir, recursive = TRUE)
+
+summary_script <- path.expand("~/neuroblastoma/resources/multiBigWigSummary.sh")
+
+# MES super enhancer regions. Use the NON-"chr" BED: the nf-core/atacseq bigWigs
+# use bare chromosome names (1, 2, ... X), so CLB_SKN_M_chr.bed would match
+# nothing and yield empty scores. CLB_SKN_M.bed is the same 460 SEs as the
+# CLB_SKN_M HOMER annotation used downstream.
+se_bed <- path.expand("~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_u.bed")
+
+# Drug-treatment ATAC samples (same set as 03_ATAC-seq_k975_inhibition.Rmd):
+# legacy single-replicate samples (*_ATAC_S165xxx) + new rep1/rep2 samples.
+drug_samples <- c(
+  "CM_control_ATAC_S165169_REP1", "CM_24h_ATAC_S165170_REP1", "CM_48h_ATAC_S165167_REP1",
+  "SH_control_ATAC_S165166_REP1", "SH_24h_ATAC_S165164_REP1", "SH_48h_ATAC_S165165_REP1",
+  "CM_DMSO_ctrl_rep1_REP1", "CM_DMSO_ctrl_rep2_REP1",
+  "CM_24h_rep1_REP1", "CM_24h_rep2_REP1", "CM_48h_rep1_REP1", "CM_48h_rep2_REP1",
+  "SH_DMSO_ctrl_rep1_REP1", "SH_DMSO_ctrl_rep2_REP1",
+  "SH_24h_rep1_REP1", "SH_24h_rep2_REP1", "SH_48h_rep1_REP1", "SH_48h_rep2_REP1"
+)
+
+bw_files  <- file.path(bigwig_dir, paste0(drug_samples, ".mLb.clN.bigWig"))
+missing_bw <- bw_files[!file.exists(bw_files)]
+if (length(missing_bw) > 0) {
+  warning("Missing bigWig files:\n", paste(missing_bw, collapse = "\n"))
+}
+bw_files <- bw_files[file.exists(bw_files)]
+
+score_tab <- file.path(score_dir, "scores_per_transcript_MES.tab")
+
+# Only (re)run the expensive scoring step if the output is not already present.
+# The .sh derives the sibling .npz from the .tab path automatically.
+if (!file.exists(score_tab)) {
+  status <- system2("bash", args = c(shQuote(summary_script),
+                                     shQuote(se_bed),
+                                     shQuote(score_tab),
+                                     shQuote(bw_files)))
+  if (!identical(status, 0L) && !file.exists(score_tab)) {
+    stop("multiBigWigSummary.sh did not produce ", score_tab,
+         ". Is the deeptools conda env present at /home/abykov/envs/deeptools? ",
+         "(status: ", status, ")")
+  }
+}
+```
+
+```{r MES-SE-accessibility-analysis}
+results_dir <- score_dir
+
+## 1. Read the accessibility scores -------------------------------------------
+# deeptools --outRawCounts writes a header like: #'chr' 'start' 'end' '<bw path>' ...
+hdr        <- readLines(score_tab, n = 1)
+col_names  <- strsplit(gsub("[#']", "", hdr), "\t")[[1]]
+atac_scores <- read.table(score_tab, header = FALSE, sep = "\t", skip = 1, stringsAsFactors = FALSE)
+colnames(atac_scores) <- col_names
+colnames(atac_scores)[1:3] <- c("chr", "start", "end")
+
+# Clean sample column names: strip path and the .mLb.clN.bigWig suffix
+sample_cols <- colnames(atac_scores)[4:ncol(atac_scores)]
+sample_cols <- gsub("\\.mLb\\.clN\\.bigWig$", "", basename(sample_cols))
+colnames(atac_scores)[4:ncol(atac_scores)] <- sample_cols
+
+# Order rows for stable SE ids
+atac_scores <- atac_scores %>% dplyr::arrange(chr, start, end)
+rownames(atac_scores) <- paste0("SE_", seq_len(nrow(atac_scores)))
+
+cat(sprintf("Loaded accessibility for %d MES super enhancers x %d samples\n",
+            nrow(atac_scores), length(sample_cols)))
+
+## 2. Sample metadata ---------------------------------------------------------
+# cell_line from CM_/SH_ prefix; timepoint handles both legacy "control" and new "DMSO".
+sample_info <- data.frame(
+  sample    = sample_cols,
+  cell_line = ifelse(grepl("^CM", sample_cols), "CLB_Ma", "SK_N_SH"),
+  timepoint = dplyr::case_when(
+    grepl("control|DMSO", sample_cols) ~ "control",
+    grepl("24h", sample_cols)          ~ "24h",
+    grepl("48h", sample_cols)          ~ "48h"
+  ),
+  stringsAsFactors = FALSE
+)
+
+accessibility_matrix <- as.matrix(atac_scores[, sample_cols])
+rownames(accessibility_matrix) <- rownames(atac_scores)
+
+## 3. Mean accessibility per condition (cell_line x timepoint) ----------------
+condition_means <- sample_info %>%
+  group_by(cell_line, timepoint) %>%
+  summarise(samples = list(sample), .groups = "drop") %>%
+  rowwise() %>%
+  mutate(mean_accessibility = list(rowMeans(accessibility_matrix[, samples, drop = FALSE], na.rm = TRUE))) %>%
+  ungroup()
+
+condition_matrix <- do.call(cbind, lapply(seq_len(nrow(condition_means)), function(i) {
+  condition_means$mean_accessibility[[i]]
+}))
+colnames(condition_matrix) <- paste(condition_means$cell_line, condition_means$timepoint, sep = "_")
+rownames(condition_matrix) <- rownames(accessibility_matrix)
+
+## 4. Log2 fold changes vs control --------------------------------------------
+calc_log2fc <- function(mat, control_cols, treatment_cols) {
+  control_mean   <- rowMeans(mat[, control_cols, drop = FALSE], na.rm = TRUE)
+  treatment_mean <- rowMeans(mat[, treatment_cols, drop = FALSE], na.rm = TRUE)
+  log2((treatment_mean + 0.001) / (control_mean + 0.001))
+}
+
+results_list <- list()
+for (cl in c("CLB_Ma", "SK_N_SH")) {
+  control_col <- paste0(cl, "_control")
+  h24_col     <- paste0(cl, "_24h")
+  h48_col     <- paste0(cl, "_48h")
+  if (all(c(control_col, h24_col, h48_col) %in% colnames(condition_matrix))) {
+    results_list[[cl]] <- data.frame(
+      se_id                 = rownames(condition_matrix),
+      chr                   = atac_scores$chr,
+      start                 = atac_scores$start,
+      end                   = atac_scores$end,
+      control_accessibility = condition_matrix[, control_col],
+      h24_accessibility     = condition_matrix[, h24_col],
+      h48_accessibility     = condition_matrix[, h48_col],
+      log2fc_24h            = calc_log2fc(condition_matrix, control_col, h24_col),
+      log2fc_48h            = calc_log2fc(condition_matrix, control_col, h48_col),
+      cell_line             = cl,
+      stringsAsFactors      = FALSE
+    )
+  }
+}
+all_results <- do.call(rbind, results_list)
+all_results <- all_results %>% mutate(across(where(is.numeric), ~ifelse(is.nan(.), 0, .)))
+
+## 5. Classify changes (>1.5-fold) --------------------------------------------
+log2_threshold <- log2(1.5)
+all_results$change_24h <- case_when(
+  all_results$log2fc_24h >  log2_threshold ~ "Increased",
+  all_results$log2fc_24h < -log2_threshold ~ "Decreased",
+  TRUE ~ "No change"
+)
+all_results$change_48h <- case_when(
+  all_results$log2fc_48h >  log2_threshold ~ "Increased",
+  all_results$log2fc_48h < -log2_threshold ~ "Decreased",
+  TRUE ~ "No change"
+)
+
+## 6. Visualisations ----------------------------------------------------------
+# Heatmap of log2 fold changes (SEs x conditions)
+heatmap_matrix <- all_results %>%
+  dplyr::select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
+  pivot_longer(cols = c(log2fc_24h, log2fc_48h), names_to = "timepoint", values_to = "log2fc") %>%
+  unite("condition", cell_line, timepoint, sep = "_") %>%
+  pivot_wider(names_from = condition, values_from = log2fc) %>%
+  tibble::column_to_rownames("se_id") %>%
+  as.matrix()
+
+pdf(file.path(results_dir, "K975_SE_accessibility_heatmap.pdf"), width = 8, height = 12)
+pheatmap(
+  heatmap_matrix,
+  scale = "none",
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(100),
+  breaks = seq(-2, 2, length.out = 101),
+  main = "Super Enhancer Accessibility Changes\n(Log2 Fold Change vs Control)",
+  fontsize = 10,
+  angle_col = 45
+)
+dev.off()
+
+# Scatter: 24h vs 48h log2FC per cell line
+p1 <- ggplot(all_results, aes(x = log2fc_24h, y = log2fc_48h)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
+  facet_wrap(~cell_line, labeller = as_labeller(c("CLB_Ma" = "CLB-Ma (CM)", "SK_N_SH" = "SK-N-SH (SH)"))) +
+  labs(x = "Log2FC Accessibility (24h vs Control)",
+       y = "Log2FC Accessibility (48h vs Control)",
+       title = "Super Enhancer Accessibility Changes Over Time",
+       subtitle = "K975 Treatment Effect") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold"),
+        strip.text = element_text(size = 12, face = "bold"))
+ggsave(file.path(results_dir, "K975_SE_accessibility_scatter.pdf"), p1, width = 10, height = 6)
+
+# Boxplot: distribution of log2FC
+plot_data <- all_results %>%
+  dplyr::select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
+  pivot_longer(cols = c(log2fc_24h, log2fc_48h), names_to = "timepoint", values_to = "log2fc") %>%
+  mutate(timepoint = gsub("log2fc_", "", timepoint),
+         cell_line_label = ifelse(cell_line == "CLB_Ma", "CLB-Ma (CM)", "SK-N-SH (SH)"))
+
+p2 <- ggplot(plot_data, aes(x = timepoint, y = log2fc, fill = timepoint)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  geom_hline(yintercept = c(-log2_threshold, log2_threshold), linetype = "dotted", alpha = 0.5) +
+  facet_wrap(~cell_line_label) +
+  scale_fill_viridis_d(option = "plasma", begin = 0.3, end = 0.8) +
+  labs(x = "Treatment Duration", y = "Log2 Fold Change in Accessibility",
+       title = "Distribution of Super Enhancer Accessibility Changes",
+       subtitle = "Dashed lines: +/-1.5-fold change threshold") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold"),
+        strip.text = element_text(size = 12, face = "bold"),
+        legend.position = "none")
+ggsave(file.path(results_dir, "K975_SE_accessibility_boxplot.pdf"), p2, width = 10, height = 6)
+
+# Boxplot of the CHANGE vs control (log2FC) at 24h and 48h, per cell line, with a
+# one-sample Wilcoxon signed-rank test asking whether the change differs from 0
+# (i.e. whether SE accessibility significantly shifted from control at each timepoint).
+change_data <- all_results %>%
+  dplyr::select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
+  pivot_longer(cols = c(log2fc_24h, log2fc_48h), names_to = "timepoint", values_to = "log2fc") %>%
+  mutate(timepoint       = gsub("log2fc_", "", timepoint),
+         timepoint       = factor(timepoint, levels = c("24h", "48h")),
+         cell_line_label = ifelse(cell_line == "CLB_Ma", "CLB-Ma (CM)", "SK-N-SH (SH)"))
+
+sig_to_star <- function(p) dplyr::case_when(
+  is.na(p)  ~ "",
+  p <= 1e-4 ~ "****",
+  p <= 1e-3 ~ "***",
+  p <= 1e-2 ~ "**",
+  p <= 5e-2 ~ "*",
+  TRUE      ~ "ns")
+
+# One p-value per (cell line x timepoint); place all stars at a common height per facet.
+change_stats <- change_data %>%
+  group_by(cell_line_label, timepoint) %>%
+  summarise(p_value = tryCatch(wilcox.test(log2fc, mu = 0)$p.value, error = function(e) NA_real_),
+            .groups = "drop") %>%
+  mutate(star = sig_to_star(p_value)) %>%
+  left_join(change_data %>% group_by(cell_line_label) %>%
+              summarise(y_pos = max(log2fc, na.rm = TRUE) + 0.4, .groups = "drop"),
+            by = "cell_line_label")
+
+p5 <- ggplot(change_data, aes(x = timepoint, y = log2fc, fill = timepoint)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.6) +
+  geom_hline(yintercept = c(-log2_threshold, log2_threshold), linetype = "dotted", alpha = 0.5) +
+  geom_text(data = change_stats, aes(x = timepoint, y = y_pos, label = star),
+            inherit.aes = FALSE, size = 5) +
+  facet_wrap(~cell_line_label) +
+  scale_fill_viridis_d(option = "plasma", begin = 0.3, end = 0.8) +
+  labs(x = "Treatment Duration", y = "Log2 Fold Change vs Control",
+       title = "Super Enhancer Accessibility Change vs Control",
+       subtitle = "One-sample Wilcoxon signed-rank test vs 0 (no change); dotted lines: +/-1.5-fold") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold"),
+        strip.text = element_text(size = 12, face = "bold"),
+        legend.position = "none")
+ggsave(file.path(results_dir, "K975_SE_accessibility_change_vs_control_boxplot.pdf"), p5, width = 10, height = 6)
+
+# Boxplot of raw accessibility with Wilcoxon comparisons
+raw_values_data <- all_results %>%
+  dplyr::select(se_id, cell_line, control_accessibility, h24_accessibility, h48_accessibility) %>%
+  pivot_longer(cols = c(control_accessibility, h24_accessibility, h48_accessibility),
+               names_to = "timepoint", values_to = "accessibility") %>%
+  mutate(timepoint_clean = case_when(
+           timepoint == "control_accessibility" ~ "Control",
+           timepoint == "h24_accessibility"     ~ "24h",
+           timepoint == "h48_accessibility"     ~ "48h"),
+         timepoint_clean = factor(timepoint_clean, levels = c("Control", "24h", "48h")),
+         cell_line_label = ifelse(cell_line == "CLB_Ma", "CLB-Ma (CM)", "SK-N-SH (SH)"),
+         accessibility   = ifelse(is.nan(accessibility), 0, accessibility))
+
+p4 <- ggplot(raw_values_data, aes(x = timepoint_clean, y = accessibility, fill = timepoint_clean)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+  stat_compare_means(method = "wilcox.test",
+                     comparisons = list(c("Control", "24h"), c("Control", "48h"), c("24h", "48h")),
+                     label = "p.signif") +
+  facet_wrap(~cell_line_label) +
+  scale_fill_viridis_d(option = "plasma", begin = 0.2, end = 0.8) +
+  labs(x = "Treatment Duration", y = "Raw ATAC-seq Accessibility Score",
+       title = "Super Enhancer Accessibility - Raw Values",
+       subtitle = "Wilcoxon rank-sum test comparisons between timepoints") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold"),
+        strip.text = element_text(size = 12, face = "bold"),
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave(file.path(results_dir, "K975_SE_accessibility_raw_values_boxplot.pdf"), p4, width = 10, height = 6)
+
+# Time course of the top 20 most variable SEs
+top_changing_ses <- all_results %>%
+  mutate(max_change = pmax(abs(log2fc_24h), abs(log2fc_48h))) %>%
+  arrange(desc(max_change)) %>%
+  head(20)
+
+timecourse_data <- top_changing_ses %>%
+  dplyr::select(se_id, cell_line, control_accessibility, h24_accessibility, h48_accessibility) %>%
+  pivot_longer(cols = c(control_accessibility, h24_accessibility, h48_accessibility),
+               names_to = "timepoint", values_to = "accessibility") %>%
+  mutate(timepoint_num = case_when(
+           timepoint == "control_accessibility" ~ 0,
+           timepoint == "h24_accessibility"     ~ 24,
+           timepoint == "h48_accessibility"     ~ 48),
+         cell_line_label = ifelse(cell_line == "CLB_Ma", "CLB-Ma (CM)", "SK-N-SH (SH)"))
+
+p3 <- ggplot(timecourse_data, aes(x = timepoint_num, y = accessibility, group = se_id)) +
+  geom_line(alpha = 0.5, color = "grey60") +
+  geom_smooth(aes(group = 1), method = "loess", se = TRUE, color = "red", linewidth = 1.5) +
+  facet_wrap(~cell_line_label) +
+  labs(x = "Treatment Duration (hours)", y = "ATAC-seq Accessibility Score",
+       title = "Time Course of Super Enhancer Accessibility Changes",
+       subtitle = "Top 20 most variable super enhancers (individual SEs in grey, trend in red)") +
+  scale_x_continuous(breaks = c(0, 24, 48)) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold"),
+        strip.text = element_text(size = 12, face = "bold"))
+ggsave(file.path(results_dir, "K975_SE_accessibility_timecourse.pdf"), p3, width = 10, height = 6)
+
+## 7. Export tables + HOMER annotation ---------------------------------------
+write.csv(all_results, file.path(results_dir, "K975_SE_accessibility_detailed_results.csv"), row.names = FALSE)
+
+summary_stats <- all_results %>%
+  group_by(cell_line) %>%
+  summarise(
+    total_ses                  = n(),
+    decreased_24h              = sum(change_24h == "Decreased"),
+    increased_24h              = sum(change_24h == "Increased"),
+    decreased_48h              = sum(change_48h == "Decreased"),
+    increased_48h              = sum(change_48h == "Increased"),
+    median_fc_24h              = median(log2fc_24h, na.rm = TRUE),
+    median_fc_48h              = median(log2fc_48h, na.rm = TRUE),
+    mean_control_accessibility = mean(control_accessibility, na.rm = TRUE),
+    .groups = "drop"
+  )
+write.csv(summary_stats, file.path(results_dir, "K975_SE_accessibility_summary.csv"), row.names = FALSE)
+
+# Top 50 most affected SEs, annotated with HOMER info from CLB_SKN_M_SEs_annot.
+# Match by exact coordinates (normalise chr prefix on both sides).
+top_affected <- all_results %>%
+  mutate(max_abs_change = pmax(abs(log2fc_24h), abs(log2fc_48h)),
+         primary_effect = ifelse(abs(log2fc_24h) > abs(log2fc_48h), "24h", "48h")) %>%
+  arrange(desc(max_abs_change)) %>%
+  head(50)
+
+norm_chr <- function(x) sub("^chr", "", as.character(x))
+annotation_lookup <- data.frame(
+  chr_key          = norm_chr(CLB_SKN_M_SEs_annot$Chr),
+  start            = CLB_SKN_M_SEs_annot$Start,
+  end              = CLB_SKN_M_SEs_annot$End,
+  peak_id          = CLB_SKN_M_SEs_annot[, 1],
+  annotation       = CLB_SKN_M_SEs_annot$Annotation,
+  gene_name        = CLB_SKN_M_SEs_annot$Gene.Name,
+  distance_to_tss  = CLB_SKN_M_SEs_annot$Distance.to.TSS,
+  gene_description = if ("Gene.Description" %in% colnames(CLB_SKN_M_SEs_annot)) CLB_SKN_M_SEs_annot$Gene.Description else NA,
+  stringsAsFactors = FALSE
+)
+
+top_affected_annotated <- top_affected %>%
+  mutate(chr_key = norm_chr(chr)) %>%
+  left_join(annotation_lookup, by = c("chr_key", "start", "end")) %>%
+  dplyr::select(se_id, chr, start, end, cell_line, log2fc_24h, log2fc_48h, max_abs_change,
+                primary_effect, peak_id, annotation, gene_name, distance_to_tss, gene_description)
+
+cat(sprintf("Annotated %d of %d top affected SEs\n",
+            sum(!is.na(top_affected_annotated$annotation)), nrow(top_affected_annotated)))
+write.csv(top_affected_annotated, file.path(results_dir, "K975_top50_affected_SEs_annotated.csv"), row.names = FALSE)
+
+# Summary by annotation type
+annot_summary <- top_affected_annotated %>%
+  filter(!is.na(annotation)) %>%
+  mutate(annotation_simple = case_when(
+    grepl("promoter",   annotation, ignore.case = TRUE) ~ "Promoter",
+    grepl("intron",     annotation, ignore.case = TRUE) ~ "Intronic",
+    grepl("intergenic", annotation, ignore.case = TRUE) ~ "Intergenic",
+    grepl("exon",       annotation, ignore.case = TRUE) ~ "Exonic",
+    TRUE ~ "Other")) %>%
+  group_by(annotation_simple, cell_line) %>%
+  summarise(count = n(), mean_abs_change = mean(max_abs_change, na.rm = TRUE), .groups = "drop")
+write.csv(annot_summary, file.path(results_dir, "K975_annotation_type_summary.csv"), row.names = FALSE)
+
+cat("\n=== SE ACCESSIBILITY ANALYSIS COMPLETE ===\n")
+cat(sprintf("Results saved to: %s\n", results_dir))
+print(summary_stats)
+```
+
+
+# Extended comparison: old vs new SE regions across sample subsets
+
+The analysis above scored the *new* MES super-enhancer regions
+(`~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_u.bed`) on all 18 drug-treatment
+ATAC samples. Here we broaden that into a 2 x 3 grid of experiments so we can see
+whether the K-975 accessibility signal is driven by the region definition or by
+the sample batch:
+
+* **Region sets (2)** — *new* regions (as above) and *old* regions
+  (`CLB_SKN_M_u.bed` from the `neuroblastoma_backup202607` snapshot, the SE
+  definition used before the region set was re-derived).
+* **Sample sets (3)** — **all 18** samples, **legacy** single-replicate
+  `*_ATAC_S165xxx` samples only (6), and the **new batch** rep1/rep2 samples only
+  (12).
+
+That gives **6 experiments**. Each is scored and analysed independently with the
+same pipeline as above (`deeptools multiBigwigSummary` -> per-condition means ->
+log2FC vs control -> plots + tables), and every experiment writes its own outputs
+under `MES_SE_extended_comparisons/<region>__<samples>/`. The existing single
+analysis above is left untouched. A combined report is written at the very end.
+
+```{r extended-comparison-setup}
+# --- Define the 6 experiments (2 region sets x 3 sample subsets) --------------
+# The full 18-sample vector (same order/set as the MES-SE-accessibility chunk).
+all_drug_samples <- c(
+  "CM_control_ATAC_S165169_REP1", "CM_24h_ATAC_S165170_REP1", "CM_48h_ATAC_S165167_REP1",
+  "SH_control_ATAC_S165166_REP1", "SH_24h_ATAC_S165164_REP1", "SH_48h_ATAC_S165165_REP1",
+  "CM_DMSO_ctrl_rep1_REP1", "CM_DMSO_ctrl_rep2_REP1",
+  "CM_24h_rep1_REP1", "CM_24h_rep2_REP1", "CM_48h_rep1_REP1", "CM_48h_rep2_REP1",
+  "SH_DMSO_ctrl_rep1_REP1", "SH_DMSO_ctrl_rep2_REP1",
+  "SH_24h_rep1_REP1", "SH_24h_rep2_REP1", "SH_48h_rep1_REP1", "SH_48h_rep2_REP1"
+)
+
+# Sample subsets: legacy = the 6 single-replicate S165 samples; new_batch = the
+# 12 rep1/rep2 samples introduced later.
+sample_sets <- list(
+  all18     = all_drug_samples,
+  legacy    = all_drug_samples[grepl("S165", all_drug_samples)],
+  new_batch = all_drug_samples[grepl("rep[12]_REP1$", all_drug_samples)]
+)
+
+# Region sets: "new" = the re-derived BED used above; "old" = the pre-existing
+# BED from the neuroblastoma_backup202607 snapshot. Both use bare chromosome
+# names (1, 2, ... X) to match the nf-core/atacseq bigWigs.
+region_sets <- list(
+  new = path.expand("~/neuroblastoma/temp_results/BEDs/CLB_SKN_M_u.bed"),
+  old = "/nobackup/lab_ccri_bicu/internal/abykov/projects/ab6_soeren_neuroblastoma/adaptation_for_cemm/ab6_YAP-TAZ_Neuroblastoma/neuroblastoma_backup202607/temp_results/BEDs/CLB_SKN_M_u.bed"
+)
+
+# Root output directory for all extended experiments.
+ext_root <- file.path(deg_dir, "MES_SE_extended_comparisons")
+if (!dir.exists(ext_root)) dir.create(ext_root, recursive = TRUE)
+
+# Report which files are actually present (so a knit does not silently fail).
+for (rn in names(region_sets)) {
+  cat(sprintf("Region set '%s': %s (%s)\n", rn, region_sets[[rn]],
+              if (file.exists(region_sets[[rn]])) "found" else "MISSING"))
+}
+for (sn in names(sample_sets)) {
+  cat(sprintf("Sample set '%s': %d samples\n", sn, length(sample_sets[[sn]])))
+}
+```
+
+```{r extended-comparison-function}
+# --- One experiment = one (region set, sample subset) pair -------------------
+# Scores the given BED over the given samples, computes per-condition mean
+# accessibility and log2FC vs control, writes plots + tables into its own
+# directory, and returns the summary + detailed tables (tagged with the
+# experiment identity) so they can be pooled into the final report.
+run_se_experiment <- function(exp_id, se_bed, samples, out_dir, annot = CLB_SKN_M_SEs_annot) {
+
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+  if (!file.exists(se_bed)) {
+    warning(sprintf("[%s] region BED not found: %s -- skipping", exp_id, se_bed))
+    return(NULL)
+  }
+
+  ## 1. Score bigWigs over the regions ---------------------------------------
+  bw_files   <- file.path(bigwig_dir, paste0(samples, ".mLb.clN.bigWig"))
+  missing_bw <- bw_files[!file.exists(bw_files)]
+  if (length(missing_bw) > 0) {
+    warning(sprintf("[%s] missing bigWig files:\n%s", exp_id,
+                    paste(missing_bw, collapse = "\n")))
+  }
+  bw_files <- bw_files[file.exists(bw_files)]
+  if (length(bw_files) == 0) {
+    warning(sprintf("[%s] no bigWig files available -- skipping", exp_id))
+    return(NULL)
+  }
+
+  score_tab <- file.path(out_dir, "scores_per_transcript.tab")
+  if (!file.exists(score_tab)) {
+    status <- system2("bash", args = c(shQuote(summary_script),
+                                       shQuote(se_bed),
+                                       shQuote(score_tab),
+                                       shQuote(bw_files)))
+    if (!identical(status, 0L) && !file.exists(score_tab)) {
+      warning(sprintf("[%s] multiBigWigSummary.sh did not produce %s (status %s) -- skipping",
+                      exp_id, score_tab, status))
+      return(NULL)
+    }
+  }
+
+  ## 2. Read scores ----------------------------------------------------------
+  hdr         <- readLines(score_tab, n = 1)
+  col_names   <- strsplit(gsub("[#']", "", hdr), "\t")[[1]]
+  atac_scores <- read.table(score_tab, header = FALSE, sep = "\t", skip = 1,
+                            stringsAsFactors = FALSE)
+  colnames(atac_scores) <- col_names
+  colnames(atac_scores)[1:3] <- c("chr", "start", "end")
+  sample_cols <- gsub("\\.mLb\\.clN\\.bigWig$", "", basename(colnames(atac_scores)[4:ncol(atac_scores)]))
+  colnames(atac_scores)[4:ncol(atac_scores)] <- sample_cols
+
+  atac_scores <- atac_scores %>% dplyr::arrange(chr, start, end)
+  rownames(atac_scores) <- paste0("SE_", seq_len(nrow(atac_scores)))
+
+  ## 3. Metadata + per-condition means ---------------------------------------
+  sample_info <- data.frame(
+    sample    = sample_cols,
+    cell_line = ifelse(grepl("^CM", sample_cols), "CLB_Ma", "SK_N_SH"),
+    timepoint = dplyr::case_when(
+      grepl("control|DMSO", sample_cols) ~ "control",
+      grepl("24h", sample_cols)          ~ "24h",
+      grepl("48h", sample_cols)          ~ "48h"),
+    stringsAsFactors = FALSE
+  )
+
+  accessibility_matrix <- as.matrix(atac_scores[, sample_cols, drop = FALSE])
+  rownames(accessibility_matrix) <- rownames(atac_scores)
+
+  condition_means <- sample_info %>%
+    group_by(cell_line, timepoint) %>%
+    summarise(samples = list(sample), .groups = "drop") %>%
+    rowwise() %>%
+    mutate(mean_accessibility = list(rowMeans(accessibility_matrix[, samples, drop = FALSE], na.rm = TRUE))) %>%
+    ungroup()
+
+  condition_matrix <- do.call(cbind, lapply(seq_len(nrow(condition_means)), function(i) {
+    condition_means$mean_accessibility[[i]]
+  }))
+  colnames(condition_matrix) <- paste(condition_means$cell_line, condition_means$timepoint, sep = "_")
+  rownames(condition_matrix) <- rownames(accessibility_matrix)
+
+  ## 4. log2FC vs control ----------------------------------------------------
+  calc_log2fc <- function(mat, control_cols, treatment_cols) {
+    control_mean   <- rowMeans(mat[, control_cols, drop = FALSE], na.rm = TRUE)
+    treatment_mean <- rowMeans(mat[, treatment_cols, drop = FALSE], na.rm = TRUE)
+    log2((treatment_mean + 0.001) / (control_mean + 0.001))
+  }
+
+  results_list <- list()
+  for (cl in c("CLB_Ma", "SK_N_SH")) {
+    control_col <- paste0(cl, "_control"); h24_col <- paste0(cl, "_24h"); h48_col <- paste0(cl, "_48h")
+    if (all(c(control_col, h24_col, h48_col) %in% colnames(condition_matrix))) {
+      results_list[[cl]] <- data.frame(
+        se_id                 = rownames(condition_matrix),
+        chr                   = atac_scores$chr,
+        start                 = atac_scores$start,
+        end                   = atac_scores$end,
+        control_accessibility = condition_matrix[, control_col],
+        h24_accessibility     = condition_matrix[, h24_col],
+        h48_accessibility     = condition_matrix[, h48_col],
+        log2fc_24h            = calc_log2fc(condition_matrix, control_col, h24_col),
+        log2fc_48h            = calc_log2fc(condition_matrix, control_col, h48_col),
+        cell_line             = cl,
+        stringsAsFactors      = FALSE
+      )
+    }
+  }
+  if (length(results_list) == 0) {
+    warning(sprintf("[%s] no cell line had a full control/24h/48h set -- skipping", exp_id))
+    return(NULL)
+  }
+  all_results <- do.call(rbind, results_list)
+  all_results <- all_results %>% mutate(across(where(is.numeric), ~ifelse(is.nan(.), 0, .)))
+
+  log2_threshold <- log2(1.5)
+  all_results$change_24h <- case_when(
+    all_results$log2fc_24h >  log2_threshold ~ "Increased",
+    all_results$log2fc_24h < -log2_threshold ~ "Decreased",
+    TRUE ~ "No change")
+  all_results$change_48h <- case_when(
+    all_results$log2fc_48h >  log2_threshold ~ "Increased",
+    all_results$log2fc_48h < -log2_threshold ~ "Decreased",
+    TRUE ~ "No change")
+
+  ## 5. Plots ----------------------------------------------------------------
+  sig_to_star <- function(p) dplyr::case_when(
+    is.na(p) ~ "", p <= 1e-4 ~ "****", p <= 1e-3 ~ "***",
+    p <= 1e-2 ~ "**", p <= 5e-2 ~ "*", TRUE ~ "ns")
+
+  # log2FC heatmap
+  heatmap_matrix <- all_results %>%
+    dplyr::select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
+    pivot_longer(cols = c(log2fc_24h, log2fc_48h), names_to = "timepoint", values_to = "log2fc") %>%
+    unite("condition", cell_line, timepoint, sep = "_") %>%
+    pivot_wider(names_from = condition, values_from = log2fc) %>%
+    tibble::column_to_rownames("se_id") %>% as.matrix()
+  pdf(file.path(out_dir, "SE_accessibility_heatmap.pdf"), width = 8, height = 12)
+  pheatmap(heatmap_matrix, scale = "none", cluster_rows = TRUE, cluster_cols = FALSE,
+           color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(100),
+           breaks = seq(-2, 2, length.out = 101),
+           main = sprintf("SE accessibility log2FC vs control\n[%s]", exp_id),
+           fontsize = 10, angle_col = 45)
+  dev.off()
+
+  # change-vs-control boxplot with one-sample Wilcoxon vs 0
+  change_data <- all_results %>%
+    dplyr::select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
+    pivot_longer(cols = c(log2fc_24h, log2fc_48h), names_to = "timepoint", values_to = "log2fc") %>%
+    mutate(timepoint = gsub("log2fc_", "", timepoint),
+           timepoint = factor(timepoint, levels = c("24h", "48h")),
+           cell_line_label = ifelse(cell_line == "CLB_Ma", "CLB-Ma (CM)", "SK-N-SH (SH)"))
+  change_stats <- change_data %>%
+    group_by(cell_line_label, timepoint) %>%
+    summarise(p_value = tryCatch(wilcox.test(log2fc, mu = 0)$p.value, error = function(e) NA_real_),
+              .groups = "drop") %>%
+    mutate(star = sig_to_star(p_value)) %>%
+    left_join(change_data %>% group_by(cell_line_label) %>%
+                summarise(y_pos = max(log2fc, na.rm = TRUE) + 0.4, .groups = "drop"),
+              by = "cell_line_label")
+  p_change <- ggplot(change_data, aes(x = timepoint, y = log2fc, fill = timepoint)) +
+    geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+    geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.6) +
+    geom_hline(yintercept = c(-log2_threshold, log2_threshold), linetype = "dotted", alpha = 0.5) +
+    geom_text(data = change_stats, aes(x = timepoint, y = y_pos, label = star),
+              inherit.aes = FALSE, size = 5) +
+    facet_wrap(~cell_line_label) +
+    scale_fill_viridis_d(option = "plasma", begin = 0.3, end = 0.8) +
+    labs(x = "Treatment Duration", y = "Log2 Fold Change vs Control",
+         title = sprintf("SE accessibility change vs control [%s]", exp_id),
+         subtitle = "One-sample Wilcoxon vs 0; dotted lines: +/-1.5-fold") +
+    theme_minimal() +
+    theme(plot.title = element_text(size = 13, face = "bold"),
+          strip.text = element_text(size = 12, face = "bold"), legend.position = "none")
+  ggsave(file.path(out_dir, "SE_accessibility_change_vs_control_boxplot.pdf"), p_change, width = 10, height = 6)
+
+  # raw-values boxplot with between-timepoint Wilcoxon
+  raw_values_data <- all_results %>%
+    dplyr::select(se_id, cell_line, control_accessibility, h24_accessibility, h48_accessibility) %>%
+    pivot_longer(cols = c(control_accessibility, h24_accessibility, h48_accessibility),
+                 names_to = "timepoint", values_to = "accessibility") %>%
+    mutate(timepoint_clean = case_when(
+             timepoint == "control_accessibility" ~ "Control",
+             timepoint == "h24_accessibility"     ~ "24h",
+             timepoint == "h48_accessibility"     ~ "48h"),
+           timepoint_clean = factor(timepoint_clean, levels = c("Control", "24h", "48h")),
+           cell_line_label = ifelse(cell_line == "CLB_Ma", "CLB-Ma (CM)", "SK-N-SH (SH)"),
+           accessibility   = ifelse(is.nan(accessibility), 0, accessibility))
+  p_raw <- ggplot(raw_values_data, aes(x = timepoint_clean, y = accessibility, fill = timepoint_clean)) +
+    geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+    stat_compare_means(method = "wilcox.test",
+                       comparisons = list(c("Control", "24h"), c("Control", "48h"), c("24h", "48h")),
+                       label = "p.signif") +
+    facet_wrap(~cell_line_label) +
+    scale_fill_viridis_d(option = "plasma", begin = 0.2, end = 0.8) +
+    labs(x = "Treatment Duration", y = "Raw ATAC-seq Accessibility Score",
+         title = sprintf("SE accessibility raw values [%s]", exp_id),
+         subtitle = "Wilcoxon rank-sum test between timepoints") +
+    theme_minimal() +
+    theme(plot.title = element_text(size = 13, face = "bold"),
+          strip.text = element_text(size = 12, face = "bold"), legend.position = "none",
+          axis.text.x = element_text(angle = 45, hjust = 1))
+  ggsave(file.path(out_dir, "SE_accessibility_raw_values_boxplot.pdf"), p_raw, width = 10, height = 6)
+
+  ## 6. Tables ---------------------------------------------------------------
+  write.csv(all_results, file.path(out_dir, "SE_accessibility_detailed_results.csv"), row.names = FALSE)
+
+  summary_stats <- all_results %>%
+    group_by(cell_line) %>%
+    summarise(
+      total_ses                  = n(),
+      decreased_24h              = sum(change_24h == "Decreased"),
+      increased_24h              = sum(change_24h == "Increased"),
+      decreased_48h              = sum(change_48h == "Decreased"),
+      increased_48h              = sum(change_48h == "Increased"),
+      median_fc_24h              = median(log2fc_24h, na.rm = TRUE),
+      median_fc_48h              = median(log2fc_48h, na.rm = TRUE),
+      mean_control_accessibility = mean(control_accessibility, na.rm = TRUE),
+      .groups = "drop")
+  write.csv(summary_stats, file.path(out_dir, "SE_accessibility_summary.csv"), row.names = FALSE)
+
+  # Top 50 most affected SEs, annotated by exact-coordinate match to HOMER info.
+  # (For the OLD region set most rows will be unmatched -- expected, since the
+  # HOMER annotation was generated on the NEW regions.)
+  norm_chr <- function(x) sub("^chr", "", as.character(x))
+  annotation_lookup <- data.frame(
+    chr_key          = norm_chr(annot$Chr),
+    start            = annot$Start,
+    end              = annot$End,
+    peak_id          = annot[, 1],
+    annotation       = annot$Annotation,
+    gene_name        = annot$Gene.Name,
+    distance_to_tss  = annot$Distance.to.TSS,
+    gene_description = if ("Gene.Description" %in% colnames(annot)) annot$Gene.Description else NA,
+    stringsAsFactors = FALSE)
+  top_affected_annotated <- all_results %>%
+    mutate(max_abs_change = pmax(abs(log2fc_24h), abs(log2fc_48h)),
+           primary_effect = ifelse(abs(log2fc_24h) > abs(log2fc_48h), "24h", "48h")) %>%
+    arrange(desc(max_abs_change)) %>% head(50) %>%
+    mutate(chr_key = norm_chr(chr)) %>%
+    left_join(annotation_lookup, by = c("chr_key", "start", "end")) %>%
+    dplyr::select(se_id, chr, start, end, cell_line, log2fc_24h, log2fc_48h, max_abs_change,
+                  primary_effect, peak_id, annotation, gene_name, distance_to_tss, gene_description)
+  write.csv(top_affected_annotated, file.path(out_dir, "top50_affected_SEs_annotated.csv"), row.names = FALSE)
+
+  cat(sprintf("[%s] %d SEs x %d samples -> %s\n",
+              exp_id, nrow(atac_scores), length(sample_cols), out_dir))
+
+  ## 7. Return tagged tables for the pooled report ---------------------------
+  list(
+    summary  = summary_stats %>% mutate(experiment = exp_id, .before = 1),
+    detailed = all_results   %>% mutate(experiment = exp_id, .before = 1)
+  )
+}
+```
+
+```{r extended-comparison-run}
+# --- Run all 6 experiments (region set x sample subset) ----------------------
+ext_experiments <- expand.grid(region = names(region_sets),
+                               samples = names(sample_sets),
+                               stringsAsFactors = FALSE)
+
+ext_results <- list()
+for (i in seq_len(nrow(ext_experiments))) {
+  rn <- ext_experiments$region[i]
+  sn <- ext_experiments$samples[i]
+  exp_id  <- paste(rn, "regions", sn, "samples", sep = "_")
+  out_dir <- file.path(ext_root, sprintf("%s_regions__%s_samples", rn, sn))
+  res <- run_se_experiment(
+    exp_id  = exp_id,
+    se_bed  = region_sets[[rn]],
+    samples = sample_sets[[sn]],
+    out_dir = out_dir
+  )
+  # Tag the two axes of variation explicitly (do NOT parse exp_id: the
+  # "new_batch" sample-set name itself contains an underscore).
+  if (!is.null(res)) {
+    res$summary  <- res$summary  %>% mutate(region_set = rn, sample_set = sn, .after = experiment)
+    res$detailed <- res$detailed %>% mutate(region_set = rn, sample_set = sn, .after = experiment)
+  }
+  ext_results[[exp_id]] <- res
+}
+ext_results <- ext_results[!vapply(ext_results, is.null, logical(1))]
+cat(sprintf("\nCompleted %d of %d extended experiments\n", length(ext_results), nrow(ext_experiments)))
+```
+
+```{r extended-comparison-report}
+# --- Pool the 6 experiments into a single comparison report ------------------
+# Combined per-cell-line summary across all experiments, tagged with region set
+# and sample subset so the two axes of variation can be read off directly.
+combined_summary <- do.call(rbind, lapply(ext_results, `[[`, "summary"))
+
+write.csv(combined_summary,
+          file.path(ext_root, "extended_SE_comparisons_combined_summary.csv"),
+          row.names = FALSE)
+
+# Also pool the per-SE detailed results (useful for cross-experiment plots later).
+combined_detailed <- do.call(rbind, lapply(ext_results, `[[`, "detailed"))
+write.csv(combined_detailed,
+          file.path(ext_root, "extended_SE_comparisons_combined_detailed.csv"),
+          row.names = FALSE)
+
+# Human-readable text report.
+report_path <- file.path(ext_root, "extended_SE_comparisons_report.txt")
+report <- c(
+  "================================================================",
+  " Extended MES super-enhancer accessibility comparison",
+  sprintf(" Generated: %s", Sys.time()),
+  "================================================================",
+  "",
+  "Design: 2 region sets x 3 sample subsets = 6 experiments.",
+  sprintf("  Region sets : new (%s), old (%s)", region_sets[["new"]], region_sets[["old"]]),
+  sprintf("  Sample sets : all18 (%d), legacy S165 (%d), new_batch (%d)",
+          length(sample_sets$all18), length(sample_sets$legacy), length(sample_sets$new_batch)),
+  sprintf("  Completed   : %d of %d experiments", length(ext_results), nrow(ext_experiments)),
+  "",
+  "Per-experiment / per-cell-line summary",
+  "(SEs changed >1.5-fold vs control; median log2FC over all SEs):",
+  ""
+)
+fmt <- combined_summary %>%
+  mutate(dec24 = decreased_24h, inc24 = increased_24h,
+         dec48 = decreased_48h, inc48 = increased_48h,
+         medFC24 = round(median_fc_24h, 3), medFC48 = round(median_fc_48h, 3))
+for (i in seq_len(nrow(fmt))) {
+  report <- c(report, sprintf(
+    "  [%s regions | %s | %-7s] n=%d  24h: -%d/+%d (med %+.3f)  48h: -%d/+%d (med %+.3f)",
+    fmt$region_set[i], fmt$sample_set[i], fmt$cell_line[i], fmt$total_ses[i],
+    fmt$dec24[i], fmt$inc24[i], fmt$medFC24[i],
+    fmt$dec48[i], fmt$inc48[i], fmt$medFC48[i]))
+}
+report <- c(report, "",
+  "Per-experiment outputs (heatmap, boxplots, detailed + top50 tables) are under:",
+  sprintf("  %s/<region>_regions__<samples>_samples/", ext_root),
+  "Combined tables:",
+  "  extended_SE_comparisons_combined_summary.csv",
+  "  extended_SE_comparisons_combined_detailed.csv",
+  "================================================================")
+writeLines(report, report_path)
+
+cat(paste(report, collapse = "\n"))
+cat(sprintf("\n\nReport written to: %s\n", report_path))
+knitr::kable(combined_summary, digits = 3,
+             caption = "Extended SE accessibility comparison: 6 experiments x cell line")
 ```
