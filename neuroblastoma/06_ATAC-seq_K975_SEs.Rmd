@@ -379,12 +379,17 @@ sig_to_star <- function(p) dplyr::case_when(
   p <= 5e-2 ~ "*",
   TRUE      ~ "ns")
 
+# p-value label: scientific notation (2 significant digits).
+fmt_p_label <- function(p) dplyr::case_when(
+  is.na(p) ~ "",
+  TRUE     ~ formatC(p, format = "e", digits = 2))
+
 # One p-value per (cell line x timepoint); place all stars at a common height per facet.
 change_stats <- change_data %>%
   group_by(cell_line_label, timepoint) %>%
   summarise(p_value = tryCatch(wilcox.test(log2fc, mu = 0)$p.value, error = function(e) NA_real_),
             .groups = "drop") %>%
-  mutate(star = sig_to_star(p_value)) %>%
+  mutate(p_label = fmt_p_label(p_value)) %>%
   left_join(change_data %>% group_by(cell_line_label) %>%
               summarise(y_pos = max(log2fc, na.rm = TRUE) + 0.4, .groups = "drop"),
             by = "cell_line_label")
@@ -393,8 +398,8 @@ p5 <- ggplot(change_data, aes(x = timepoint, y = log2fc, fill = timepoint)) +
   geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
   geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.6) +
   geom_hline(yintercept = c(-log2_threshold, log2_threshold), linetype = "dotted", alpha = 0.5) +
-  geom_text(data = change_stats, aes(x = timepoint, y = y_pos, label = star),
-            inherit.aes = FALSE, size = 5) +
+  geom_text(data = change_stats, aes(x = timepoint, y = y_pos, label = p_label),
+            inherit.aes = FALSE, size = 4) +
   facet_wrap(~cell_line_label) +
   scale_fill_viridis_d(option = "plasma", begin = 0.3, end = 0.8) +
   labs(x = "Treatment Duration", y = "Log2 Fold Change vs Control",
@@ -724,6 +729,11 @@ run_se_experiment <- function(exp_id, se_bed, samples, out_dir, annot = CLB_SKN_
     is.na(p) ~ "", p <= 1e-4 ~ "****", p <= 1e-3 ~ "***",
     p <= 1e-2 ~ "**", p <= 5e-2 ~ "*", TRUE ~ "ns")
 
+  # p-value label: scientific notation (2 significant digits).
+  fmt_p_label <- function(p) dplyr::case_when(
+    is.na(p) ~ "",
+    TRUE     ~ formatC(p, format = "e", digits = 2))
+
   # log2FC heatmap
   heatmap_matrix <- all_results %>%
     dplyr::select(se_id, cell_line, log2fc_24h, log2fc_48h) %>%
@@ -750,7 +760,7 @@ run_se_experiment <- function(exp_id, se_bed, samples, out_dir, annot = CLB_SKN_
     group_by(cell_line_label, timepoint) %>%
     summarise(p_value = tryCatch(wilcox.test(log2fc, mu = 0)$p.value, error = function(e) NA_real_),
               .groups = "drop") %>%
-    mutate(star = sig_to_star(p_value)) %>%
+    mutate(p_label = fmt_p_label(p_value)) %>%
     left_join(change_data %>% group_by(cell_line_label) %>%
                 summarise(y_pos = max(log2fc, na.rm = TRUE) + 0.4, .groups = "drop"),
               by = "cell_line_label")
@@ -758,8 +768,8 @@ run_se_experiment <- function(exp_id, se_bed, samples, out_dir, annot = CLB_SKN_
     geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
     geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.6) +
     geom_hline(yintercept = c(-log2_threshold, log2_threshold), linetype = "dotted", alpha = 0.5) +
-    geom_text(data = change_stats, aes(x = timepoint, y = y_pos, label = star),
-              inherit.aes = FALSE, size = 5) +
+    geom_text(data = change_stats, aes(x = timepoint, y = y_pos, label = p_label),
+              inherit.aes = FALSE, size = 4) +
     facet_wrap(~cell_line_label) +
     scale_fill_viridis_d(option = "plasma", begin = 0.3, end = 0.8) +
     labs(x = "Treatment Duration", y = "Log2 Fold Change vs Control",
